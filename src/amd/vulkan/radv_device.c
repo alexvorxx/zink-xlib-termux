@@ -84,6 +84,12 @@ radv_spm_trace_enabled(const struct radv_instance *instance)
           debug_get_bool_option("RADV_THREAD_TRACE_CACHE_COUNTERS", true);
 }
 
+static bool
+radv_trap_handler_enabled()
+{
+   return !!getenv("RADV_TRAP_HANDLER");
+}
+
 VKAPI_ATTR VkResult VKAPI_CALL
 radv_GetMemoryHostPointerPropertiesEXT(VkDevice _device, VkExternalMemoryHandleTypeFlagBits handleType,
                                        const void *pHostPointer,
@@ -958,7 +964,6 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    VkResult result;
    struct radv_device *device;
 
-   bool keep_shader_info = false;
    bool overallocation_disallowed = false;
 
    vk_foreach_struct_const (ext, pCreateInfo->pNext) {
@@ -1124,11 +1129,6 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    device->dispatch_initiator_task = device->dispatch_initiator | S_00B800_DISABLE_DISP_PREMPT_EN(1);
 
    if (radv_device_fault_detection_enabled(device)) {
-      /* Enable GPU hangs detection and dump logs if a GPU hang is
-       * detected.
-       */
-      keep_shader_info = true;
-
       if (!radv_init_trace(device)) {
          result = VK_ERROR_INITIALIZATION_FAILED;
          goto fail;
@@ -1160,18 +1160,13 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    }
 #endif
 
-   if (getenv("RADV_TRAP_HANDLER")) {
+   if (radv_trap_handler_enabled()) {
       /* TODO: Add support for more hardware. */
       assert(pdev->info.gfx_level == GFX8);
 
       fprintf(stderr, "**********************************************************************\n");
       fprintf(stderr, "* WARNING: RADV_TRAP_HANDLER is experimental and only for debugging! *\n");
       fprintf(stderr, "**********************************************************************\n");
-
-      /* To get the disassembly of the faulty shaders, we have to
-       * keep some shader info around.
-       */
-      keep_shader_info = true;
 
       if (!radv_trap_handler_init(device)) {
          result = VK_ERROR_INITIALIZATION_FAILED;
@@ -1201,7 +1196,8 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    /* PKT3_LOAD_SH_REG_INDEX is supported on GFX8+, but it hangs with compute queues until GFX10.3. */
    device->load_grid_size_from_user_sgpr = pdev->info.gfx_level >= GFX10_3;
 
-   device->keep_shader_info = keep_shader_info;
+   /* Keep shader info for GPU hangs debugging. */
+   device->keep_shader_info = radv_device_fault_detection_enabled(device) || radv_trap_handler_enabled();
 
    /* Initialize the per-device cache key before compiling meta shaders. */
    radv_device_init_cache_key(device);

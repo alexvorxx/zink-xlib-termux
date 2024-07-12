@@ -644,6 +644,39 @@ radv_device_init_trap_handler(struct radv_device *device)
    return VK_SUCCESS;
 }
 
+static VkResult
+radv_device_init_device_fault_detection(struct radv_device *device)
+{
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   struct radv_instance *instance = radv_physical_device_instance(pdev);
+
+   if (!radv_device_fault_detection_enabled(device))
+      return VK_SUCCESS;
+
+   if (!radv_init_trace(device))
+      return VK_ERROR_INITIALIZATION_FAILED;
+
+   fprintf(stderr, "*****************************************************************************\n");
+   fprintf(stderr, "* WARNING: RADV_DEBUG=hang is costly and should only be used for debugging! *\n");
+   fprintf(stderr, "*****************************************************************************\n");
+
+   /* Wait for idle after every draw/dispatch to identify the
+    * first bad call.
+    */
+   instance->debug_flags |= RADV_DEBUG_SYNC_SHADERS;
+
+   radv_dump_enabled_options(device, stderr);
+
+   return VK_SUCCESS;
+}
+
+static void
+radv_device_finish_device_fault_detection(struct radv_device *device)
+{
+   radv_finish_trace(device);
+   ralloc_free(device->gpu_hang_report);
+}
+
 struct dispatch_table_builder {
    struct vk_device_dispatch_table *tables[RADV_DISPATCH_TABLE_COUNT];
    bool used[RADV_DISPATCH_TABLE_COUNT];
@@ -1149,23 +1182,9 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
     */
    device->dispatch_initiator_task = device->dispatch_initiator | S_00B800_DISABLE_DISP_PREMPT_EN(1);
 
-   if (radv_device_fault_detection_enabled(device)) {
-      if (!radv_init_trace(device)) {
-         result = VK_ERROR_INITIALIZATION_FAILED;
-         goto fail;
-      }
-
-      fprintf(stderr, "*****************************************************************************\n");
-      fprintf(stderr, "* WARNING: RADV_DEBUG=hang is costly and should only be used for debugging! *\n");
-      fprintf(stderr, "*****************************************************************************\n");
-
-      /* Wait for idle after every draw/dispatch to identify the
-       * first bad call.
-       */
-      instance->debug_flags |= RADV_DEBUG_SYNC_SHADERS;
-
-      radv_dump_enabled_options(device, stderr);
-   }
+   result = radv_device_init_device_fault_detection(device);
+   if (result != VK_SUCCESS)
+      goto fail;
 
    result = radv_device_init_rgp(device);
    if (result != VK_SUCCESS)
@@ -1298,7 +1317,7 @@ fail:
    radv_device_finish_rgp(device);
 
    radv_trap_handler_finish(device);
-   radv_finish_trace(device);
+   radv_device_finish_device_fault_detection(device);
 
    radv_device_finish_perf_counter(device);
 
@@ -1396,7 +1415,7 @@ radv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
    simple_mtx_destroy(&device->pso_cache_stats_mtx);
 
    radv_trap_handler_finish(device);
-   radv_finish_trace(device);
+   radv_device_finish_device_fault_detection(device);
 
    radv_destroy_shader_arenas(device);
    if (device->capture_replay_arena_vas)
@@ -1408,8 +1427,6 @@ radv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
 
    radv_memory_trace_finish(device);
    radv_device_finish_rgp(device);
-
-   ralloc_free(device->gpu_hang_report);
 
    vk_device_finish(&device->vk);
    vk_free(&device->vk.alloc, device);

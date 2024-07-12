@@ -623,6 +623,22 @@ radv_device_finish_rgp(struct radv_device *device)
    radv_spm_finish(device);
 }
 
+static void
+radv_device_init_rmv(struct radv_device *device)
+{
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
+
+   if (!(instance->vk.trace_mode & VK_TRACE_MODE_RMV))
+      return;
+
+   struct vk_rmv_device_info info;
+   memset(&info, 0, sizeof(struct vk_rmv_device_info));
+   radv_rmv_fill_device_info(pdev, &info);
+   vk_memory_trace_init(&device->vk, &info);
+   radv_memory_trace_init(device);
+}
+
 static VkResult
 radv_device_init_trap_handler(struct radv_device *device)
 {
@@ -1190,15 +1206,7 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    if (result != VK_SUCCESS)
       goto fail;
 
-#ifndef _WIN32
-   if (instance->vk.trace_mode & VK_TRACE_MODE_RMV) {
-      struct vk_rmv_device_info info;
-      memset(&info, 0, sizeof(struct vk_rmv_device_info));
-      radv_rmv_fill_device_info(pdev, &info);
-      vk_memory_trace_init(&device->vk, &info);
-      radv_memory_trace_init(device);
-   }
-#endif
+   radv_device_init_rmv(device);
 
    result = radv_device_init_trap_handler(device);
    if (result != VK_SUCCESS)

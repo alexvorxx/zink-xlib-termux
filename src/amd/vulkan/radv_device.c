@@ -554,6 +554,24 @@ radv_device_finish_perf_counter(struct radv_device *device)
    free(device->perf_counter_lock_cs);
 }
 
+static VkResult
+radv_device_init_memory_cache(struct radv_device *device)
+{
+   struct vk_pipeline_cache_create_info info = {.weak_ref = true};
+
+   device->mem_cache = vk_pipeline_cache_create(&device->vk, &info, NULL);
+   if (!device->mem_cache)
+      return VK_ERROR_OUT_OF_HOST_MEMORY;
+
+   return VK_SUCCESS;
+}
+
+static void
+radv_device_finish_memory_cache(struct radv_device *device)
+{
+   vk_pipeline_cache_destroy(device->mem_cache, NULL);
+}
+
 struct dispatch_table_builder {
    struct vk_device_dispatch_table *tables[RADV_DISPATCH_TABLE_COUNT];
    bool used[RADV_DISPATCH_TABLE_COUNT];
@@ -1205,12 +1223,9 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    if (!(instance->debug_flags & RADV_DEBUG_NO_IBS))
       radv_create_gfx_preamble(device);
 
-   struct vk_pipeline_cache_create_info info = {.weak_ref = true};
-   device->mem_cache = vk_pipeline_cache_create(&device->vk, &info, NULL);
-   if (!device->mem_cache) {
-      result = VK_ERROR_OUT_OF_HOST_MEMORY;
+   result = radv_device_init_memory_cache(device);
+   if (result != VK_SUCCESS)
       goto fail_meta;
-   }
 
    device->force_aniso = MIN2(16, (int)debug_get_num_option("RADV_TEX_ANISO", -1));
    if (device->force_aniso >= 0) {
@@ -1248,7 +1263,7 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    return VK_SUCCESS;
 
 fail_cache:
-   vk_pipeline_cache_destroy(device->mem_cache, NULL);
+   radv_device_finish_memory_cache(device);
 fail_meta:
    radv_device_finish_meta(device);
 fail:
@@ -1341,7 +1356,7 @@ radv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
 
    radv_device_finish_meta(device);
 
-   vk_pipeline_cache_destroy(device->mem_cache, NULL);
+   radv_device_finish_memory_cache(device);
 
    radv_destroy_shader_upload_queue(device);
 

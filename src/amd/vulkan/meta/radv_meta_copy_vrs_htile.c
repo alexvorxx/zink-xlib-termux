@@ -131,21 +131,13 @@ radv_device_init_meta_copy_vrs_htile_state(struct radv_device *device, struct ra
    if (result != VK_SUCCESS)
       goto fail;
 
-   VkPipelineLayoutCreateInfo p_layout_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = 1,
-      .pSetLayouts = &state->copy_vrs_htile_ds_layout,
-      .pushConstantRangeCount = 1,
-      .pPushConstantRanges =
-         &(VkPushConstantRange){
-            VK_SHADER_STAGE_COMPUTE_BIT,
-            0,
-            20,
-         },
+   const VkPushConstantRange pc_range = {
+      .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+      .size = 20,
    };
 
-   result = radv_CreatePipelineLayout(radv_device_to_handle(device), &p_layout_info, &state->alloc,
-                                      &state->copy_vrs_htile_p_layout);
+   result = radv_meta_create_pipeline_layout(device, &state->copy_vrs_htile_ds_layout, 1, &pc_range,
+                                             &state->copy_vrs_htile_p_layout);
    if (result != VK_SUCCESS)
       goto fail;
 

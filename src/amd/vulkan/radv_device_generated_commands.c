@@ -2097,16 +2097,13 @@ radv_device_init_dgc_prepare_state(struct radv_device *device)
    if (result != VK_SUCCESS)
       goto cleanup;
 
-   const VkPipelineLayoutCreateInfo leaf_pl_create_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = 1,
-      .pSetLayouts = &device->meta_state.dgc_prepare.ds_layout,
-      .pushConstantRangeCount = 1,
-      .pPushConstantRanges = &(VkPushConstantRange){VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(struct radv_dgc_params)},
+   const VkPushConstantRange pc_range = {
+      .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+      .size = sizeof(struct radv_dgc_params),
    };
 
-   result = radv_CreatePipelineLayout(radv_device_to_handle(device), &leaf_pl_create_info, &device->meta_state.alloc,
-                                      &device->meta_state.dgc_prepare.p_layout);
+   result = radv_meta_create_pipeline_layout(device, &device->meta_state.dgc_prepare.ds_layout, 1, &pc_range,
+                                             &device->meta_state.dgc_prepare.p_layout);
    if (result != VK_SUCCESS)
       goto cleanup;
 

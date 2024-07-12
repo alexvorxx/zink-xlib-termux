@@ -84,16 +84,13 @@ radv_device_init_meta_itob_state(struct radv_device *device)
    if (result != VK_SUCCESS)
       goto fail;
 
-   VkPipelineLayoutCreateInfo pl_create_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = 1,
-      .pSetLayouts = &device->meta_state.itob.img_ds_layout,
-      .pushConstantRangeCount = 1,
-      .pPushConstantRanges = &(VkPushConstantRange){VK_SHADER_STAGE_COMPUTE_BIT, 0, 16},
+   const VkPushConstantRange pc_range = {
+      .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+      .size = 16,
    };
 
-   result = radv_CreatePipelineLayout(radv_device_to_handle(device), &pl_create_info, &device->meta_state.alloc,
-                                      &device->meta_state.itob.img_p_layout);
+   result = radv_meta_create_pipeline_layout(device, &device->meta_state.itob.img_ds_layout, 1, &pc_range,
+                                             &device->meta_state.itob.img_p_layout);
    if (result != VK_SUCCESS)
       goto fail;
 
@@ -198,16 +195,13 @@ radv_device_init_meta_btoi_state(struct radv_device *device)
    if (result != VK_SUCCESS)
       goto fail;
 
-   VkPipelineLayoutCreateInfo pl_create_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = 1,
-      .pSetLayouts = &device->meta_state.btoi.img_ds_layout,
-      .pushConstantRangeCount = 1,
-      .pPushConstantRanges = &(VkPushConstantRange){VK_SHADER_STAGE_COMPUTE_BIT, 0, 16},
+   const VkPushConstantRange pc_range = {
+      .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+      .size = 16,
    };
 
-   result = radv_CreatePipelineLayout(radv_device_to_handle(device), &pl_create_info, &device->meta_state.alloc,
-                                      &device->meta_state.btoi.img_p_layout);
+   result = radv_meta_create_pipeline_layout(device, &device->meta_state.btoi.img_ds_layout, 1,
+      &pc_range, &device->meta_state.btoi.img_p_layout);
    if (result != VK_SUCCESS)
       goto fail;
 
@@ -316,16 +310,13 @@ radv_device_init_meta_btoi_r32g32b32_state(struct radv_device *device)
    if (result != VK_SUCCESS)
       goto fail;
 
-   VkPipelineLayoutCreateInfo pl_create_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = 1,
-      .pSetLayouts = &device->meta_state.btoi_r32g32b32.img_ds_layout,
-      .pushConstantRangeCount = 1,
-      .pPushConstantRanges = &(VkPushConstantRange){VK_SHADER_STAGE_COMPUTE_BIT, 0, 16},
+   const VkPushConstantRange pc_range = {
+      .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+      .size = 16,
    };
 
-   result = radv_CreatePipelineLayout(radv_device_to_handle(device), &pl_create_info, &device->meta_state.alloc,
-                                      &device->meta_state.btoi_r32g32b32.img_p_layout);
+   result = radv_meta_create_pipeline_layout(device, &device->meta_state.btoi_r32g32b32.img_ds_layout, 1, &pc_range,
+                                             &device->meta_state.btoi_r32g32b32.img_p_layout);
    if (result != VK_SUCCESS)
       goto fail;
 
@@ -441,16 +432,13 @@ radv_device_init_meta_itoi_state(struct radv_device *device)
    if (result != VK_SUCCESS)
       goto fail;
 
-   VkPipelineLayoutCreateInfo pl_create_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = 1,
-      .pSetLayouts = &device->meta_state.itoi.img_ds_layout,
-      .pushConstantRangeCount = 1,
-      .pPushConstantRanges = &(VkPushConstantRange){VK_SHADER_STAGE_COMPUTE_BIT, 0, 24},
+   const VkPushConstantRange pc_range = {
+      .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+      .size = 24,
    };
 
-   result = radv_CreatePipelineLayout(radv_device_to_handle(device), &pl_create_info, &device->meta_state.alloc,
-                                      &device->meta_state.itoi.img_p_layout);
+   result = radv_meta_create_pipeline_layout(device, &device->meta_state.itoi.img_ds_layout, 1, &pc_range,
+                                             &device->meta_state.itoi.img_p_layout);
    if (result != VK_SUCCESS)
       goto fail;
 
@@ -585,16 +573,13 @@ radv_device_init_meta_itoi_r32g32b32_state(struct radv_device *device)
    if (result != VK_SUCCESS)
       goto fail;
 
-   VkPipelineLayoutCreateInfo pl_create_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = 1,
-      .pSetLayouts = &device->meta_state.itoi_r32g32b32.img_ds_layout,
-      .pushConstantRangeCount = 1,
-      .pPushConstantRanges = &(VkPushConstantRange){VK_SHADER_STAGE_COMPUTE_BIT, 0, 24},
+   const VkPushConstantRange pc_range = {
+      .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+      .size = 24,
    };
 
-   result = radv_CreatePipelineLayout(radv_device_to_handle(device), &pl_create_info, &device->meta_state.alloc,
-                                      &device->meta_state.itoi_r32g32b32.img_p_layout);
+   result = radv_meta_create_pipeline_layout(device, &device->meta_state.itoi_r32g32b32.img_ds_layout, 1, &pc_range,
+                                             &device->meta_state.itoi_r32g32b32.img_p_layout);
    if (result != VK_SUCCESS)
       goto fail;
 
@@ -686,16 +671,13 @@ radv_device_init_meta_cleari_state(struct radv_device *device)
    if (result != VK_SUCCESS)
       goto fail;
 
-   VkPipelineLayoutCreateInfo pl_create_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = 1,
-      .pSetLayouts = &device->meta_state.cleari.img_ds_layout,
-      .pushConstantRangeCount = 1,
-      .pPushConstantRanges = &(VkPushConstantRange){VK_SHADER_STAGE_COMPUTE_BIT, 0, 20},
+   const VkPushConstantRange pc_range = {
+      .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+      .size = 20,
    };
 
-   result = radv_CreatePipelineLayout(radv_device_to_handle(device), &pl_create_info, &device->meta_state.alloc,
-                                      &device->meta_state.cleari.img_p_layout);
+   result = radv_meta_create_pipeline_layout(device, &device->meta_state.cleari.img_ds_layout, 1, &pc_range,
+                                             &device->meta_state.cleari.img_p_layout);
    if (result != VK_SUCCESS)
       goto fail;
 
@@ -790,16 +772,13 @@ radv_device_init_meta_cleari_r32g32b32_state(struct radv_device *device)
    if (result != VK_SUCCESS)
       goto fail;
 
-   VkPipelineLayoutCreateInfo pl_create_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = 1,
-      .pSetLayouts = &device->meta_state.cleari_r32g32b32.img_ds_layout,
-      .pushConstantRangeCount = 1,
-      .pPushConstantRanges = &(VkPushConstantRange){VK_SHADER_STAGE_COMPUTE_BIT, 0, 16},
+   const VkPushConstantRange pc_range = {
+      .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+      .size = 16,
    };
 
-   result = radv_CreatePipelineLayout(radv_device_to_handle(device), &pl_create_info, &device->meta_state.alloc,
-                                      &device->meta_state.cleari_r32g32b32.img_p_layout);
+   result = radv_meta_create_pipeline_layout(device, &device->meta_state.cleari_r32g32b32.img_ds_layout, 1, &pc_range,
+                                             &device->meta_state.cleari_r32g32b32.img_p_layout);
    if (result != VK_SUCCESS)
       goto fail;
 

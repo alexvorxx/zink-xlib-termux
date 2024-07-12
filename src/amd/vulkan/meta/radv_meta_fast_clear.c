@@ -80,16 +80,9 @@ create_dcc_compress_compute(struct radv_device *device)
    if (result != VK_SUCCESS)
       goto cleanup;
 
-   VkPipelineLayoutCreateInfo pl_create_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = 1,
-      .pSetLayouts = &device->meta_state.fast_clear_flush.dcc_decompress_compute_ds_layout,
-      .pushConstantRangeCount = 0,
-      .pPushConstantRanges = NULL,
-   };
-
-   result = radv_CreatePipelineLayout(radv_device_to_handle(device), &pl_create_info, &device->meta_state.alloc,
-                                      &device->meta_state.fast_clear_flush.dcc_decompress_compute_p_layout);
+   result =
+      radv_meta_create_pipeline_layout(device, &device->meta_state.fast_clear_flush.dcc_decompress_compute_ds_layout, 0,
+                                       NULL, &device->meta_state.fast_clear_flush.dcc_decompress_compute_p_layout);
    if (result != VK_SUCCESS)
       goto cleanup;
 
@@ -102,20 +95,6 @@ create_dcc_compress_compute(struct radv_device *device)
 cleanup:
    ralloc_free(cs);
    return result;
-}
-
-static VkResult
-create_pipeline_layout(struct radv_device *device, VkPipelineLayout *layout)
-{
-   VkPipelineLayoutCreateInfo pl_create_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = 0,
-      .pSetLayouts = NULL,
-      .pushConstantRangeCount = 0,
-      .pPushConstantRanges = NULL,
-   };
-
-   return radv_CreatePipelineLayout(radv_device_to_handle(device), &pl_create_info, &device->meta_state.alloc, layout);
 }
 
 static VkResult
@@ -379,7 +358,7 @@ radv_device_init_meta_fast_clear_flush_state_internal(struct radv_device *device
       goto cleanup;
    }
 
-   res = create_pipeline_layout(device, &device->meta_state.fast_clear_flush.p_layout);
+   res = radv_meta_create_pipeline_layout(device, NULL, 0, NULL, &device->meta_state.fast_clear_flush.p_layout);
    if (res != VK_SUCCESS)
       goto cleanup;
 

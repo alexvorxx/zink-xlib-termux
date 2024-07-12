@@ -110,16 +110,13 @@ radv_device_init_meta_dcc_retile_state(struct radv_device *device, struct radeon
    if (result != VK_SUCCESS)
       goto cleanup;
 
-   VkPipelineLayoutCreateInfo pl_create_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = 1,
-      .pSetLayouts = &device->meta_state.dcc_retile.ds_layout,
-      .pushConstantRangeCount = 1,
-      .pPushConstantRanges = &(VkPushConstantRange){VK_SHADER_STAGE_COMPUTE_BIT, 0, 16},
+   const VkPushConstantRange pc_range = {
+      .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+      .size = 16,
    };
 
-   result = radv_CreatePipelineLayout(radv_device_to_handle(device), &pl_create_info, &device->meta_state.alloc,
-                                      &device->meta_state.dcc_retile.p_layout);
+   result = radv_meta_create_pipeline_layout(device, &device->meta_state.dcc_retile.ds_layout, 1, &pc_range,
+                                             &device->meta_state.dcc_retile.p_layout);
    if (result != VK_SUCCESS)
       goto cleanup;
 

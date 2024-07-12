@@ -82,16 +82,8 @@ create_expand_depth_stencil_compute(struct radv_device *device)
    if (result != VK_SUCCESS)
       goto cleanup;
 
-   VkPipelineLayoutCreateInfo pl_create_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = 1,
-      .pSetLayouts = &device->meta_state.expand_depth_stencil_compute_ds_layout,
-      .pushConstantRangeCount = 0,
-      .pPushConstantRanges = NULL,
-   };
-
-   result = radv_CreatePipelineLayout(radv_device_to_handle(device), &pl_create_info, &device->meta_state.alloc,
-                                      &device->meta_state.expand_depth_stencil_compute_p_layout);
+   result = radv_meta_create_pipeline_layout(device, &device->meta_state.expand_depth_stencil_compute_ds_layout, 0,
+                                             NULL, &device->meta_state.expand_depth_stencil_compute_p_layout);
    if (result != VK_SUCCESS)
       goto cleanup;
 
@@ -103,20 +95,6 @@ create_expand_depth_stencil_compute(struct radv_device *device)
 cleanup:
    ralloc_free(cs);
    return result;
-}
-
-static VkResult
-create_pipeline_layout(struct radv_device *device, VkPipelineLayout *layout)
-{
-   VkPipelineLayoutCreateInfo pl_create_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = 0,
-      .pSetLayouts = NULL,
-      .pushConstantRangeCount = 0,
-      .pPushConstantRanges = NULL,
-   };
-
-   return radv_CreatePipelineLayout(radv_device_to_handle(device), &pl_create_info, &device->meta_state.alloc, layout);
 }
 
 static VkResult
@@ -284,7 +262,7 @@ radv_device_init_meta_depth_decomp_state(struct radv_device *device, bool on_dem
    for (uint32_t i = 0; i < ARRAY_SIZE(state->depth_decomp); ++i) {
       uint32_t samples = 1 << i;
 
-      res = create_pipeline_layout(device, &state->depth_decomp[i].p_layout);
+      res = radv_meta_create_pipeline_layout(device, NULL, 0, NULL, &state->depth_decomp[i].p_layout);
       if (res != VK_SUCCESS)
          return res;
 

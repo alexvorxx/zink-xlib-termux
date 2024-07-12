@@ -141,14 +141,8 @@ radv_device_init_meta_fmask_copy_state_internal(struct radv_device *device, uint
    }
 
    if (!device->meta_state.fmask_copy.p_layout) {
-      VkPipelineLayoutCreateInfo pl_create_info = {.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-                                                   .setLayoutCount = 1,
-                                                   .pSetLayouts = &device->meta_state.fmask_copy.ds_layout,
-                                                   .pushConstantRangeCount = 0,
-                                                   .pPushConstantRanges = NULL};
-
-      result = radv_CreatePipelineLayout(radv_device_to_handle(device), &pl_create_info, &device->meta_state.alloc,
-                                         &device->meta_state.fmask_copy.p_layout);
+      result = radv_meta_create_pipeline_layout(device, &device->meta_state.fmask_copy.ds_layout, 0, NULL,
+                                                &device->meta_state.fmask_copy.p_layout);
       if (result != VK_SUCCESS)
          return result;
    }

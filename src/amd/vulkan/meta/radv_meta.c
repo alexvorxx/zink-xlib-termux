@@ -743,3 +743,19 @@ radv_meta_create_compute_pipeline(struct radv_device *device, nir_shader *nir, V
    return radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache, &pipeline_info, NULL,
                                        pipeline);
 }
+
+VkResult
+radv_meta_create_pipeline_layout(struct radv_device *device, VkDescriptorSetLayout *set_layout, uint32_t num_pc_ranges,
+                                 const VkPushConstantRange *pc_ranges, VkPipelineLayout *pipeline_layout)
+{
+   const VkPipelineLayoutCreateInfo pipeline_layout_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+      .setLayoutCount = !!set_layout,
+      .pSetLayouts = set_layout,
+      .pushConstantRangeCount = num_pc_ranges,
+      .pPushConstantRanges = pc_ranges,
+   };
+
+   return radv_CreatePipelineLayout(radv_device_to_handle(device), &pipeline_layout_info, &device->meta_state.alloc,
+                                    pipeline_layout);
+}

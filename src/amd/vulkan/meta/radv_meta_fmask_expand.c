@@ -193,16 +193,8 @@ radv_device_init_meta_fmask_expand_state_internal(struct radv_device *device, ui
    }
 
    if (!state->fmask_expand.p_layout) {
-      VkPipelineLayoutCreateInfo color_create_info = {
-         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-         .setLayoutCount = 1,
-         .pSetLayouts = &state->fmask_expand.ds_layout,
-         .pushConstantRangeCount = 0,
-         .pPushConstantRanges = NULL,
-      };
-
-      result = radv_CreatePipelineLayout(radv_device_to_handle(device), &color_create_info, &state->alloc,
-                                         &state->fmask_expand.p_layout);
+      result = radv_meta_create_pipeline_layout(device, &state->fmask_expand.ds_layout, 0, NULL,
+                                                &state->fmask_expand.p_layout);
       if (result != VK_SUCCESS)
          return result;
    }

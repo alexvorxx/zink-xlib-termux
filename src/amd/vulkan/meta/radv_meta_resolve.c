@@ -41,17 +41,8 @@ create_pipeline(struct radv_device *device, VkShaderModule vs_module_h, VkFormat
       goto cleanup;
    }
 
-   VkPipelineLayoutCreateInfo pl_create_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = 0,
-      .pSetLayouts = NULL,
-      .pushConstantRangeCount = 0,
-      .pPushConstantRanges = NULL,
-   };
-
    if (!device->meta_state.resolve.p_layout) {
-      result = radv_CreatePipelineLayout(radv_device_to_handle(device), &pl_create_info, &device->meta_state.alloc,
-                                         &device->meta_state.resolve.p_layout);
+      result = radv_meta_create_pipeline_layout(device, NULL, 0, NULL, &device->meta_state.resolve.p_layout);
       if (result != VK_SUCCESS)
          goto cleanup;
    }

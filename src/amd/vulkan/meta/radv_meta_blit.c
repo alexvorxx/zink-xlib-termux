@@ -842,15 +842,8 @@ radv_device_init_meta_blit_state(struct radv_device *device, bool on_demand)
 
    const VkPushConstantRange push_constant_range = {VK_SHADER_STAGE_VERTEX_BIT, 0, 20};
 
-   result = radv_CreatePipelineLayout(radv_device_to_handle(device),
-                                      &(VkPipelineLayoutCreateInfo){
-                                         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-                                         .setLayoutCount = 1,
-                                         .pSetLayouts = &device->meta_state.blit.ds_layout,
-                                         .pushConstantRangeCount = 1,
-                                         .pPushConstantRanges = &push_constant_range,
-                                      },
-                                      &device->meta_state.alloc, &device->meta_state.blit.pipeline_layout);
+   result = radv_meta_create_pipeline_layout(device, &device->meta_state.blit.ds_layout, 1, &push_constant_range,
+                                             &device->meta_state.blit.pipeline_layout);
    if (result != VK_SUCCESS)
       return result;
 

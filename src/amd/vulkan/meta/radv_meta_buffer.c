@@ -72,27 +72,21 @@ radv_device_init_meta_buffer_state(struct radv_device *device)
    nir_shader *fill_cs = build_buffer_fill_shader(device);
    nir_shader *copy_cs = build_buffer_copy_shader(device);
 
-   VkPipelineLayoutCreateInfo fill_pl_create_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = 0,
-      .pushConstantRangeCount = 1,
-      .pPushConstantRanges = &(VkPushConstantRange){VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(struct fill_constants)},
+   const VkPushConstantRange pc_range_fill = {
+      .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+      .size = sizeof(struct fill_constants),
    };
 
-   result = radv_CreatePipelineLayout(radv_device_to_handle(device), &fill_pl_create_info, &device->meta_state.alloc,
-                                      &device->meta_state.buffer.fill_p_layout);
+   result = radv_meta_create_pipeline_layout(device, NULL, 1, &pc_range_fill, &device->meta_state.buffer.fill_p_layout);
    if (result != VK_SUCCESS)
       goto fail;
 
-   VkPipelineLayoutCreateInfo copy_pl_create_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = 0,
-      .pushConstantRangeCount = 1,
-      .pPushConstantRanges = &(VkPushConstantRange){VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(struct copy_constants)},
+   const VkPushConstantRange pc_range_copy = {
+      .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+      .size = sizeof(struct copy_constants),
    };
 
-   result = radv_CreatePipelineLayout(radv_device_to_handle(device), &copy_pl_create_info, &device->meta_state.alloc,
-                                      &device->meta_state.buffer.copy_p_layout);
+   result = radv_meta_create_pipeline_layout(device, NULL, 1, &pc_range_copy, &device->meta_state.buffer.copy_p_layout);
    if (result != VK_SUCCESS)
       goto fail;
 

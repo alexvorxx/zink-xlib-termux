@@ -844,21 +844,13 @@ init_meta_clear_htile_mask_state(struct radv_device *device)
    if (result != VK_SUCCESS)
       goto fail;
 
-   VkPipelineLayoutCreateInfo p_layout_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = 1,
-      .pSetLayouts = &state->clear_htile_mask_ds_layout,
-      .pushConstantRangeCount = 1,
-      .pPushConstantRanges =
-         &(VkPushConstantRange){
-            VK_SHADER_STAGE_COMPUTE_BIT,
-            0,
-            8,
-         },
+   const VkPushConstantRange pc_range = {
+      .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+      .size = 8,
    };
 
-   result = radv_CreatePipelineLayout(radv_device_to_handle(device), &p_layout_info, &state->alloc,
-                                      &state->clear_htile_mask_p_layout);
+   result = radv_meta_create_pipeline_layout(device, &state->clear_htile_mask_ds_layout, 1, &pc_range,
+                                             &state->clear_htile_mask_p_layout);
    if (result != VK_SUCCESS)
       goto fail;
 
@@ -948,21 +940,13 @@ init_meta_clear_dcc_comp_to_single_state(struct radv_device *device)
    if (result != VK_SUCCESS)
       goto fail;
 
-   VkPipelineLayoutCreateInfo p_layout_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = 1,
-      .pSetLayouts = &state->clear_dcc_comp_to_single_ds_layout,
-      .pushConstantRangeCount = 1,
-      .pPushConstantRanges =
-         &(VkPushConstantRange){
-            VK_SHADER_STAGE_COMPUTE_BIT,
-            0,
-            24,
-         },
+   const VkPushConstantRange pc_range = {
+      .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+      .size = 24,
    };
 
-   result = radv_CreatePipelineLayout(radv_device_to_handle(device), &p_layout_info, &state->alloc,
-                                      &state->clear_dcc_comp_to_single_p_layout);
+   result = radv_meta_create_pipeline_layout(device, &state->clear_dcc_comp_to_single_ds_layout, 1, &pc_range,
+                                             &state->clear_dcc_comp_to_single_p_layout);
    if (result != VK_SUCCESS)
       goto fail;
 
@@ -982,39 +966,31 @@ radv_device_init_meta_clear_state(struct radv_device *device, bool on_demand)
    VkResult res;
    struct radv_meta_state *state = &device->meta_state;
 
-   VkPipelineLayoutCreateInfo pl_color_create_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = 0,
-      .pushConstantRangeCount = 1,
-      .pPushConstantRanges = &(VkPushConstantRange){VK_SHADER_STAGE_FRAGMENT_BIT, 0, 16},
+   const VkPushConstantRange pc_range_color = {
+      .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+      .size = 16,
    };
 
-   res = radv_CreatePipelineLayout(radv_device_to_handle(device), &pl_color_create_info, &device->meta_state.alloc,
-                                   &device->meta_state.clear_color_p_layout);
+   res = radv_meta_create_pipeline_layout(device, NULL, 1, &pc_range_color, &device->meta_state.clear_color_p_layout);
    if (res != VK_SUCCESS)
       return res;
 
-   VkPipelineLayoutCreateInfo pl_depth_create_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = 0,
-      .pushConstantRangeCount = 1,
-      .pPushConstantRanges = &(VkPushConstantRange){VK_SHADER_STAGE_VERTEX_BIT, 0, 4},
+   const VkPushConstantRange pc_range_depth = {
+      .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+      .size = 4,
    };
 
-   res = radv_CreatePipelineLayout(radv_device_to_handle(device), &pl_depth_create_info, &device->meta_state.alloc,
-                                   &device->meta_state.clear_depth_p_layout);
+   res = radv_meta_create_pipeline_layout(device, NULL, 1, &pc_range_depth, &device->meta_state.clear_depth_p_layout);
    if (res != VK_SUCCESS)
       return res;
 
-   VkPipelineLayoutCreateInfo pl_depth_unrestricted_create_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = 0,
-      .pushConstantRangeCount = 1,
-      .pPushConstantRanges = &(VkPushConstantRange){VK_SHADER_STAGE_FRAGMENT_BIT, 0, 4},
+   const VkPushConstantRange pc_range_depth_unrestricted = {
+      .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+      .size = 4,
    };
 
-   res = radv_CreatePipelineLayout(radv_device_to_handle(device), &pl_depth_unrestricted_create_info,
-                                   &device->meta_state.alloc, &device->meta_state.clear_depth_unrestricted_p_layout);
+   res = radv_meta_create_pipeline_layout(device, NULL, 1, &pc_range_depth_unrestricted,
+                                          &device->meta_state.clear_depth_unrestricted_p_layout);
    if (res != VK_SUCCESS)
       return res;
 

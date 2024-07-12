@@ -699,7 +699,7 @@ foz_write_entry(struct foz_db *foz_db, const uint8_t *cache_key_160bit,
        FOSSILIZE_BLOB_HASH_LENGTH)
       goto fail;
 
-   off_t offset = ftell(foz_db->file[0]);
+   uint64_t offset = ftell(foz_db->file[0]);
 
    /* Write db entry header */
    if (fwrite(&header, 1, sizeof(header), foz_db->file[0]) != sizeof(header))

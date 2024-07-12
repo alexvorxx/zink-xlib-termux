@@ -39,6 +39,7 @@
 #include "util/u_debug.h"
 #include "util/libsync.h"
 #include "util/os_file.h"
+#include "util/log.h"
 #include "frontend/drm_driver.h"
 #include "state_tracker/st_format.h"
 #include "state_tracker/st_cb_texture.h"
@@ -1193,13 +1194,22 @@ dri2_create_image_from_fd(__DRIscreen *_screen,
    int i;
    const int expected_num_fds = dri2_get_modifier_num_planes(_screen, modifier, fourcc);
 
-   if (!map || expected_num_fds == 0) {
+   if (!map) {
       err = __DRI_IMAGE_ERROR_BAD_MATCH;
+      mesa_loge("dri: cannot create image from fds (fourcc 0x%08x -> dri2 failed)\n",
+                fourcc);
       goto exit;
    }
-
+   if (expected_num_fds == 0) {
+      err = __DRI_IMAGE_ERROR_BAD_MATCH;
+      mesa_loge("dri: cannot create image from fds (unsupported modifier 0x%" PRIx64 ")\n",
+                modifier);
+      goto exit;
+   }
    if (num_fds != expected_num_fds) {
       err = __DRI_IMAGE_ERROR_BAD_MATCH;
+      mesa_loge("dri: cannot create image from fds (expected %d fds but got %d)\n",
+                expected_num_fds, num_fds);
       goto exit;
    }
 

@@ -445,41 +445,62 @@ impl SM50Op for OpFFma {
         b.copy_alu_src_if_fabs(src2, SrcType::F32);
         swap_srcs_if_not_reg(src0, src1, GPR);
         b.copy_alu_src_if_not_reg(src0, GPR, SrcType::F32);
-        b.copy_alu_src_if_not_reg(src2, GPR, SrcType::F32);
         b.copy_alu_src_if_f20_overflow(src1, GPR, SrcType::F32);
+        if src_is_reg(src1, GPR) {
+            b.copy_alu_src_if_imm(src2, GPR, SrcType::F32);
+        } else {
+            b.copy_alu_src_if_not_reg(src2, GPR, SrcType::F32);
+        }
     }
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
-        // FFMA doesn't have any abs flags.
+        // ffma doesn't have any abs flags.
         assert!(!self.srcs[0].src_mod.has_fabs());
         assert!(!self.srcs[1].src_mod.has_fabs());
         assert!(!self.srcs[2].src_mod.has_fabs());
 
-        match &self.srcs[1].src_ref {
+        // There is one fneg bit shared by the two fmul sources
+        let fneg_fmul =
+            self.srcs[0].src_mod.has_fneg() ^ self.srcs[1].src_mod.has_fneg();
+        let fneg_src2 = self.srcs[2].src_mod.has_fneg();
+
+        match &self.srcs[2].src_ref {
             SrcRef::Zero | SrcRef::Reg(_) => {
-                e.set_opcode(0x5980);
-                e.set_reg_src_ref(20..28, self.srcs[1].src_ref);
-            }
-            SrcRef::Imm32(i) => {
-                e.set_opcode(0x3280);
-                e.set_src_imm_f20(20..39, 56, *i);
+                match &self.srcs[1].src_ref {
+                    SrcRef::Zero | SrcRef::Reg(_) => {
+                        e.set_opcode(0x5980);
+                        e.set_reg_src_ref(20..28, self.srcs[1].src_ref);
+                    }
+                    SrcRef::Imm32(i) => {
+                        e.set_opcode(0x3280);
+
+                        // Technically, ffma also supports a 32-bit immediate,
+                        // but only in the case where the destination is the
+                        // same as src2.  We don't support that right now.
+                        e.set_src_imm_f20(20..39, 56, *i);
+                    }
+                    SrcRef::CBuf(cb) => {
+                        e.set_opcode(0x4980);
+                        e.set_src_cb(20..39, cb);
+                    }
+                    src1 => panic!("unsupported src1 for ffma: {src1}"),
+                }
+
+                e.set_reg_src_ref(39..47, self.srcs[2].src_ref);
             }
             SrcRef::CBuf(cb) => {
                 e.set_opcode(0x4980);
                 e.set_src_cb(20..39, cb);
+                e.set_reg_src_ref(39..47, self.srcs[1].src_ref);
             }
-            src1 => panic!("unsupported src1 type for IMUL: {src1}"),
+            src2 => panic!("unsupported src2 for ffma: {src2}"),
         }
 
         e.set_dst(self.dst);
         e.set_reg_src_ref(8..16, self.srcs[0].src_ref);
-        e.set_reg_src_ref(39..47, self.srcs[2].src_ref);
 
-        e.set_bit(
-            48,
-            self.srcs[0].src_mod.has_fneg() ^ self.srcs[1].src_mod.has_fneg(),
-        );
-        e.set_bit(49, self.srcs[2].src_mod.has_fneg());
+        e.set_bit(48, fneg_fmul);
+        e.set_bit(49, fneg_src2);
         e.set_bit(50, self.saturate);
         e.set_rnd_mode(51..53, self.rnd_mode);
 

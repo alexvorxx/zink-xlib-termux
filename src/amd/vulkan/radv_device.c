@@ -514,6 +514,29 @@ radv_device_finish_notifier(struct radv_device *device)
 #endif
 }
 
+static VkResult
+radv_device_init_perf_counter(struct radv_device *device)
+{
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const size_t bo_size = PERF_CTR_BO_PASS_OFFSET + sizeof(uint64_t) * PERF_CTR_MAX_PASSES;
+   VkResult result;
+
+   result = radv_bo_create(device, NULL, bo_size, 4096, RADEON_DOMAIN_GTT,
+                           RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING, RADV_BO_PRIORITY_UPLOAD_BUFFER,
+                           0, true, &device->perf_counter_bo);
+   if (result != VK_SUCCESS)
+      return result;
+
+   device->perf_counter_lock_cs = calloc(sizeof(struct radeon_winsys_cs *), 2 * PERF_CTR_MAX_PASSES);
+   if (!device->perf_counter_lock_cs)
+      return VK_ERROR_OUT_OF_HOST_MEMORY;
+
+   if (!pdev->ac_perfcounters.blocks)
+      return VK_ERROR_INITIALIZATION_FAILED;
+
+   return VK_SUCCESS;
+}
+
 static void
 radv_device_finish_perf_counter(struct radv_device *device)
 {
@@ -1195,23 +1218,9 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    }
 
    if (device->vk.enabled_features.performanceCounterQueryPools) {
-      size_t bo_size = PERF_CTR_BO_PASS_OFFSET + sizeof(uint64_t) * PERF_CTR_MAX_PASSES;
-      result = radv_bo_create(device, NULL, bo_size, 4096, RADEON_DOMAIN_GTT,
-                              RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING,
-                              RADV_BO_PRIORITY_UPLOAD_BUFFER, 0, true, &device->perf_counter_bo);
+      result = radv_device_init_perf_counter(device);
       if (result != VK_SUCCESS)
          goto fail_cache;
-
-      device->perf_counter_lock_cs = calloc(sizeof(struct radeon_winsys_cs *), 2 * PERF_CTR_MAX_PASSES);
-      if (!device->perf_counter_lock_cs) {
-         result = VK_ERROR_OUT_OF_HOST_MEMORY;
-         goto fail_cache;
-      }
-
-      if (!pdev->ac_perfcounters.blocks) {
-         result = VK_ERROR_INITIALIZATION_FAILED;
-         goto fail_cache;
-      }
    }
 
    if ((instance->vk.trace_mode & RADV_TRACE_MODE_RRA) && radv_enable_rt(pdev, false)) {

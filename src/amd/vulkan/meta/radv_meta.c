@@ -720,3 +720,26 @@ radv_break_on_count(nir_builder *b, nir_variable *var, nir_def *count)
    counter = nir_iadd_imm(b, counter, 1);
    nir_store_var(b, var, counter, 0x1);
 }
+
+VkResult
+radv_meta_create_compute_pipeline(struct radv_device *device, nir_shader *nir, VkPipelineLayout pipeline_layout,
+                                  VkPipeline *pipeline)
+{
+   const VkPipelineShaderStageCreateInfo stage_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+      .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+      .module = vk_shader_module_handle_from_nir(nir),
+      .pName = "main",
+      .pSpecializationInfo = NULL,
+   };
+
+   const VkComputePipelineCreateInfo pipeline_info = {
+      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+      .stage = stage_info,
+      .flags = 0,
+      .layout = pipeline_layout,
+   };
+
+   return radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache, &pipeline_info, NULL,
+                                       pipeline);
+}

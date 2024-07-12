@@ -862,23 +862,8 @@ init_meta_clear_htile_mask_state(struct radv_device *device)
    if (result != VK_SUCCESS)
       goto fail;
 
-   VkPipelineShaderStageCreateInfo shader_stage = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-      .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-      .module = vk_shader_module_handle_from_nir(cs),
-      .pName = "main",
-      .pSpecializationInfo = NULL,
-   };
-
-   VkComputePipelineCreateInfo pipeline_info = {
-      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-      .stage = shader_stage,
-      .flags = 0,
-      .layout = state->clear_htile_mask_p_layout,
-   };
-
-   result = radv_compute_pipeline_create(radv_device_to_handle(device), state->cache, &pipeline_info, NULL,
-                                         &state->clear_htile_mask_pipeline);
+   result = radv_meta_create_compute_pipeline(device, cs, state->clear_htile_mask_p_layout,
+                                              &state->clear_htile_mask_pipeline);
 
 fail:
    ralloc_free(cs);
@@ -935,22 +920,7 @@ create_dcc_comp_to_single_pipeline(struct radv_device *device, bool is_msaa, VkP
    VkResult result;
    nir_shader *cs = build_clear_dcc_comp_to_single_shader(device, is_msaa);
 
-   VkPipelineShaderStageCreateInfo shader_stage = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-      .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-      .module = vk_shader_module_handle_from_nir(cs),
-      .pName = "main",
-      .pSpecializationInfo = NULL,
-   };
-
-   VkComputePipelineCreateInfo pipeline_info = {
-      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-      .stage = shader_stage,
-      .flags = 0,
-      .layout = state->clear_dcc_comp_to_single_p_layout,
-   };
-
-   result = radv_compute_pipeline_create(radv_device_to_handle(device), state->cache, &pipeline_info, NULL, pipeline);
+   result = radv_meta_create_compute_pipeline(device, cs, state->clear_dcc_comp_to_single_p_layout, pipeline);
 
    ralloc_free(cs);
    return result;

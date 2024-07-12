@@ -103,23 +103,7 @@ create_fmask_copy_pipeline(struct radv_device *device, int samples, VkPipeline *
    nir_shader *cs = build_fmask_copy_compute_shader(device, samples);
    VkResult result;
 
-   VkPipelineShaderStageCreateInfo pipeline_shader_stage = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-      .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-      .module = vk_shader_module_handle_from_nir(cs),
-      .pName = "main",
-      .pSpecializationInfo = NULL,
-   };
-
-   VkComputePipelineCreateInfo vk_pipeline_info = {
-      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-      .stage = pipeline_shader_stage,
-      .flags = 0,
-      .layout = state->fmask_copy.p_layout,
-   };
-
-   result =
-      radv_compute_pipeline_create(radv_device_to_handle(device), state->cache, &vk_pipeline_info, NULL, pipeline);
+   result = radv_meta_create_compute_pipeline(device, cs, state->fmask_copy.p_layout, pipeline);
    ralloc_free(cs);
    return result;
 }

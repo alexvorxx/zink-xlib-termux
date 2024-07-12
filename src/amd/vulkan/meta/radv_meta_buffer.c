@@ -96,43 +96,13 @@ radv_device_init_meta_buffer_state(struct radv_device *device)
    if (result != VK_SUCCESS)
       goto fail;
 
-   VkPipelineShaderStageCreateInfo fill_pipeline_shader_stage = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-      .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-      .module = vk_shader_module_handle_from_nir(fill_cs),
-      .pName = "main",
-      .pSpecializationInfo = NULL,
-   };
-
-   VkComputePipelineCreateInfo fill_vk_pipeline_info = {
-      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-      .stage = fill_pipeline_shader_stage,
-      .flags = 0,
-      .layout = device->meta_state.buffer.fill_p_layout,
-   };
-
-   result = radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache,
-                                         &fill_vk_pipeline_info, NULL, &device->meta_state.buffer.fill_pipeline);
+   result = radv_meta_create_compute_pipeline(device, fill_cs, device->meta_state.buffer.fill_p_layout,
+                                              &device->meta_state.buffer.fill_pipeline);
    if (result != VK_SUCCESS)
       goto fail;
 
-   VkPipelineShaderStageCreateInfo copy_pipeline_shader_stage = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-      .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-      .module = vk_shader_module_handle_from_nir(copy_cs),
-      .pName = "main",
-      .pSpecializationInfo = NULL,
-   };
-
-   VkComputePipelineCreateInfo copy_vk_pipeline_info = {
-      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-      .stage = copy_pipeline_shader_stage,
-      .flags = 0,
-      .layout = device->meta_state.buffer.copy_p_layout,
-   };
-
-   result = radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache,
-                                         &copy_vk_pipeline_info, NULL, &device->meta_state.buffer.copy_pipeline);
+   result = radv_meta_create_compute_pipeline(device, copy_cs, device->meta_state.buffer.copy_p_layout,
+                                              &device->meta_state.buffer.copy_pipeline);
    if (result != VK_SUCCESS)
       goto fail;
 

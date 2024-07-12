@@ -97,43 +97,13 @@ radv_device_init_meta_itob_state(struct radv_device *device)
    if (result != VK_SUCCESS)
       goto fail;
 
-   VkPipelineShaderStageCreateInfo pipeline_shader_stage = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-      .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-      .module = vk_shader_module_handle_from_nir(cs),
-      .pName = "main",
-      .pSpecializationInfo = NULL,
-   };
-
-   VkComputePipelineCreateInfo vk_pipeline_info = {
-      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-      .stage = pipeline_shader_stage,
-      .flags = 0,
-      .layout = device->meta_state.itob.img_p_layout,
-   };
-
-   result = radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache, &vk_pipeline_info,
-                                         NULL, &device->meta_state.itob.pipeline);
+   result = radv_meta_create_compute_pipeline(device, cs, device->meta_state.itob.img_p_layout,
+                                              &device->meta_state.itob.pipeline);
    if (result != VK_SUCCESS)
       goto fail;
 
-   VkPipelineShaderStageCreateInfo pipeline_shader_stage_3d = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-      .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-      .module = vk_shader_module_handle_from_nir(cs_3d),
-      .pName = "main",
-      .pSpecializationInfo = NULL,
-   };
-
-   VkComputePipelineCreateInfo vk_pipeline_info_3d = {
-      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-      .stage = pipeline_shader_stage_3d,
-      .flags = 0,
-      .layout = device->meta_state.itob.img_p_layout,
-   };
-
-   result = radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache, &vk_pipeline_info_3d,
-                                         NULL, &device->meta_state.itob.pipeline_3d);
+   result = radv_meta_create_compute_pipeline(device, cs_3d, device->meta_state.itob.img_p_layout,
+                                              &device->meta_state.itob.pipeline_3d);
    if (result != VK_SUCCESS)
       goto fail;
 
@@ -241,43 +211,13 @@ radv_device_init_meta_btoi_state(struct radv_device *device)
    if (result != VK_SUCCESS)
       goto fail;
 
-   VkPipelineShaderStageCreateInfo pipeline_shader_stage = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-      .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-      .module = vk_shader_module_handle_from_nir(cs),
-      .pName = "main",
-      .pSpecializationInfo = NULL,
-   };
-
-   VkComputePipelineCreateInfo vk_pipeline_info = {
-      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-      .stage = pipeline_shader_stage,
-      .flags = 0,
-      .layout = device->meta_state.btoi.img_p_layout,
-   };
-
-   result = radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache, &vk_pipeline_info,
-                                         NULL, &device->meta_state.btoi.pipeline);
+   result = radv_meta_create_compute_pipeline(device, cs, device->meta_state.btoi.img_p_layout,
+                                              &device->meta_state.btoi.pipeline);
    if (result != VK_SUCCESS)
       goto fail;
 
-   VkPipelineShaderStageCreateInfo pipeline_shader_stage_3d = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-      .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-      .module = vk_shader_module_handle_from_nir(cs_3d),
-      .pName = "main",
-      .pSpecializationInfo = NULL,
-   };
-
-   VkComputePipelineCreateInfo vk_pipeline_info_3d = {
-      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-      .stage = pipeline_shader_stage_3d,
-      .flags = 0,
-      .layout = device->meta_state.btoi.img_p_layout,
-   };
-
-   result = radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache, &vk_pipeline_info_3d,
-                                         NULL, &device->meta_state.btoi.pipeline_3d);
+   result = radv_meta_create_compute_pipeline(device, cs_3d, device->meta_state.btoi.img_p_layout,
+                                              &device->meta_state.btoi.pipeline_3d);
 
    ralloc_free(cs_3d);
    ralloc_free(cs);
@@ -389,23 +329,8 @@ radv_device_init_meta_btoi_r32g32b32_state(struct radv_device *device)
    if (result != VK_SUCCESS)
       goto fail;
 
-   VkPipelineShaderStageCreateInfo pipeline_shader_stage = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-      .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-      .module = vk_shader_module_handle_from_nir(cs),
-      .pName = "main",
-      .pSpecializationInfo = NULL,
-   };
-
-   VkComputePipelineCreateInfo vk_pipeline_info = {
-      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-      .stage = pipeline_shader_stage,
-      .flags = 0,
-      .layout = device->meta_state.btoi_r32g32b32.img_p_layout,
-   };
-
-   result = radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache, &vk_pipeline_info,
-                                         NULL, &device->meta_state.btoi_r32g32b32.pipeline);
+   result = radv_meta_create_compute_pipeline(device, cs, device->meta_state.btoi_r32g32b32.img_p_layout,
+                                              &device->meta_state.btoi_r32g32b32.pipeline);
 
 fail:
    ralloc_free(cs);
@@ -484,23 +409,7 @@ create_itoi_pipeline(struct radv_device *device, int samples, VkPipeline *pipeli
    nir_shader *cs = build_nir_itoi_compute_shader(device, false, false, samples);
    VkResult result;
 
-   VkPipelineShaderStageCreateInfo pipeline_shader_stage = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-      .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-      .module = vk_shader_module_handle_from_nir(cs),
-      .pName = "main",
-      .pSpecializationInfo = NULL,
-   };
-
-   VkComputePipelineCreateInfo vk_pipeline_info = {
-      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-      .stage = pipeline_shader_stage,
-      .flags = 0,
-      .layout = state->itoi.img_p_layout,
-   };
-
-   result =
-      radv_compute_pipeline_create(radv_device_to_handle(device), state->cache, &vk_pipeline_info, NULL, pipeline);
+   result = radv_meta_create_compute_pipeline(device, cs, state->itoi.img_p_layout, pipeline);
    ralloc_free(cs);
    return result;
 }
@@ -566,23 +475,7 @@ radv_device_init_meta_itoi_state(struct radv_device *device)
 
          nir_shader *cs_3d = build_nir_itoi_compute_shader(device, src_3d, dst_3d, 1);
 
-         VkPipelineShaderStageCreateInfo pipeline_shader_stage_3d = {
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-            .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-            .module = vk_shader_module_handle_from_nir(cs_3d),
-            .pName = "main",
-            .pSpecializationInfo = NULL,
-         };
-
-         VkComputePipelineCreateInfo vk_pipeline_info_3d = {
-            .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-            .stage = pipeline_shader_stage_3d,
-            .flags = 0,
-            .layout = device->meta_state.itoi.img_p_layout,
-         };
-
-         result = radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache,
-                                               &vk_pipeline_info_3d, NULL, pipeline);
+         result = radv_meta_create_compute_pipeline(device, cs_3d, device->meta_state.itoi.img_p_layout, pipeline);
 
          ralloc_free(cs_3d);
 
@@ -705,23 +598,8 @@ radv_device_init_meta_itoi_r32g32b32_state(struct radv_device *device)
    if (result != VK_SUCCESS)
       goto fail;
 
-   VkPipelineShaderStageCreateInfo pipeline_shader_stage = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-      .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-      .module = vk_shader_module_handle_from_nir(cs),
-      .pName = "main",
-      .pSpecializationInfo = NULL,
-   };
-
-   VkComputePipelineCreateInfo vk_pipeline_info = {
-      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-      .stage = pipeline_shader_stage,
-      .flags = 0,
-      .layout = device->meta_state.itoi_r32g32b32.img_p_layout,
-   };
-
-   result = radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache, &vk_pipeline_info,
-                                         NULL, &device->meta_state.itoi_r32g32b32.pipeline);
+   result = radv_meta_create_compute_pipeline(device, cs, device->meta_state.itoi_r32g32b32.img_p_layout,
+                                              &device->meta_state.itoi_r32g32b32.pipeline);
 
 fail:
    ralloc_free(cs);
@@ -782,23 +660,7 @@ create_cleari_pipeline(struct radv_device *device, int samples, VkPipeline *pipe
    nir_shader *cs = build_nir_cleari_compute_shader(device, false, samples);
    VkResult result;
 
-   VkPipelineShaderStageCreateInfo pipeline_shader_stage = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-      .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-      .module = vk_shader_module_handle_from_nir(cs),
-      .pName = "main",
-      .pSpecializationInfo = NULL,
-   };
-
-   VkComputePipelineCreateInfo vk_pipeline_info = {
-      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-      .stage = pipeline_shader_stage,
-      .flags = 0,
-      .layout = device->meta_state.cleari.img_p_layout,
-   };
-
-   result = radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache, &vk_pipeline_info,
-                                         NULL, pipeline);
+   result = radv_meta_create_compute_pipeline(device, cs, device->meta_state.cleari.img_p_layout, pipeline);
    ralloc_free(cs);
    return result;
 }
@@ -846,23 +708,8 @@ radv_device_init_meta_cleari_state(struct radv_device *device)
 
    nir_shader *cs_3d = build_nir_cleari_compute_shader(device, true, 1);
 
-   VkPipelineShaderStageCreateInfo pipeline_shader_stage_3d = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-      .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-      .module = vk_shader_module_handle_from_nir(cs_3d),
-      .pName = "main",
-      .pSpecializationInfo = NULL,
-   };
-
-   VkComputePipelineCreateInfo vk_pipeline_info_3d = {
-      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-      .stage = pipeline_shader_stage_3d,
-      .flags = 0,
-      .layout = device->meta_state.cleari.img_p_layout,
-   };
-
-   result = radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache, &vk_pipeline_info_3d,
-                                         NULL, &device->meta_state.cleari.pipeline_3d);
+   result = radv_meta_create_compute_pipeline(device, cs_3d, device->meta_state.cleari.img_p_layout,
+                                              &device->meta_state.cleari.pipeline_3d);
    ralloc_free(cs_3d);
 
    return VK_SUCCESS;
@@ -956,23 +803,8 @@ radv_device_init_meta_cleari_r32g32b32_state(struct radv_device *device)
    if (result != VK_SUCCESS)
       goto fail;
 
-   VkPipelineShaderStageCreateInfo pipeline_shader_stage = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-      .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-      .module = vk_shader_module_handle_from_nir(cs),
-      .pName = "main",
-      .pSpecializationInfo = NULL,
-   };
-
-   VkComputePipelineCreateInfo vk_pipeline_info = {
-      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-      .stage = pipeline_shader_stage,
-      .flags = 0,
-      .layout = device->meta_state.cleari_r32g32b32.img_p_layout,
-   };
-
-   result = radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache, &vk_pipeline_info,
-                                         NULL, &device->meta_state.cleari_r32g32b32.pipeline);
+   result = radv_meta_create_compute_pipeline(device, cs, device->meta_state.cleari_r32g32b32.img_p_layout,
+                                              &device->meta_state.cleari_r32g32b32.pipeline);
 
 fail:
    ralloc_free(cs);

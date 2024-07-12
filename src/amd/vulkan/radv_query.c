@@ -927,126 +927,32 @@ radv_device_init_meta_query_state_internal(struct radv_device *device)
    if (result != VK_SUCCESS)
       goto fail;
 
-   VkPipelineShaderStageCreateInfo occlusion_pipeline_shader_stage = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-      .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-      .module = vk_shader_module_handle_from_nir(occlusion_cs),
-      .pName = "main",
-      .pSpecializationInfo = NULL,
-   };
-
-   VkComputePipelineCreateInfo occlusion_vk_pipeline_info = {
-      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-      .stage = occlusion_pipeline_shader_stage,
-      .flags = 0,
-      .layout = device->meta_state.query.p_layout,
-   };
-
-   result =
-      radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache, &occlusion_vk_pipeline_info,
-                                   NULL, &device->meta_state.query.occlusion_query_pipeline);
+   result = radv_meta_create_compute_pipeline(device, occlusion_cs, device->meta_state.query.p_layout,
+                                              &device->meta_state.query.occlusion_query_pipeline);
    if (result != VK_SUCCESS)
       goto fail;
 
-   VkPipelineShaderStageCreateInfo pipeline_statistics_pipeline_shader_stage = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-      .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-      .module = vk_shader_module_handle_from_nir(pipeline_statistics_cs),
-      .pName = "main",
-      .pSpecializationInfo = NULL,
-   };
-
-   VkComputePipelineCreateInfo pipeline_statistics_vk_pipeline_info = {
-      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-      .stage = pipeline_statistics_pipeline_shader_stage,
-      .flags = 0,
-      .layout = device->meta_state.query.p_layout,
-   };
-
-   result = radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache,
-                                         &pipeline_statistics_vk_pipeline_info, NULL,
-                                         &device->meta_state.query.pipeline_statistics_query_pipeline);
+   result = radv_meta_create_compute_pipeline(device, pipeline_statistics_cs, device->meta_state.query.p_layout,
+                                              &device->meta_state.query.pipeline_statistics_query_pipeline);
    if (result != VK_SUCCESS)
       goto fail;
 
-   VkPipelineShaderStageCreateInfo tfb_pipeline_shader_stage = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-      .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-      .module = vk_shader_module_handle_from_nir(tfb_cs),
-      .pName = "main",
-      .pSpecializationInfo = NULL,
-   };
-
-   VkComputePipelineCreateInfo tfb_pipeline_info = {
-      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-      .stage = tfb_pipeline_shader_stage,
-      .flags = 0,
-      .layout = device->meta_state.query.p_layout,
-   };
-
-   result = radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache, &tfb_pipeline_info,
-                                         NULL, &device->meta_state.query.tfb_query_pipeline);
+   result = radv_meta_create_compute_pipeline(device, tfb_cs, device->meta_state.query.p_layout,
+                                              &device->meta_state.query.tfb_query_pipeline);
    if (result != VK_SUCCESS)
       goto fail;
 
-   VkPipelineShaderStageCreateInfo timestamp_pipeline_shader_stage = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-      .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-      .module = vk_shader_module_handle_from_nir(timestamp_cs),
-      .pName = "main",
-      .pSpecializationInfo = NULL,
-   };
-
-   VkComputePipelineCreateInfo timestamp_pipeline_info = {
-      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-      .stage = timestamp_pipeline_shader_stage,
-      .flags = 0,
-      .layout = device->meta_state.query.p_layout,
-   };
-
-   result =
-      radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache, &timestamp_pipeline_info,
-                                   NULL, &device->meta_state.query.timestamp_query_pipeline);
+   result = radv_meta_create_compute_pipeline(device, timestamp_cs, device->meta_state.query.p_layout,
+                                              &device->meta_state.query.timestamp_query_pipeline);
    if (result != VK_SUCCESS)
       goto fail;
 
-   VkPipelineShaderStageCreateInfo pg_pipeline_shader_stage = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-      .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-      .module = vk_shader_module_handle_from_nir(pg_cs),
-      .pName = "main",
-      .pSpecializationInfo = NULL,
-   };
-
-   VkComputePipelineCreateInfo pg_pipeline_info = {
-      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-      .stage = pg_pipeline_shader_stage,
-      .flags = 0,
-      .layout = device->meta_state.query.p_layout,
-   };
-
-   result = radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache, &pg_pipeline_info,
-                                         NULL, &device->meta_state.query.pg_query_pipeline);
+   result = radv_meta_create_compute_pipeline(device, pg_cs, device->meta_state.query.p_layout,
+                                              &device->meta_state.query.pg_query_pipeline);
 
    if (pdev->emulate_mesh_shader_queries) {
-      VkPipelineShaderStageCreateInfo ms_prim_gen_pipeline_shader_stage = {
-         .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-         .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-         .module = vk_shader_module_handle_from_nir(ms_prim_gen_cs),
-         .pName = "main",
-         .pSpecializationInfo = NULL,
-      };
-
-      VkComputePipelineCreateInfo ms_prim_gen_pipeline_info = {
-         .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-         .stage = ms_prim_gen_pipeline_shader_stage,
-         .flags = 0,
-         .layout = device->meta_state.query.p_layout,
-      };
-
-      result = radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache,
-                                            &ms_prim_gen_pipeline_info, NULL,
-                                            &device->meta_state.query.ms_prim_gen_query_pipeline);
+      result = radv_meta_create_compute_pipeline(device, ms_prim_gen_cs, device->meta_state.query.p_layout,
+                                                 &device->meta_state.query.ms_prim_gen_query_pipeline);
    }
 
 fail:

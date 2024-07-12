@@ -221,23 +221,7 @@ create_resolve_pipeline(struct radv_device *device, int samples, bool is_integer
 
    nir_shader *cs = build_resolve_compute_shader(device, is_integer, is_srgb, samples);
 
-   VkPipelineShaderStageCreateInfo pipeline_shader_stage = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-      .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-      .module = vk_shader_module_handle_from_nir(cs),
-      .pName = "main",
-      .pSpecializationInfo = NULL,
-   };
-
-   VkComputePipelineCreateInfo vk_pipeline_info = {
-      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-      .stage = pipeline_shader_stage,
-      .flags = 0,
-      .layout = device->meta_state.resolve_compute.p_layout,
-   };
-
-   result = radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache, &vk_pipeline_info,
-                                         NULL, pipeline);
+   result = radv_meta_create_compute_pipeline(device, cs, device->meta_state.resolve_compute.p_layout, pipeline);
    if (result != VK_SUCCESS)
       goto fail;
 
@@ -264,23 +248,7 @@ create_depth_stencil_resolve_pipeline(struct radv_device *device, int samples, i
 
    nir_shader *cs = build_depth_stencil_resolve_compute_shader(device, samples, index, resolve_mode);
 
-   VkPipelineShaderStageCreateInfo pipeline_shader_stage = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-      .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-      .module = vk_shader_module_handle_from_nir(cs),
-      .pName = "main",
-      .pSpecializationInfo = NULL,
-   };
-
-   VkComputePipelineCreateInfo vk_pipeline_info = {
-      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-      .stage = pipeline_shader_stage,
-      .flags = 0,
-      .layout = device->meta_state.resolve_compute.p_layout,
-   };
-
-   result = radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache, &vk_pipeline_info,
-                                         NULL, pipeline);
+   result = radv_meta_create_compute_pipeline(device, cs, device->meta_state.resolve_compute.p_layout, pipeline);
    if (result != VK_SUCCESS)
       goto fail;
 

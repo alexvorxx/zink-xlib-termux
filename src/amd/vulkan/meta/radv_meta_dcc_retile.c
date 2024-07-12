@@ -123,23 +123,8 @@ radv_device_init_meta_dcc_retile_state(struct radv_device *device, struct radeon
    if (result != VK_SUCCESS)
       goto cleanup;
 
-   VkPipelineShaderStageCreateInfo pipeline_shader_stage = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-      .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-      .module = vk_shader_module_handle_from_nir(cs),
-      .pName = "main",
-      .pSpecializationInfo = NULL,
-   };
-
-   VkComputePipelineCreateInfo vk_pipeline_info = {
-      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-      .stage = pipeline_shader_stage,
-      .flags = 0,
-      .layout = device->meta_state.dcc_retile.p_layout,
-   };
-
-   result = radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache, &vk_pipeline_info,
-                                         NULL, &device->meta_state.dcc_retile.pipeline[surf->u.gfx9.swizzle_mode]);
+   result = radv_meta_create_compute_pipeline(device, cs, device->meta_state.dcc_retile.p_layout,
+                                              &device->meta_state.dcc_retile.pipeline[surf->u.gfx9.swizzle_mode]);
    if (result != VK_SUCCESS)
       goto cleanup;
 

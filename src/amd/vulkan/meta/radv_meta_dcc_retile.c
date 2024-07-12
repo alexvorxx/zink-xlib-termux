@@ -123,8 +123,6 @@ radv_device_init_meta_dcc_retile_state(struct radv_device *device, struct radeon
    if (result != VK_SUCCESS)
       goto cleanup;
 
-   /* compute shader */
-
    VkPipelineShaderStageCreateInfo pipeline_shader_stage = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
       .stage = VK_SHADER_STAGE_COMPUTE_BIT,
@@ -205,9 +203,8 @@ radv_retile_dcc(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image)
    for (unsigned i = 0; i < 2; ++i)
       view_handles[i] = radv_buffer_view_to_handle(&views[i]);
 
-   radv_meta_push_descriptor_set(cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, device->meta_state.dcc_retile.p_layout,
-                                 0, /* set */
-                                 2, /* descriptorWriteCount */
+   radv_meta_push_descriptor_set(cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, device->meta_state.dcc_retile.p_layout, 0,
+                                 2,
                                  (VkWriteDescriptorSet[]){
                                     {
                                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,

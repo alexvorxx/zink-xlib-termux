@@ -95,8 +95,6 @@ create_expand_depth_stencil_compute(struct radv_device *device)
    if (result != VK_SUCCESS)
       goto cleanup;
 
-   /* compute shader */
-
    VkPipelineShaderStageCreateInfo pipeline_shader_stage = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
       .stage = VK_SHADER_STAGE_COMPUTE_BIT,
@@ -537,9 +535,7 @@ radv_expand_depth_stencil_compute(struct radv_cmd_buffer *cmd_buffer, struct rad
                               0, &(struct radv_image_view_extra_create_info){.disable_compression = true});
 
          radv_meta_push_descriptor_set(
-            cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, device->meta_state.expand_depth_stencil_compute_p_layout,
-            0, /* set */
-            2, /* descriptorWriteCount */
+            cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, device->meta_state.expand_depth_stencil_compute_p_layout, 0, 2,
             (VkWriteDescriptorSet[]){{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                                       .dstBinding = 0,
                                       .dstArrayElement = 0,

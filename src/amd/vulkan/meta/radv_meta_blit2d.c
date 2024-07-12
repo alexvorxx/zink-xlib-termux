@@ -95,9 +95,7 @@ blit2d_bind_src(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_blit2d_surf
       create_bview(cmd_buffer, src_buf, &tmp->bview, depth_format);
 
       radv_meta_push_descriptor_set(
-         cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, device->meta_state.blit2d[log2_samples].p_layouts[src_type],
-         0, /* set */
-         1, /* descriptorWriteCount */
+         cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, device->meta_state.blit2d[log2_samples].p_layouts[src_type], 0, 1,
          (VkWriteDescriptorSet[]){{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                                    .dstBinding = 0,
                                    .dstArrayElement = 0,
@@ -117,8 +115,7 @@ blit2d_bind_src(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_blit2d_surf
                                     VK_SHADER_STAGE_FRAGMENT_BIT, 16, 4, &src_img->layer);
 
       radv_meta_push_descriptor_set(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                    device->meta_state.blit2d[log2_samples].p_layouts[src_type], 0, /* set */
-                                    1, /* descriptorWriteCount */
+                                    device->meta_state.blit2d[log2_samples].p_layouts[src_type], 0, 1,
                                     (VkWriteDescriptorSet[]){{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                                                               .dstBinding = 0,
                                                               .dstArrayElement = 0,

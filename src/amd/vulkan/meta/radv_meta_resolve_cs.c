@@ -169,10 +169,7 @@ static VkResult
 create_layout(struct radv_device *device)
 {
    VkResult result;
-   /*
-    * two descriptors one for the image being sampled
-    * one for the buffer being written.
-    */
+
    VkDescriptorSetLayoutCreateInfo ds_create_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
                                                      .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR,
                                                      .bindingCount = 2,
@@ -224,8 +221,6 @@ create_resolve_pipeline(struct radv_device *device, int samples, bool is_integer
 
    nir_shader *cs = build_resolve_compute_shader(device, is_integer, is_srgb, samples);
 
-   /* compute shader */
-
    VkPipelineShaderStageCreateInfo pipeline_shader_stage = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
       .stage = VK_SHADER_STAGE_COMPUTE_BIT,
@@ -269,7 +264,6 @@ create_depth_stencil_resolve_pipeline(struct radv_device *device, int samples, i
 
    nir_shader *cs = build_depth_stencil_resolve_compute_shader(device, samples, index, resolve_mode);
 
-   /* compute shader */
    VkPipelineShaderStageCreateInfo pipeline_shader_stage = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
       .stage = VK_SHADER_STAGE_COMPUTE_BIT,
@@ -434,8 +428,7 @@ emit_resolve(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view *src_ivi
    VkPipeline *pipeline;
 
    radv_meta_push_descriptor_set(cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                 device->meta_state.resolve_compute.p_layout, 0, /* set */
-                                 2,                                              /* descriptorWriteCount */
+                                 device->meta_state.resolve_compute.p_layout, 0, 2,
                                  (VkWriteDescriptorSet[]){{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                                                            .dstBinding = 0,
                                                            .dstArrayElement = 0,
@@ -487,8 +480,7 @@ emit_depth_stencil_resolve(struct radv_cmd_buffer *cmd_buffer, struct radv_image
    VkPipeline *pipeline;
 
    radv_meta_push_descriptor_set(cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                 device->meta_state.resolve_compute.p_layout, 0, /* set */
-                                 2,                                              /* descriptorWriteCount */
+                                 device->meta_state.resolve_compute.p_layout, 0, 2,
                                  (VkWriteDescriptorSet[]){{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                                                            .dstBinding = 0,
                                                            .dstArrayElement = 0,

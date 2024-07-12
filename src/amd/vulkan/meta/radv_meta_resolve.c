@@ -13,12 +13,11 @@
 #include "sid.h"
 #include "vk_format.h"
 
-/* emit 0, 0, 0, 1 */
 static nir_shader *
 build_nir_fs(struct radv_device *dev)
 {
    const struct glsl_type *vec4 = glsl_vec4_type();
-   nir_variable *f_color; /* vec4, fragment output color */
+   nir_variable *f_color;
 
    nir_builder b = radv_meta_init_shader(dev, MESA_SHADER_FRAGMENT, "meta_resolve_fs");
 

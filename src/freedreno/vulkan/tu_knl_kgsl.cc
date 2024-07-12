@@ -1220,6 +1220,7 @@ kgsl_queue_submit(struct tu_queue *queue, struct vk_queue_submit *vk_submit)
       };
       profiling_buffer =
          (struct kgsl_cmdbatch_profiling_buffer *) tu_suballoc_bo_map(bo);
+      memset(profiling_buffer, 0, sizeof(*profiling_buffer));
    }
 
    if (tu_autotune_submit_requires_fence(cmd_buffers, cmdbuf_count)) {
@@ -1300,7 +1301,13 @@ kgsl_queue_submit(struct tu_queue *queue, struct vk_queue_submit *vk_submit)
 
    uint64_t gpu_offset = 0;
 #if HAVE_PERFETTO
-   if (profiling_buffer && profiling_buffer->gpu_ticks_queued) {
+   if (profiling_buffer) {
+      /* We need to wait for KGSL to queue the GPU command before we can read
+       * the timestamp. Since this is just for profiling and doesn't take too
+       * long, we can just busy-wait for it.
+       */
+      while (p_atomic_read(&profiling_buffer->gpu_ticks_queued) == 0);
+
       struct kgsl_perfcounter_read_group perf = {
          .groupid = KGSL_PERFCOUNTER_GROUP_ALWAYSON,
          .countable = 0,

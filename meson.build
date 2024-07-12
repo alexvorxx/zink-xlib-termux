@@ -415,7 +415,7 @@ if with_glx == 'dri'
 endif
 
 if not with_opengl and with_glx != 'disabled'
-  error('Building GLX without OpenGL is not supported.') \
+  error('Building GLX without OpenGL is not supported.')
 endif
 
 if not (with_dri or with_gallium or with_glx != 'disabled')

@@ -2746,6 +2746,30 @@ impl SM50Op for OpNop {
     }
 }
 
+impl SM50Op for OpPixLd {
+    fn legalize(&mut self, _b: &mut LegalizeBuilder) {
+        // Nothing to do
+    }
+
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0xefe8);
+        e.set_dst(self.dst);
+        e.set_reg_src(8..16, 0.into());
+        e.set_field(
+            31..34,
+            match &self.val {
+                PixVal::CovMask => 1_u8,
+                PixVal::Covered => 2_u8,
+                PixVal::Offset => 3_u8,
+                PixVal::CentroidOffset => 4_u8,
+                PixVal::MyIndex => 5_u8,
+                other => panic!("Unsupported PixVal: {other}"),
+            },
+        );
+        e.set_pred_dst(45..48, Dst::None);
+    }
+}
+
 impl SM50Op for OpS2R {
     fn legalize(&mut self, _b: &mut LegalizeBuilder) {
         // Nothing to do
@@ -2882,6 +2906,7 @@ macro_rules! as_sm50_op_match {
             Op::Kill(op) => op,
             Op::CS2R(op) => op,
             Op::Nop(op) => op,
+            Op::PixLd(op) => op,
             Op::Isberd(op) => op,
             Op::Out(op) => op,
             Op::Bfe(op) => op,

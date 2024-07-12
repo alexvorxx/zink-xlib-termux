@@ -3239,12 +3239,13 @@ impl SM70Op for OpPixLd {
         e.set_dst(self.dst);
         e.set_field(
             78..81,
-            match self.val {
+            match &self.val {
                 PixVal::MsCount => 0_u8,
                 PixVal::CovMask => 1_u8,
                 PixVal::CentroidOffset => 2_u8,
                 PixVal::MyIndex => 3_u8,
                 PixVal::InnerCoverage => 4_u8,
+                other => panic!("Unsupported PixVal: {other}"),
             },
         );
         e.set_pred_dst(81..84, Dst::None);

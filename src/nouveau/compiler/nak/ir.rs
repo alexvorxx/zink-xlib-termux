@@ -4832,9 +4832,25 @@ impl_display_for_op!(OpNop);
 pub enum PixVal {
     MsCount,
     CovMask,
+    Covered,
+    Offset,
     CentroidOffset,
     MyIndex,
     InnerCoverage,
+}
+
+impl fmt::Display for PixVal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PixVal::MsCount => write!(f, ".mscount"),
+            PixVal::CovMask => write!(f, ".covmask"),
+            PixVal::Covered => write!(f, ".covered"),
+            PixVal::Offset => write!(f, ".offset"),
+            PixVal::CentroidOffset => write!(f, ".centroid_offset"),
+            PixVal::MyIndex => write!(f, ".my_index"),
+            PixVal::InnerCoverage => write!(f, ".inner_coverage"),
+        }
+    }
 }
 
 #[repr(C)]
@@ -4846,14 +4862,7 @@ pub struct OpPixLd {
 
 impl DisplayOp for OpPixLd {
     fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "pixld")?;
-        match self.val {
-            PixVal::MsCount => write!(f, ".mscount"),
-            PixVal::CovMask => write!(f, ".covmask"),
-            PixVal::CentroidOffset => write!(f, ".centroid_offset"),
-            PixVal::MyIndex => write!(f, ".my_index"),
-            PixVal::InnerCoverage => write!(f, ".inner_coverage"),
-        }
+        write!(f, "pixld{}", self.val)
     }
 }
 impl_display_for_op!(OpPixLd);

@@ -35,7 +35,7 @@ if system_has_kms_drm
   subdir('computerator')
 endif
 
-if with_perfetto and (with_datasources.contains('freedreno') or with_datasources.contains('auto'))
+if system_has_kms_drm and with_perfetto and (with_datasources.contains('freedreno') or with_datasources.contains('auto'))
   subdir('ds')
 endif
 

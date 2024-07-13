@@ -3138,6 +3138,8 @@ nir_tex_instr_is_query(const nir_tex_instr *instr)
    case nir_texop_lod_bias_agx:
    case nir_texop_custom_border_color_agx:
    case nir_texop_has_custom_border_color_agx:
+   case nir_texop_hdr_dim_nv:
+   case nir_texop_tex_type_nv:
       return true;
    case nir_texop_tex:
    case nir_texop_txb:

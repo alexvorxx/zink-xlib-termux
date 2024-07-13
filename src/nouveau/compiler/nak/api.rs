@@ -315,7 +315,7 @@ pub extern "C" fn nak_compile_shader(
         } else {
             max(4, s.info.num_gprs)
         },
-        num_barriers: s.info.num_barriers,
+        num_control_barriers: s.info.num_control_barriers,
         _pad0: Default::default(),
         num_instrs: s.info.num_instrs,
         slm_size: s.info.slm_size,

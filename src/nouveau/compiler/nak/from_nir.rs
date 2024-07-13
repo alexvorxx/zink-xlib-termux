@@ -22,7 +22,7 @@ fn init_info_from_nir(nir: &nir_shader) -> ShaderInfo {
     ShaderInfo {
         num_gprs: 0,
         num_instrs: 0,
-        num_barriers: 0,
+        num_control_barriers: 0,
         slm_size: nir.scratch_size,
         uses_global_mem: false,
         writes_global_mem: false,
@@ -2761,7 +2761,7 @@ impl<'a> ShaderFromNir<'a> {
                             self.nir.info.stage() == MESA_SHADER_COMPUTE
                                 || self.nir.info.stage() == MESA_SHADER_KERNEL
                         );
-                        self.info.num_barriers = 1;
+                        self.info.num_control_barriers = 1;
                         b.push_op(OpBar {});
                     }
                     _ => panic!("Unhandled execution scope"),

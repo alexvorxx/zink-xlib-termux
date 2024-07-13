@@ -98,8 +98,14 @@ struct nak_shader_info {
    /** Number of GPRs used */
    uint8_t num_gprs;
 
-   /** Number of barriers used */
-   uint8_t num_barriers;
+   /**
+    * Number of control barriers used
+    *
+    * These are barriers in the sense of glsl barrier(), not reconvergence
+    * barriers. In CUDA, these barriers have an index, but we currently
+    * only use index zero for vulkan, which means this will be at most 1.
+    */
+   uint8_t num_control_barriers;
 
    uint8_t _pad0;
 

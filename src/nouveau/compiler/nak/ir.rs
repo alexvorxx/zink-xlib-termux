@@ -6353,7 +6353,7 @@ pub enum ShaderIoInfo {
 #[derive(Debug)]
 pub struct ShaderInfo {
     pub num_gprs: u8,
-    pub num_barriers: u8,
+    pub num_control_barriers: u8,
     pub num_instrs: u32,
     pub slm_size: u32,
     pub uses_global_mem: bool,

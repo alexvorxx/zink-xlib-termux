@@ -21,7 +21,7 @@
  * IN THE SOFTWARE.
  */
 
-/** @file brw_fs.cpp
+/** @file
  *
  * This file drives the GLSL IR -> LIR translation, contains the
  * optimizations on the LIR, and drives the generation of native code

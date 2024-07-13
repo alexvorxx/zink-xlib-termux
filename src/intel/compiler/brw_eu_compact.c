@@ -21,7 +21,7 @@
  * IN THE SOFTWARE.
  */
 
-/** @file brw_eu_compact.c
+/** @file
  *
  * Instruction compaction is a feature of G45 and newer hardware that allows
  * for a smaller instruction encoding.

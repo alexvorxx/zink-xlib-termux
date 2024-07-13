@@ -27,7 +27,7 @@
 
 using namespace brw;
 
-/** @file brw_fs_saturate_propagation.cpp
+/** @file
  *
  * Implements a pass that propagates the SAT modifier from a MOV.SAT into the
  * instruction that produced the source of the MOV.SAT, thereby allowing the

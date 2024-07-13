@@ -29,7 +29,7 @@
 #include "util/u_dynarray.h"
 #include "brw_fs.h"
 
-/** @file brw_cfg.cpp
+/** @file
  *
  * Walks the shader instructions generated and creates a set of basic
  * blocks with successor/predecessor edges connecting them.

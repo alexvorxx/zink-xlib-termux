@@ -1385,7 +1385,7 @@ print_pipeline_stats(struct zink_screen *screen, VkPipeline pipeline, struct uti
       }
 
       FILE *f = u_memstream_get(&stream);
-      fprintf(f, "type: %s", props[e].name);
+      fprintf(f, "%s shader: ", props[e].name);
       VkPipelineExecutableStatisticKHR *stats = NULL;
       VKSCR(GetPipelineExecutableStatisticsKHR)(screen->dev, &info, &count, NULL);
       stats = calloc(count, sizeof(VkPipelineExecutableStatisticKHR));
@@ -1399,19 +1399,21 @@ print_pipeline_stats(struct zink_screen *screen, VkPipeline pipeline, struct uti
       VKSCR(GetPipelineExecutableStatisticsKHR)(screen->dev, &info, &count, stats);
 
       for (unsigned i = 0; i < count; i++) {
-         fprintf(f, ", ");
+         if (i)
+            fprintf(f, ", ");
+
          switch (stats[i].format) {
          case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_BOOL32_KHR:
-            fprintf(f, "%s: %u", stats[i].name, stats[i].value.b32);
+            fprintf(f, "%u %s", stats[i].value.b32, stats[i].name);
             break;
          case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_INT64_KHR:
-            fprintf(f, "%s: %" PRIi64, stats[i].name, stats[i].value.i64);
+            fprintf(f, "%" PRIi64 " %s", stats[i].value.i64, stats[i].name);
             break;
          case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_UINT64_KHR:
-            fprintf(f, "%s: %" PRIu64, stats[i].name, stats[i].value.u64);
+            fprintf(f, "%" PRIu64 " %s", stats[i].value.u64, stats[i].name);
             break;
          case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_FLOAT64_KHR:
-            fprintf(f, "%s: %g", stats[i].name, stats[i].value.f64);
+            fprintf(f, "%g %s", stats[i].value.f64, stats[i].name);
             break;
          default:
             unreachable("unknown statistic");

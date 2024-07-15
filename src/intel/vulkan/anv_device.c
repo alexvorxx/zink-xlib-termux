@@ -5695,6 +5695,9 @@ anv_device_get_pat_entry(struct anv_device *device,
    if (alloc_flags & ANV_BO_ALLOC_IMPORTED)
       return &device->info->pat.cached_coherent;
 
+   if (alloc_flags & ANV_BO_ALLOC_COMPRESSED)
+      return &device->info->pat.compressed;
+
    /* PAT indexes has no actual effect in DG2 and DG1, smem caches will always
     * be snopped by GPU and lmem will always be WC.
     * This might change in future discrete platforms.
@@ -5705,9 +5708,8 @@ anv_device_get_pat_entry(struct anv_device *device,
       return &device->info->pat.writecombining;
    }
 
-   if (alloc_flags & ANV_BO_ALLOC_COMPRESSED)
-      return &device->info->pat.compressed;
-   else if ((alloc_flags & (ANV_BO_ALLOC_HOST_CACHED_COHERENT)) == ANV_BO_ALLOC_HOST_CACHED_COHERENT)
+   /* Integrated platforms handling only */
+   if ((alloc_flags & (ANV_BO_ALLOC_HOST_CACHED_COHERENT)) == ANV_BO_ALLOC_HOST_CACHED_COHERENT)
       return &device->info->pat.cached_coherent;
    else if (alloc_flags & (ANV_BO_ALLOC_EXTERNAL | ANV_BO_ALLOC_SCANOUT))
       return &device->info->pat.scanout;

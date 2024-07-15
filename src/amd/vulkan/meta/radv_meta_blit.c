@@ -825,18 +825,14 @@ radv_device_init_meta_blit_state(struct radv_device *device, bool on_demand)
 {
    VkResult result;
 
-   VkDescriptorSetLayoutCreateInfo ds_layout_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-                                                     .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR,
-                                                     .bindingCount = 1,
-                                                     .pBindings = (VkDescriptorSetLayoutBinding[]){
-                                                        {.binding = 0,
-                                                         .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                                                         .descriptorCount = 1,
-                                                         .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-                                                         .pImmutableSamplers = NULL},
-                                                     }};
-   result = radv_CreateDescriptorSetLayout(radv_device_to_handle(device), &ds_layout_info, &device->meta_state.alloc,
-                                           &device->meta_state.blit.ds_layout);
+   const VkDescriptorSetLayoutBinding binding = {
+      .binding = 0,
+      .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+      .descriptorCount = 1,
+      .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+   };
+
+   result = radv_meta_create_descriptor_set_layout(device, 1, &binding, &device->meta_state.blit.ds_layout);
    if (result != VK_SUCCESS)
       return result;
 

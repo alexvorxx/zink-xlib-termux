@@ -315,6 +315,10 @@ VkResult radv_meta_create_pipeline_layout(struct radv_device *device, VkDescript
                                           uint32_t num_pc_ranges, const VkPushConstantRange *pc_ranges,
                                           VkPipelineLayout *pipeline_layout);
 
+VkResult radv_meta_create_descriptor_set_layout(struct radv_device *device, uint32_t num_bindings,
+                                                const VkDescriptorSetLayoutBinding *bindings,
+                                                VkDescriptorSetLayout *desc_layout);
+
 #ifdef __cplusplus
 }
 #endif

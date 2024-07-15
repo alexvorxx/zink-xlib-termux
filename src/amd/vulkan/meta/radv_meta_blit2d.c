@@ -994,20 +994,14 @@ meta_blit2d_create_pipe_layout(struct radv_device *device, int idx, uint32_t log
    };
    int num_push_constant_range = (idx != BLIT2D_SRC_TYPE_IMAGE || log2_samples > 0) ? 2 : 1;
 
-   result = radv_CreateDescriptorSetLayout(
-      radv_device_to_handle(device),
-      &(VkDescriptorSetLayoutCreateInfo){.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-                                         .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR,
-                                         .bindingCount = 1,
-                                         .pBindings =
-                                            (VkDescriptorSetLayoutBinding[]){
-                                               {.binding = 0,
-                                                .descriptorType = desc_type,
-                                                .descriptorCount = 1,
-                                                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-                                                .pImmutableSamplers = NULL},
-                                            }},
-      &device->meta_state.alloc, &device->meta_state.blit2d[log2_samples].ds_layouts[idx]);
+   const VkDescriptorSetLayoutBinding binding = {
+      .binding = 0,
+      .descriptorType = desc_type,
+      .descriptorCount = 1,
+      .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+   };
+
+   result = radv_meta_create_descriptor_set_layout(device, 1, &binding, &device->meta_state.blit2d[log2_samples].ds_layouts[idx]);
    if (result != VK_SUCCESS)
       goto fail;
 

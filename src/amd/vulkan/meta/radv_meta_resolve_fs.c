@@ -51,19 +51,12 @@ create_layout(struct radv_device *device)
 {
    VkResult result;
 
-   VkDescriptorSetLayoutCreateInfo ds_create_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-                                                     .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR,
-                                                     .bindingCount = 1,
-                                                     .pBindings = (VkDescriptorSetLayoutBinding[]){
-                                                        {.binding = 0,
-                                                         .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-                                                         .descriptorCount = 1,
-                                                         .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-                                                         .pImmutableSamplers = NULL},
-                                                     }};
+   const VkDescriptorSetLayoutBinding binding = {.binding = 0,
+                                                 .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                                                 .descriptorCount = 1,
+                                                 .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT};
 
-   result = radv_CreateDescriptorSetLayout(radv_device_to_handle(device), &ds_create_info, &device->meta_state.alloc,
-                                           &device->meta_state.resolve_fragment.ds_layout);
+   result = radv_meta_create_descriptor_set_layout(device, 1, &binding, &device->meta_state.resolve_fragment.ds_layout);
    if (result != VK_SUCCESS)
       goto fail;
 

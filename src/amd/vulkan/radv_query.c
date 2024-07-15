@@ -1072,37 +1072,22 @@ radv_device_init_meta_query_state(struct radv_device *device, bool on_demand)
 void
 radv_device_finish_meta_query_state(struct radv_device *device)
 {
-   if (device->meta_state.query.tfb_query_pipeline)
-      radv_DestroyPipeline(radv_device_to_handle(device), device->meta_state.query.tfb_query_pipeline,
-                           &device->meta_state.alloc);
-
-   if (device->meta_state.query.pipeline_statistics_query_pipeline)
-      radv_DestroyPipeline(radv_device_to_handle(device), device->meta_state.query.pipeline_statistics_query_pipeline,
-                           &device->meta_state.alloc);
-
-   if (device->meta_state.query.occlusion_query_pipeline)
-      radv_DestroyPipeline(radv_device_to_handle(device), device->meta_state.query.occlusion_query_pipeline,
-                           &device->meta_state.alloc);
-
-   if (device->meta_state.query.timestamp_query_pipeline)
-      radv_DestroyPipeline(radv_device_to_handle(device), device->meta_state.query.timestamp_query_pipeline,
-                           &device->meta_state.alloc);
-
-   if (device->meta_state.query.pg_query_pipeline)
-      radv_DestroyPipeline(radv_device_to_handle(device), device->meta_state.query.pg_query_pipeline,
-                           &device->meta_state.alloc);
-
-   if (device->meta_state.query.ms_prim_gen_query_pipeline)
-      radv_DestroyPipeline(radv_device_to_handle(device), device->meta_state.query.ms_prim_gen_query_pipeline,
-                           &device->meta_state.alloc);
-
-   if (device->meta_state.query.p_layout)
-      radv_DestroyPipelineLayout(radv_device_to_handle(device), device->meta_state.query.p_layout,
-                                 &device->meta_state.alloc);
-
-   if (device->meta_state.query.ds_layout)
-      device->vk.dispatch_table.DestroyDescriptorSetLayout(
-         radv_device_to_handle(device), device->meta_state.query.ds_layout, &device->meta_state.alloc);
+   radv_DestroyPipeline(radv_device_to_handle(device), device->meta_state.query.tfb_query_pipeline,
+                        &device->meta_state.alloc);
+   radv_DestroyPipeline(radv_device_to_handle(device), device->meta_state.query.pipeline_statistics_query_pipeline,
+                        &device->meta_state.alloc);
+   radv_DestroyPipeline(radv_device_to_handle(device), device->meta_state.query.occlusion_query_pipeline,
+                        &device->meta_state.alloc);
+   radv_DestroyPipeline(radv_device_to_handle(device), device->meta_state.query.timestamp_query_pipeline,
+                        &device->meta_state.alloc);
+   radv_DestroyPipeline(radv_device_to_handle(device), device->meta_state.query.pg_query_pipeline,
+                        &device->meta_state.alloc);
+   radv_DestroyPipeline(radv_device_to_handle(device), device->meta_state.query.ms_prim_gen_query_pipeline,
+                        &device->meta_state.alloc);
+   radv_DestroyPipelineLayout(radv_device_to_handle(device), device->meta_state.query.p_layout,
+                              &device->meta_state.alloc);
+   device->vk.dispatch_table.DestroyDescriptorSetLayout(radv_device_to_handle(device),
+                                                        device->meta_state.query.ds_layout, &device->meta_state.alloc);
 }
 
 static void

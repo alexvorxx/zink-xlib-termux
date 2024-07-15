@@ -1420,7 +1420,7 @@ print_pipeline_stats(struct zink_screen *screen, VkPipeline pipeline, struct uti
 
       /* print_buf is only valid after flushing. */
       fflush(f);
-      util_debug_message(debug, SHADER_INFO, "%s\n", print_buf);
+      util_debug_message(debug, SHADER_INFO, "%s", print_buf);
 
       u_memstream_close(&stream);
       free(print_buf);

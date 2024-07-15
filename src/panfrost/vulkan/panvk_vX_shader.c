@@ -119,7 +119,7 @@ panvk_lower_sysvals(nir_builder *b, nir_instr *instr, void *data)
       break;
 
    case nir_intrinsic_load_layer_id:
-      assert(b->shader->info.stage = MESA_SHADER_FRAGMENT);
+      assert(b->shader->info.stage == MESA_SHADER_FRAGMENT);
       val = load_sysval_from_push_const(b, SYSVAL(graphics, layer_id), bit_size,
                                         num_comps);
       break;

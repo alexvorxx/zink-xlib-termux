@@ -604,6 +604,9 @@ impl CopyPropPass {
                     return;
                 };
 
+                // The top 16 bits are ignored
+                let sel = sel as u16;
+
                 if sel == 0x3210 {
                     self.add_copy(bi, dst[0], SrcType::GPR, prmt.srcs[0]);
                 } else if sel == 0x7654 {
@@ -628,12 +631,7 @@ impl CopyPropPass {
                     if is_imm {
                         self.add_copy(bi, dst[0], SrcType::GPR, imm.into());
                     } else {
-                        self.add_prmt(
-                            bi,
-                            dst[0],
-                            prmt.srcs,
-                            sel.try_into().unwrap(),
-                        );
+                        self.add_prmt(bi, dst[0], prmt.srcs, sel);
                     }
                 }
             }

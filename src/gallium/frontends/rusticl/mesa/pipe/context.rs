@@ -381,7 +381,7 @@ impl PipeContext {
                 self.pipe.as_ptr(),
                 pipe_shader_type::PIPE_SHADER_COMPUTE,
                 idx,
-                false,
+                true,
                 &cb,
             );
 

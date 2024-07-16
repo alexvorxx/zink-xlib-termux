@@ -176,6 +176,11 @@ pub fn create_and_queue(
         if e.deps.iter().any(|dep| dep.is_error()) {
             return Err(CL_EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST);
         }
+        // return any execution errors when blocking
+        let err = e.status();
+        if err < 0 {
+            return Err(err);
+        }
     } else {
         q.queue(e);
     }

@@ -279,6 +279,7 @@ private:
    static LPJit* jit;
 
    std::unique_ptr<llvm::orc::LLJIT> lljit;
+   std::unique_ptr<llvm::TargetMachine> tm_unique;
    /* avoid name conflict */
    unsigned jit_dylib_count;
 
@@ -318,7 +319,8 @@ LPJit::LPJit() :jit_dylib_count(0) {
 
    init_native_targets();
    JITTargetMachineBuilder JTMB = create_jtdb();
-   tm = wrap(ExitOnErr(JTMB.createTargetMachine()).release());
+   tm_unique = ExitOnErr(JTMB.createTargetMachine());
+   tm = wrap(tm_unique.get());
 
    /* Create an LLJIT instance with an ObjectLinkingLayer (JITLINK)
     * or RuntimeDyld as the base layer.

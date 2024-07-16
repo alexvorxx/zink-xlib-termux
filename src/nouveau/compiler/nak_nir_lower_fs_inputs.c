@@ -107,13 +107,14 @@ static nir_def *
 load_sample_pos_at(nir_builder *b, nir_def *sample_id,
                    const struct nak_fs_key *fs_key)
 {
-   nir_def *loc = nir_ldc_nv(b, 1, 64,
+   nir_def *loc = nir_ldc_nv(b, 1, 8,
                              nir_imm_int(b, fs_key->sample_locations_cb),
-                             nir_imm_int(b, fs_key->sample_locations_offset),
+                             nir_iadd_imm(b, sample_id,
+                                          fs_key->sample_locations_offset),
                              .align_mul = 8, .align_offset = 0);
 
-   /* Yay little endian */
-   loc = nir_ushr(b, loc, nir_imul_imm(b, sample_id, 8));
+   /* The rest of these calculations are in 32-bit */
+   loc = nir_u2u32(b, loc);
    nir_def *loc_x_u4 = nir_iand_imm(b, loc, 0xf);
    nir_def *loc_y_u4 = nir_iand_imm(b, nir_ushr_imm(b, loc, 4), 0xf);
    nir_def *loc_u4 = nir_vec2(b, loc_x_u4, loc_y_u4);

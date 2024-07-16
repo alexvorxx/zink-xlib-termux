@@ -9,6 +9,7 @@
 #include "util/os_time.h"
 #include <string>
 #include <vector>
+#include <mutex>
 #include "lp_bld.h"
 #include "lp_bld_debug.h"
 #include "lp_bld_init.h"
@@ -237,7 +238,10 @@ public:
       using llvm::JITEvaluatedSymbol;
       using llvm::orc::ExecutorAddr;
       JITDylib* JD = ::unwrap(jd);
-      auto func = ExitOnErr(LPJit::get_instance()->lljit->lookup(*JD, func_name));
+      LPJit* jit = get_instance();
+      jit->lookup_mutex.lock();
+      auto func = ExitOnErr(jit->lljit->lookup(*JD, func_name));
+      jit->lookup_mutex.unlock();
 #if LLVM_VERSION_MAJOR >= 15
       return func.toPtr<void *>();
 #else
@@ -277,6 +281,8 @@ private:
    std::unique_ptr<llvm::orc::LLJIT> lljit;
    /* avoid name conflict */
    unsigned jit_dylib_count;
+
+   std::mutex lookup_mutex;
 
 #if DEBUG
    /* map from module name to gallivm_state */

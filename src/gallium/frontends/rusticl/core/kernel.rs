@@ -1228,7 +1228,7 @@ impl Kernel {
                             cmp::min(hw_max_grid[2], grid[2] - hw_max_grid[2] * z) as u32,
                         ];
 
-                        ctx.update_cb0(&input);
+                        ctx.update_cb0(&input)?;
                         ctx.launch_grid(work_dim, block, this_grid, variable_local_size as u32);
 
                         if Platform::dbg().sync_every_event {

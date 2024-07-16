@@ -40,15 +40,18 @@ impl QueueContext {
         })
     }
 
-    pub fn update_cb0(&self, data: &[u8]) {
+    pub fn update_cb0(&self, data: &[u8]) -> CLResult<()> {
         // only update if we actually bind data
         if !data.is_empty() {
             if self.use_stream {
-                self.ctx.set_constant_buffer_stream(0, data);
+                if !self.ctx.set_constant_buffer_stream(0, data) {
+                    return Err(CL_OUT_OF_RESOURCES);
+                }
             } else {
                 self.ctx.set_constant_buffer(0, data);
             }
         }
+        Ok(())
     }
 }
 

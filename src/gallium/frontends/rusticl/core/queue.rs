@@ -9,6 +9,7 @@ use mesa_rust::pipe::context::PipeContext;
 use mesa_rust_util::properties::*;
 use rusticl_opencl_gen::*;
 
+use std::cmp;
 use std::mem;
 use std::ops::Deref;
 use std::sync::mpsc;
@@ -133,15 +134,20 @@ impl Queue {
                             flush_events(&mut flushed, &ctx);
                         }
 
-                        // We have to wait on user events or events from other queues.
-                        let err = e
-                            .deps
-                            .iter()
-                            .filter(|ev| ev.is_user() || ev.queue != e.queue)
-                            .map(|e| e.wait())
-                            .find(|s| *s < 0);
+                        // check if any dependency has an error
+                        let mut err = CL_SUCCESS as cl_int;
+                        for dep in &e.deps {
+                            // We have to wait on user events or events from other queues.
+                            let dep_err = if dep.is_user() || dep.queue != e.queue {
+                                dep.wait()
+                            } else {
+                                dep.status()
+                            };
 
-                        if let Some(err) = err {
+                            err = cmp::min(err, dep_err);
+                        }
+
+                        if err < 0 {
                             // If a dependency failed, fail this event as well.
                             e.set_user_status(err);
                             continue;

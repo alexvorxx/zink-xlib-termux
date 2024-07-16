@@ -84,6 +84,9 @@ struct radv_shader_stage_key {
 
    /* Whether the mesh shader is used with a task shader. */
    uint8_t has_task_shader : 1;
+
+   /* Whether the shader is used with indirect pipeline binds. */
+   uint8_t indirect_bindable : 1;
 };
 
 struct radv_ps_epilog_key {

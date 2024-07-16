@@ -97,7 +97,7 @@ radv_compute_pipeline_init(struct radv_compute_pipeline *pipeline, const struct 
 
 struct radv_shader *
 radv_compile_cs(struct radv_device *device, struct vk_pipeline_cache *cache, struct radv_shader_stage *cs_stage,
-                bool keep_executable_info, bool keep_statistic_info, bool is_internal, bool is_indirect_bindable,
+                bool keep_executable_info, bool keep_statistic_info, bool is_internal,
                 struct radv_shader_binary **cs_binary)
 {
    struct radv_shader *cs_shader;
@@ -113,7 +113,7 @@ radv_compile_cs(struct radv_device *device, struct vk_pipeline_cache *cache, str
    /* Run the shader info pass. */
    radv_nir_shader_info_init(cs_stage->stage, MESA_SHADER_NONE, &cs_stage->info);
    radv_nir_shader_info_pass(device, cs_stage->nir, &cs_stage->layout, &cs_stage->key, NULL, RADV_PIPELINE_COMPUTE,
-                             false, is_indirect_bindable, &cs_stage->info);
+                             false, &cs_stage->info);
 
    radv_declare_shader_args(device, NULL, &cs_stage->info, MESA_SHADER_COMPUTE, MESA_SHADER_NONE, &cs_stage->args);
 
@@ -209,13 +209,11 @@ radv_compute_pipeline_compile(const VkComputePipelineCreateInfo *pCreateInfo, st
 
    const struct radv_shader_stage_key stage_key =
       radv_pipeline_get_shader_key(device, &pCreateInfo->stage, pipeline->base.create_flags, pCreateInfo->pNext);
-   const bool is_indirect_bindable = !!(pipeline->base.create_flags & VK_PIPELINE_CREATE_INDIRECT_BINDABLE_BIT_NV);
 
    radv_pipeline_stage_init(pStage, pipeline_layout, &stage_key, &cs_stage);
 
-   pipeline->base.shaders[MESA_SHADER_COMPUTE] =
-      radv_compile_cs(device, cache, &cs_stage, keep_executable_info, keep_statistic_info, pipeline->base.is_internal,
-                      is_indirect_bindable, &cs_binary);
+   pipeline->base.shaders[MESA_SHADER_COMPUTE] = radv_compile_cs(
+      device, cache, &cs_stage, keep_executable_info, keep_statistic_info, pipeline->base.is_internal, &cs_binary);
 
    cs_stage.feedback.duration += os_time_get_nano() - stage_start;
 

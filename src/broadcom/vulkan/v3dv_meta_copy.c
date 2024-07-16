@@ -2536,10 +2536,8 @@ get_copy_texel_buffer_pipeline(
       goto fail;
 
    if (device->instance->meta_cache_enabled) {
-      uint8_t *dupkey = malloc(V3DV_META_TEXEL_BUFFER_COPY_CACHE_KEY_SIZE);
-      memcpy(dupkey, key, V3DV_META_TEXEL_BUFFER_COPY_CACHE_KEY_SIZE);
       _mesa_hash_table_insert(device->meta.texel_buffer_copy.cache[image_type],
-                              dupkey, *pipeline);
+                              key, *pipeline);
       mtx_unlock(&device->meta.mtx);
    } else {
       v3dv_cmd_buffer_add_private_obj(

@@ -147,7 +147,13 @@ impl Queue {
                             continue;
                         }
 
-                        e.call(&ctx);
+                        // if there is an execution error don't bother signaling it as the  context
+                        // might be in a broken state. How queues behave after any event hit an
+                        // error is entirely implementation defined.
+                        let err = e.call(&ctx);
+                        if err < 0 {
+                            continue;
+                        }
 
                         if e.is_user() {
                             // On each user event we flush our events as application might

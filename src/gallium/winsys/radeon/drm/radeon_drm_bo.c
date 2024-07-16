@@ -1179,7 +1179,16 @@ static struct pb_buffer_lean *radeon_winsys_bo_from_handle(struct radeon_winsys 
       bo = util_hash_table_get(ws->bo_names, (void*)(uintptr_t)whandle->handle);
    } else if (whandle->type == WINSYS_HANDLE_TYPE_FD) {
       /* We must first get the GEM handle, as fds are unreliable keys */
-      r = drmPrimeFDToHandle(ws->fd, whandle->handle, &handle);
+      if (ws->rendernode_fd != -1) {
+         int handle2;
+         r = drmPrimeHandleToFD(ws->rendernode_fd, whandle->handle, DRM_CLOEXEC, &handle2);
+         if (r)
+            goto fail;
+         r = drmPrimeFDToHandle(ws->fd, handle2, &handle);
+         close(handle2);
+      } else {
+         r = drmPrimeFDToHandle(ws->fd, whandle->handle, &handle);
+      }
       if (r)
          goto fail;
       bo = util_hash_table_get(ws->bo_handles, (void*)(uintptr_t)handle);

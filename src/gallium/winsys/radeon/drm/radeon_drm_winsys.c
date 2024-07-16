@@ -96,6 +96,14 @@ static bool radeon_get_drm_value(struct radeon_drm_winsys *ws, unsigned request,
 
    retval = drmCommandWriteRead(radeon_drm_winsys_fd(ws), DRM_RADEON_INFO, &info, sizeof(info));
    if (retval) {
+      /* try switching over to a render node */
+      if (retval == -EACCES && ws->rendernode_fd == -1) {
+         ws->rendernode_fd = open(drmGetRenderDeviceNameFromFd(ws->fd), O_RDWR);
+         if (ws->rendernode_fd != -1)
+            return radeon_get_drm_value(ws, request, errname, out);
+      }
+   }
+   if (retval && ws->rendernode_fd == -1) {
       if (errname) {
          fprintf(stderr, "radeon: Failed to get %s, error number %d\n",
                  errname, retval);
@@ -676,6 +684,8 @@ static void radeon_winsys_destroy(struct radeon_winsys *rws)
 
    if (ws->fd >= 0)
       close(ws->fd);
+   if (ws->rendernode_fd >= 0)
+      close(ws->rendernode_fd);
 
    FREE(rws);
 }
@@ -883,6 +893,7 @@ radeon_drm_winsys_create(int fd, const struct pipe_screen_config *config,
    }
 
    ws->fd = os_dupfd_cloexec(fd);
+   ws->rendernode_fd = -1;
 
    if (!do_winsys_init(ws))
       goto fail1;
@@ -1005,6 +1016,8 @@ fail1:
       radeon_surface_manager_free(ws->surf_man);
    if (ws->fd >= 0)
       close(ws->fd);
+   if (ws->rendernode_fd >= 0)
+      close(ws->rendernode_fd);
 
    FREE(ws);
    return NULL;

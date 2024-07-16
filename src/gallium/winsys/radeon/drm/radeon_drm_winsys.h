@@ -93,7 +93,7 @@ static inline struct radeon_drm_winsys *radeon_drm_winsys(struct radeon_winsys *
 ALWAYS_INLINE static int
 radeon_drm_winsys_fd(const struct radeon_drm_winsys *ws)
 {
-   return ws->fd;
+   return ws->rendernode_fd == -1 ? ws->fd : ws->rendernode_fd;
 }
 
 uint32_t radeon_drm_get_gpu_reset_counter(struct radeon_drm_winsys *ws);

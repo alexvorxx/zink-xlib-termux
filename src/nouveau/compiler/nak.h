@@ -103,6 +103,9 @@ struct nak_shader_info {
 
    uint8_t _pad0;
 
+   /** Number of instructions used */
+   uint32_t num_instrs;
+
    /** Size of shader local (scratch) memory */
    uint32_t slm_size;
 

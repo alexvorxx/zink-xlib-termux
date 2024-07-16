@@ -21,6 +21,7 @@ use std::ops::Index;
 fn init_info_from_nir(nir: &nir_shader) -> ShaderInfo {
     ShaderInfo {
         num_gprs: 0,
+        num_instrs: 0,
         num_barriers: 0,
         slm_size: nir.scratch_size,
         uses_global_mem: false,

@@ -330,7 +330,7 @@ pub extern "C" fn nak_compile_shader(
         eprintln!("NAK IR:\n{}", &s);
     }
 
-    s.gather_global_mem_usage();
+    s.gather_info();
 
     let info = nak_shader_info {
         stage: nir.info.stage(),
@@ -342,6 +342,7 @@ pub extern "C" fn nak_compile_shader(
         },
         num_barriers: s.info.num_barriers,
         _pad0: Default::default(),
+        num_instrs: s.info.num_instrs,
         slm_size: s.info.slm_size,
         __bindgen_anon_1: match &s.info.stage {
             ShaderStageInfo::Compute(cs_info) => {
@@ -457,16 +458,9 @@ pub extern "C" fn nak_compile_shader(
             let c_name = _mesa_shader_stage_to_string(info.stage as u32);
             CStr::from_ptr(c_name).to_str().expect("Invalid UTF-8")
         };
-        let instruction_count = if nak.sm >= 70 {
-            code.len() / 4
-        } else if nak.sm >= 50 {
-            (code.len() / 8) * 3
-        } else {
-            unreachable!()
-        };
 
         eprintln!("Stage: {}", stage_name);
-        eprintln!("Instruction count: {}", instruction_count);
+        eprintln!("Instruction count: {}", info.num_instrs);
         eprintln!("Num GPRs: {}", info.num_gprs);
         eprintln!("SLM size: {}", info.slm_size);
 

@@ -39,6 +39,7 @@ struct radeon_drm_winsys {
    struct pb_slabs bo_slabs;
 
    int fd; /* DRM file descriptor */
+   int rendernode_fd; /* valid only when import handles must do an intermediate export -> import onto DRM fd */
    int num_cs; /* The number of command streams created. */
    uint64_t allocated_vram;
    uint64_t allocated_gtt;

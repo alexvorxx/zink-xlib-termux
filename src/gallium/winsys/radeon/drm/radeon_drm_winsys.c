@@ -83,7 +83,7 @@ static bool radeon_set_fd_access(struct radeon_drm_cs *applier,
    return false;
 }
 
-static bool radeon_get_drm_value(int fd, unsigned request,
+static bool radeon_get_drm_value(struct radeon_drm_winsys *ws, unsigned request,
                                  const char *errname, uint32_t *out)
 {
    struct drm_radeon_info info;
@@ -94,7 +94,7 @@ static bool radeon_get_drm_value(int fd, unsigned request,
    info.value = (unsigned long)out;
    info.request = request;
 
-   retval = drmCommandWriteRead(fd, DRM_RADEON_INFO, &info, sizeof(info));
+   retval = drmCommandWriteRead(ws->fd, DRM_RADEON_INFO, &info, sizeof(info));
    if (retval) {
       if (errname) {
          fprintf(stderr, "radeon: Failed to get %s, error number %d\n",
@@ -156,7 +156,7 @@ static bool do_winsys_init(struct radeon_drm_winsys *ws)
    drmFreeVersion(version);
 
    /* Get PCI ID. */
-   if (!radeon_get_drm_value(ws->fd, RADEON_INFO_DEVICE_ID, "PCI ID",
+   if (!radeon_get_drm_value(ws, RADEON_INFO_DEVICE_ID, "PCI ID",
                              &ws->info.pci_id))
       return false;
 
@@ -301,16 +301,16 @@ static bool do_winsys_init(struct radeon_drm_winsys *ws)
    ws->info.vce_fw_version = 0x00000000;
 
    uint32_t value = RADEON_CS_RING_UVD;
-   if (radeon_get_drm_value(ws->fd, RADEON_INFO_RING_WORKING,
+   if (radeon_get_drm_value(ws, RADEON_INFO_RING_WORKING,
                             "UVD Ring working", &value)) {
       ws->info.ip[AMD_IP_UVD].num_queues = 1;
    }
 
    value = RADEON_CS_RING_VCE;
-   if (radeon_get_drm_value(ws->fd, RADEON_INFO_RING_WORKING,
+   if (radeon_get_drm_value(ws, RADEON_INFO_RING_WORKING,
                             NULL, &value) && value) {
 
-      if (radeon_get_drm_value(ws->fd, RADEON_INFO_VCE_FW_VERSION,
+      if (radeon_get_drm_value(ws, RADEON_INFO_VCE_FW_VERSION,
                                "VCE FW version", &value)) {
          ws->info.vce_fw_version = value;
          ws->info.ip[AMD_IP_VCE].num_queues = 1;
@@ -357,7 +357,7 @@ static bool do_winsys_init(struct radeon_drm_winsys *ws)
    ws->info.max_heap_size_kb = MIN2(ws->info.max_heap_size_kb, 4 * 1024 * 1024); /* 4 GB */
 
    /* Get max clock frequency info and convert it to MHz */
-   radeon_get_drm_value(ws->fd, RADEON_INFO_MAX_SCLK, NULL,
+   radeon_get_drm_value(ws, RADEON_INFO_MAX_SCLK, NULL,
                         &ws->info.max_gpu_freq_mhz);
    ws->info.max_gpu_freq_mhz /= 1000;
 
@@ -365,12 +365,12 @@ static bool do_winsys_init(struct radeon_drm_winsys *ws)
 
    /* Generation-specific queries. */
    if (ws->gen == DRV_R300) {
-      if (!radeon_get_drm_value(ws->fd, RADEON_INFO_NUM_GB_PIPES,
+      if (!radeon_get_drm_value(ws, RADEON_INFO_NUM_GB_PIPES,
                                 "GB pipe count",
                                 &ws->info.r300_num_gb_pipes))
          return false;
 
-      if (!radeon_get_drm_value(ws->fd, RADEON_INFO_NUM_Z_PIPES,
+      if (!radeon_get_drm_value(ws, RADEON_INFO_NUM_Z_PIPES,
                                 "Z pipe count",
                                 &ws->info.r300_num_z_pipes))
          return false;
@@ -378,16 +378,16 @@ static bool do_winsys_init(struct radeon_drm_winsys *ws)
    else if (ws->gen >= DRV_R600) {
       uint32_t tiling_config = 0;
 
-      if (!radeon_get_drm_value(ws->fd, RADEON_INFO_NUM_BACKENDS,
+      if (!radeon_get_drm_value(ws, RADEON_INFO_NUM_BACKENDS,
                                 "num backends",
                                 &ws->info.max_render_backends))
          return false;
 
       /* get the GPU counter frequency, failure is not fatal */
-      radeon_get_drm_value(ws->fd, RADEON_INFO_CLOCK_CRYSTAL_FREQ, NULL,
+      radeon_get_drm_value(ws, RADEON_INFO_CLOCK_CRYSTAL_FREQ, NULL,
                            &ws->info.clock_crystal_freq);
 
-      radeon_get_drm_value(ws->fd, RADEON_INFO_TILING_CONFIG, NULL,
+      radeon_get_drm_value(ws, RADEON_INFO_TILING_CONFIG, NULL,
                            &tiling_config);
 
       ws->info.r600_num_banks =
@@ -404,7 +404,7 @@ static bool do_winsys_init(struct radeon_drm_winsys *ws)
          ws->info.pipe_interleave_bytes =
                ws->info.gfx_level >= EVERGREEN ? 512 : 256;
 
-      radeon_get_drm_value(ws->fd, RADEON_INFO_NUM_TILE_PIPES, NULL,
+      radeon_get_drm_value(ws, RADEON_INFO_NUM_TILE_PIPES, NULL,
                            &ws->info.num_tile_pipes);
 
       /* "num_tiles_pipes" must be equal to the number of pipes (Px) in the
@@ -415,7 +415,7 @@ static bool do_winsys_init(struct radeon_drm_winsys *ws)
       if (ws->gen == DRV_SI && ws->info.num_tile_pipes == 12)
          ws->info.num_tile_pipes = 8;
 
-      if (radeon_get_drm_value(ws->fd, RADEON_INFO_BACKEND_MAP, NULL,
+      if (radeon_get_drm_value(ws, RADEON_INFO_BACKEND_MAP, NULL,
                                &ws->info.r600_gb_backend_map))
          ws->info.r600_gb_backend_map_valid = true;
 
@@ -428,7 +428,7 @@ static bool do_winsys_init(struct radeon_drm_winsys *ws)
       if (ws->gen >= DRV_SI) {
          uint32_t mask;
 
-         radeon_get_drm_value(ws->fd, RADEON_INFO_SI_BACKEND_ENABLED_MASK, NULL, &mask);
+         radeon_get_drm_value(ws, RADEON_INFO_SI_BACKEND_ENABLED_MASK, NULL, &mask);
          ws->info.enabled_rb_mask = mask;
       }
 
@@ -437,13 +437,13 @@ static bool do_winsys_init(struct radeon_drm_winsys *ws)
       uint32_t ib_vm_max_size;
 
       ws->info.r600_has_virtual_memory = true;
-      if (!radeon_get_drm_value(ws->fd, RADEON_INFO_VA_START, NULL,
+      if (!radeon_get_drm_value(ws, RADEON_INFO_VA_START, NULL,
                                 &ws->va_start))
          ws->info.r600_has_virtual_memory = false;
-      if (!radeon_get_drm_value(ws->fd, RADEON_INFO_IB_VM_MAX_SIZE, NULL,
+      if (!radeon_get_drm_value(ws, RADEON_INFO_IB_VM_MAX_SIZE, NULL,
                                 &ib_vm_max_size))
          ws->info.r600_has_virtual_memory = false;
-      radeon_get_drm_value(ws->fd, RADEON_INFO_VA_UNMAP_WORKING, NULL,
+      radeon_get_drm_value(ws, RADEON_INFO_VA_UNMAP_WORKING, NULL,
                            &ws->va_unmap_working);
 
       if (ws->gen == DRV_R600 && !debug_get_bool_option("RADEON_VA", false))
@@ -453,15 +453,15 @@ static bool do_winsys_init(struct radeon_drm_winsys *ws)
    /* Get max pipes, this is only needed for compute shaders.  All evergreen+
     * chips have at least 2 pipes, so we use 2 as a default. */
    ws->info.r600_max_quad_pipes = 2;
-   radeon_get_drm_value(ws->fd, RADEON_INFO_MAX_PIPES, NULL,
+   radeon_get_drm_value(ws, RADEON_INFO_MAX_PIPES, NULL,
                         &ws->info.r600_max_quad_pipes);
 
    /* All GPUs have at least one compute unit */
    ws->info.num_cu = 1;
-   radeon_get_drm_value(ws->fd, RADEON_INFO_ACTIVE_CU_COUNT, NULL,
+   radeon_get_drm_value(ws, RADEON_INFO_ACTIVE_CU_COUNT, NULL,
                         &ws->info.num_cu);
 
-   radeon_get_drm_value(ws->fd, RADEON_INFO_MAX_SE, NULL,
+   radeon_get_drm_value(ws, RADEON_INFO_MAX_SE, NULL,
                         &ws->info.max_se);
 
    switch (ws->info.family) {
@@ -511,7 +511,7 @@ static bool do_winsys_init(struct radeon_drm_winsys *ws)
 
    ws->info.num_se = ws->info.max_se;
 
-   radeon_get_drm_value(ws->fd, RADEON_INFO_MAX_SH_PER_SE, NULL,
+   radeon_get_drm_value(ws, RADEON_INFO_MAX_SH_PER_SE, NULL,
                         &ws->info.max_sa_per_se);
    if (ws->gen == DRV_SI) {
       ws->info.max_good_cu_per_sa =
@@ -519,7 +519,7 @@ static bool do_winsys_init(struct radeon_drm_winsys *ws)
                                     (ws->info.max_se * ws->info.max_sa_per_se);
    }
 
-   radeon_get_drm_value(ws->fd, RADEON_INFO_ACCEL_WORKING2, NULL,
+   radeon_get_drm_value(ws, RADEON_INFO_ACCEL_WORKING2, NULL,
                         &ws->accel_working2);
    if (ws->info.family == CHIP_HAWAII && ws->accel_working2 < 2) {
       fprintf(stderr, "radeon: GPU acceleration for Hawaii disabled, "
@@ -530,7 +530,7 @@ static bool do_winsys_init(struct radeon_drm_winsys *ws)
    }
 
    if (ws->info.gfx_level == GFX7) {
-      if (!radeon_get_drm_value(ws->fd, RADEON_INFO_CIK_MACROTILE_MODE_ARRAY, NULL,
+      if (!radeon_get_drm_value(ws, RADEON_INFO_CIK_MACROTILE_MODE_ARRAY, NULL,
                                 ws->info.cik_macrotile_mode_array)) {
          fprintf(stderr, "radeon: Kernel 3.13 is required for Sea Islands support.\n");
          return false;
@@ -538,7 +538,7 @@ static bool do_winsys_init(struct radeon_drm_winsys *ws)
    }
 
    if (ws->info.gfx_level >= GFX6) {
-      if (!radeon_get_drm_value(ws->fd, RADEON_INFO_SI_TILE_MODE_ARRAY, NULL,
+      if (!radeon_get_drm_value(ws, RADEON_INFO_SI_TILE_MODE_ARRAY, NULL,
                                 ws->info.si_tile_mode_array)) {
          fprintf(stderr, "radeon: Kernel 3.10 is required for Southern Islands support.\n");
          return false;
@@ -711,7 +711,7 @@ uint32_t radeon_drm_get_gpu_reset_counter(struct radeon_drm_winsys *ws)
 {
    uint64_t retval = 0;
 
-   radeon_get_drm_value(ws->fd, RADEON_INFO_GPU_RESET_COUNTER,
+   radeon_get_drm_value(ws, RADEON_INFO_GPU_RESET_COUNTER,
                         "gpu-reset-counter", (uint32_t*)&retval);
    return retval;
 }
@@ -741,7 +741,7 @@ static uint64_t radeon_query_value(struct radeon_winsys *rws,
          return 0;
       }
 
-      radeon_get_drm_value(ws->fd, RADEON_INFO_TIMESTAMP, "timestamp",
+      radeon_get_drm_value(ws, RADEON_INFO_TIMESTAMP, "timestamp",
                            (uint32_t*)&retval);
       return retval;
    case RADEON_NUM_GFX_IBS:
@@ -749,7 +749,7 @@ static uint64_t radeon_query_value(struct radeon_winsys *rws,
    case RADEON_NUM_SDMA_IBS:
       return ws->num_sdma_IBs;
    case RADEON_NUM_BYTES_MOVED:
-      radeon_get_drm_value(ws->fd, RADEON_INFO_NUM_BYTES_MOVED,
+      radeon_get_drm_value(ws, RADEON_INFO_NUM_BYTES_MOVED,
                            "num-bytes-moved", (uint32_t*)&retval);
       return retval;
    case RADEON_NUM_EVICTIONS:
@@ -761,23 +761,23 @@ static uint64_t radeon_query_value(struct radeon_winsys *rws,
    case RADEON_SLAB_WASTED_GTT:
       return 0; /* unimplemented */
    case RADEON_VRAM_USAGE:
-      radeon_get_drm_value(ws->fd, RADEON_INFO_VRAM_USAGE,
+      radeon_get_drm_value(ws, RADEON_INFO_VRAM_USAGE,
                            "vram-usage", (uint32_t*)&retval);
       return retval;
    case RADEON_GTT_USAGE:
-      radeon_get_drm_value(ws->fd, RADEON_INFO_GTT_USAGE,
+      radeon_get_drm_value(ws, RADEON_INFO_GTT_USAGE,
                            "gtt-usage", (uint32_t*)&retval);
       return retval;
    case RADEON_GPU_TEMPERATURE:
-      radeon_get_drm_value(ws->fd, RADEON_INFO_CURRENT_GPU_TEMP,
+      radeon_get_drm_value(ws, RADEON_INFO_CURRENT_GPU_TEMP,
                            "gpu-temp", (uint32_t*)&retval);
       return retval;
    case RADEON_CURRENT_SCLK:
-      radeon_get_drm_value(ws->fd, RADEON_INFO_CURRENT_GPU_SCLK,
+      radeon_get_drm_value(ws, RADEON_INFO_CURRENT_GPU_SCLK,
                            "current-gpu-sclk", (uint32_t*)&retval);
       return retval;
    case RADEON_CURRENT_MCLK:
-      radeon_get_drm_value(ws->fd, RADEON_INFO_CURRENT_GPU_MCLK,
+      radeon_get_drm_value(ws, RADEON_INFO_CURRENT_GPU_MCLK,
                            "current-gpu-mclk", (uint32_t*)&retval);
       return retval;
    case RADEON_CS_THREAD_TIME:
@@ -796,7 +796,7 @@ static bool radeon_read_registers(struct radeon_winsys *rws,
    for (i = 0; i < num_registers; i++) {
       uint32_t reg = reg_offset + i*4;
 
-      if (!radeon_get_drm_value(ws->fd, RADEON_INFO_READ_REG, NULL, &reg))
+      if (!radeon_get_drm_value(ws, RADEON_INFO_READ_REG, NULL, &reg))
          return false;
       out[i] = reg;
    }

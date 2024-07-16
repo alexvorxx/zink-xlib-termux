@@ -118,7 +118,22 @@ impl Queue {
             }),
             _thrd: thread::Builder::new()
                 .name("rusticl queue thread".into())
-                .spawn(move || loop {
+                .spawn(move || {
+                    // Track the error of all executed events. This is only needed for in-order
+                    // queues, so for out of order we'll need to update this.
+                    // Also, the OpenCL specification gives us enough freedom to do whatever we want
+                    // in case of any event running into an error while executing:
+                    //
+                    //   Unsuccessful completion results in abnormal termination of the command
+                    //   which is indicated by setting the event status to a negative value. In this
+                    //   case, the command-queue associated with the abnormally terminated command
+                    //   and all other command-queues in the same context may no longer be available
+                    //   and their behavior is implementation-defined.
+                    //
+                    // TODO: use pipe_context::set_device_reset_callback to get notified about gone
+                    //       GPU contexts
+                    let mut last_err = CL_SUCCESS as cl_int;
+                    loop {
                     let r = rx_t.recv();
                     if r.is_err() {
                         break;
@@ -135,7 +150,6 @@ impl Queue {
                         }
 
                         // check if any dependency has an error
-                        let mut err = CL_SUCCESS as cl_int;
                         for dep in &e.deps {
                             // We have to wait on user events or events from other queues.
                             let dep_err = if dep.is_user() || dep.queue != e.queue {
@@ -144,20 +158,20 @@ impl Queue {
                                 dep.status()
                             };
 
-                            err = cmp::min(err, dep_err);
+                            last_err = cmp::min(last_err, dep_err);
                         }
 
-                        if err < 0 {
+                        if last_err < 0 {
                             // If a dependency failed, fail this event as well.
-                            e.set_user_status(err);
+                            e.set_user_status(last_err);
                             continue;
                         }
 
                         // if there is an execution error don't bother signaling it as the  context
                         // might be in a broken state. How queues behave after any event hit an
                         // error is entirely implementation defined.
-                        let err = e.call(&ctx);
-                        if err < 0 {
+                        last_err = e.call(&ctx);
+                        if last_err < 0 {
                             continue;
                         }
 
@@ -178,6 +192,7 @@ impl Queue {
                     }
 
                     flush_events(&mut flushed, &ctx);
+                    }
                 })
                 .unwrap(),
         }))

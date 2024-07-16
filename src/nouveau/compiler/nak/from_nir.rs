@@ -1428,6 +1428,16 @@ impl<'a> ShaderFromNir<'a> {
 
                 b.prmt(low.into(), high.into(), [0, 1, 4, 5])
             }
+            nir_op_prmt_nv => {
+                let dst = b.alloc_ssa(RegFile::GPR, 1);
+                b.push_op(OpPrmt {
+                    dst: dst.into(),
+                    srcs: [srcs[1], srcs[2]],
+                    sel: srcs[0],
+                    mode: PrmtMode::Index,
+                });
+                dst
+            }
             nir_op_sdot_4x8_iadd => {
                 let dst = b.alloc_ssa(RegFile::GPR, 1);
                 b.push_op(OpIDp4 {

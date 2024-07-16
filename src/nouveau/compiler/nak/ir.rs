@@ -2269,11 +2269,31 @@ pub enum InterpFreq {
     State,
 }
 
+impl fmt::Display for InterpFreq {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InterpFreq::Pass => write!(f, ".pass"),
+            InterpFreq::PassMulW => write!(f, ".pass_mul_w"),
+            InterpFreq::Constant => write!(f, ".constant"),
+            InterpFreq::State => write!(f, ".state"),
+        }
+    }
+}
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub enum InterpLoc {
     Default,
     Centroid,
     Offset,
+}
+
+impl fmt::Display for InterpLoc {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InterpLoc::Default => Ok(()),
+            InterpLoc::Centroid => write!(f, ".centroid"),
+            InterpLoc::Offset => write!(f, ".offset"),
+        }
+    }
 }
 
 pub struct AttrAccess {
@@ -4351,20 +4371,11 @@ pub struct OpIpa {
 
 impl DisplayOp for OpIpa {
     fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ipa")?;
-        match self.freq {
-            InterpFreq::Pass => write!(f, ".pass")?,
-            InterpFreq::PassMulW => write!(f, ".pass_mul_w")?,
-            InterpFreq::Constant => write!(f, ".constant")?,
-            InterpFreq::State => write!(f, ".state")?,
-        }
-        match self.loc {
-            InterpLoc::Default => (),
-            InterpLoc::Centroid => write!(f, ".centroid")?,
-            InterpLoc::Offset => write!(f, ".offset")?,
-        }
-
-        write!(f, " {} a[{:#x}] {}", self.dst, self.addr, self.inv_w)?;
+        write!(
+            f,
+            "ipa{}{} a[{:#x}] {}",
+            self.freq, self.loc, self.addr, self.inv_w
+        )?;
         if self.loc == InterpLoc::Offset {
             write!(f, " {}", self.offset)?;
         }

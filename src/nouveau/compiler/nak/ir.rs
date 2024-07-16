@@ -903,6 +903,12 @@ impl From<f32> for SrcRef {
     }
 }
 
+impl From<PrmtSel> for SrcRef {
+    fn from(sel: PrmtSel) -> SrcRef {
+        u32::from(sel.0).into()
+    }
+}
+
 impl From<CBufRef> for SrcRef {
     fn from(cb: CBufRef) -> SrcRef {
         SrcRef::CBuf(cb)
@@ -3659,6 +3665,41 @@ impl DisplayOp for OpMov {
 }
 impl_display_for_op!(OpMov);
 
+#[derive(Copy, Clone)]
+pub struct PrmtSelByte(u8);
+
+impl PrmtSelByte {
+    pub fn src(&self) -> usize {
+        ((self.0 >> 2) & 0x1).into()
+    }
+
+    pub fn byte(&self) -> usize {
+        (self.0 & 0x3).into()
+    }
+
+    pub fn msb(&self) -> bool {
+        (self.0 & 0x8) != 0
+    }
+
+    pub fn fold_u32(&self, u: u32) -> u8 {
+        let mut sb = (u >> (self.byte() * 8)) as u8;
+        if self.msb() {
+            sb = ((sb as i8) >> 7) as u8;
+        }
+        sb
+    }
+}
+
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+pub struct PrmtSel(pub u16);
+
+impl PrmtSel {
+    pub fn get(&self, byte_idx: usize) -> PrmtSelByte {
+        assert!(byte_idx < 4);
+        PrmtSelByte(((self.0 >> (byte_idx * 4)) & 0xf) as u8)
+    }
+}
+
 #[allow(dead_code)]
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub enum PrmtMode {
@@ -3698,6 +3739,41 @@ pub struct OpPrmt {
     pub sel: Src,
 
     pub mode: PrmtMode,
+}
+
+impl OpPrmt {
+    pub fn get_sel(&self) -> Option<PrmtSel> {
+        // TODO: We could construct a PrmtSel for the other modes but we don't
+        // use them right now because they're kinda pointless.
+        if self.mode != PrmtMode::Index {
+            return None;
+        }
+
+        if let Some(sel) = self.sel.as_u32() {
+            // The top 16 bits are ignored
+            Some(PrmtSel(sel as u16))
+        } else {
+            None
+        }
+    }
+
+    pub fn as_u32(&self) -> Option<u32> {
+        let Some(sel) = self.get_sel() else {
+            return None;
+        };
+
+        let mut imm = 0_u32;
+        for b in 0..4 {
+            let sel_byte = sel.get(b);
+            let Some(src_u32) = self.srcs[sel_byte.src()].as_u32() else {
+                return None;
+            };
+
+            let sb = sel_byte.fold_u32(src_u32);
+            imm |= u32::from(sb) << (b * 8);
+        }
+        Some(imm)
+    }
 }
 
 impl DisplayOp for OpPrmt {

@@ -75,7 +75,7 @@ try_fold_alu(nir_builder *b, nir_alu_instr *alu)
       bit_size = 32;
 
    nir_const_value dest[NIR_MAX_VEC_COMPONENTS];
-   nir_const_value *srcs[NIR_MAX_VEC_COMPONENTS];
+   nir_const_value *srcs[NIR_ALU_MAX_INPUTS];
    memset(dest, 0, sizeof(dest));
    for (unsigned i = 0; i < nir_op_infos[alu->op].num_inputs; ++i)
       srcs[i] = src[i];

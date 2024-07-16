@@ -600,7 +600,7 @@ impl CopyPropPass {
                 if prmt.mode != PrmtMode::Index {
                     return;
                 }
-                let SrcRef::Imm32(sel) = prmt.sel.src_ref else {
+                let Some(sel) = prmt.sel.as_u32() else {
                     return;
                 };
 

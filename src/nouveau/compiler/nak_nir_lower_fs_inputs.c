@@ -142,9 +142,9 @@ load_barycentric_offset(nir_builder *b, nir_intrinsic_instr *bary,
                          nir_imm_float(b, 0.437500));
    nir_def *offset_fixed =
       nir_f2i32(b, nir_fmul_imm(b, offset_f, 4096.0));
-   nir_def *offset = nir_ior(b, nir_ishl_imm(b, nir_channel(b, offset_fixed, 1), 16),
-                             nir_iand_imm(b, nir_channel(b, offset_fixed, 0),
-                                          0xffff));
+   nir_def *offset = nir_prmt_nv(b, nir_imm_int(b, 0x5410),
+                                    nir_channel(b, offset_fixed, 0),
+                                    nir_channel(b, offset_fixed, 1));
 
    return offset;
 }

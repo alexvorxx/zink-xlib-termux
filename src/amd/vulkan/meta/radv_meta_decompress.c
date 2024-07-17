@@ -98,12 +98,6 @@ create_pipeline(struct radv_device *device, uint32_t samples, VkPipelineLayout l
    VkResult result;
    VkDevice device_h = radv_device_to_handle(device);
 
-   mtx_lock(&device->meta_state.mtx);
-   if (*pipeline) {
-      mtx_unlock(&device->meta_state.mtx);
-      return VK_SUCCESS;
-   }
-
    nir_shader *vs_module = radv_meta_build_nir_vs_generate_vertices(device);
    nir_shader *fs_module = radv_meta_build_nir_fs_noop(device);
 
@@ -223,7 +217,6 @@ create_pipeline(struct radv_device *device, uint32_t samples, VkPipelineLayout l
 cleanup:
    ralloc_free(fs_module);
    ralloc_free(vs_module);
-   mtx_unlock(&device->meta_state.mtx);
    return result;
 }
 
@@ -279,18 +272,23 @@ radv_get_depth_pipeline(struct radv_cmd_buffer *cmd_buffer, struct radv_image *i
    uint32_t samples = image->vk.samples;
    uint32_t samples_log2 = ffs(samples) - 1;
 
+   mtx_lock(&state->mtx);
    if (!state->depth_decomp[samples_log2].decompress_pipeline) {
       VkResult ret;
 
       ret = create_pipeline(device, samples, state->depth_decomp[samples_log2].p_layout,
                             &state->depth_decomp[samples_log2].decompress_pipeline);
       if (ret != VK_SUCCESS) {
+         mtx_unlock(&state->mtx);
          vk_command_buffer_set_error(&cmd_buffer->vk, ret);
          return NULL;
       }
    }
 
-   return &state->depth_decomp[samples_log2].decompress_pipeline;
+   VkPipeline *pipeline = &state->depth_decomp[samples_log2].decompress_pipeline;
+
+   mtx_unlock(&state->mtx);
+   return pipeline;
 }
 
 static void

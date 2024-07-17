@@ -89,35 +89,39 @@ radv_device_init_meta_dcc_retile_state(struct radv_device *device, struct radeon
    VkResult result = VK_SUCCESS;
    nir_shader *cs = build_dcc_retile_compute_shader(device, surf);
 
-   const VkDescriptorSetLayoutBinding bindings[] = {
-      {
-         .binding = 0,
-         .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER,
-         .descriptorCount = 1,
+   if (!device->meta_state.dcc_retile.ds_layout) {
+      const VkDescriptorSetLayoutBinding bindings[] = {
+         {
+            .binding = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+         },
+         {
+            .binding = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+         },
+
+      };
+
+      result = radv_meta_create_descriptor_set_layout(device, 2, bindings, &device->meta_state.dcc_retile.ds_layout);
+      if (result != VK_SUCCESS)
+         goto cleanup;
+   }
+
+   if (!device->meta_state.dcc_retile.p_layout) {
+      const VkPushConstantRange pc_range = {
          .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-      },
-      {
-         .binding = 1,
-         .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER,
-         .descriptorCount = 1,
-         .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-      },
+         .size = 16,
+      };
 
-   };
-
-   result = radv_meta_create_descriptor_set_layout(device, 2, bindings, &device->meta_state.dcc_retile.ds_layout);
-   if (result != VK_SUCCESS)
-      goto cleanup;
-
-   const VkPushConstantRange pc_range = {
-      .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-      .size = 16,
-   };
-
-   result = radv_meta_create_pipeline_layout(device, &device->meta_state.dcc_retile.ds_layout, 1, &pc_range,
-                                             &device->meta_state.dcc_retile.p_layout);
-   if (result != VK_SUCCESS)
-      goto cleanup;
+      result = radv_meta_create_pipeline_layout(device, &device->meta_state.dcc_retile.ds_layout, 1, &pc_range,
+                                                &device->meta_state.dcc_retile.p_layout);
+      if (result != VK_SUCCESS)
+         goto cleanup;
+   }
 
    result = radv_meta_create_compute_pipeline(device, cs, device->meta_state.dcc_retile.p_layout,
                                               &device->meta_state.dcc_retile.pipeline[surf->u.gfx9.swizzle_mode]);

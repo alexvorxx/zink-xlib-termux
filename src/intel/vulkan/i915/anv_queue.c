@@ -67,7 +67,7 @@ anv_i915_create_engine(struct anv_device *device,
          flags |= INTEL_GEM_CREATE_CONTEXT_EXT_PROTECTED_FLAG;
 
       if (device->physical->instance->force_guc_low_latency &&
-          i915_gem_get_param(device->fd, I915_PARAM_HAS_CONTEXT_FREQ_HINT, &val) && val) {
+          i915_gem_get_param(device->fd, I915_PARAM_HAS_CONTEXT_FREQ_HINT, &val) && (val == 1)) {
 	      flags |= INTEL_GEM_CREATE_CONTEXT_EXT_LOW_LATENCY_FLAG;
       }
 

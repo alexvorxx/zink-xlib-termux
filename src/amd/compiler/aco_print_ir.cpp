@@ -341,7 +341,8 @@ print_instr_format_specific(enum amd_gfx_level gfx_level, const Instruction* ins
       case aco_opcode::s_wait_storecnt:
       case aco_opcode::s_wait_samplecnt:
       case aco_opcode::s_wait_bvhcnt:
-      case aco_opcode::s_wait_kmcnt: {
+      case aco_opcode::s_wait_kmcnt:
+      case aco_opcode::s_setprio: {
          fprintf(output, " imm:%u", imm);
          break;
       }

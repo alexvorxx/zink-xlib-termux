@@ -167,12 +167,11 @@ finish_program(Program* prog, bool endpgm)
          prog->blocks[idx].logical_succs.emplace_back(BB.index);
    }
 
-   if (endpgm) {
-      for (Block& block : prog->blocks) {
-         if (block.linear_succs.size() == 0) {
-            block.kind |= block_kind_uniform;
+   for (Block& block : prog->blocks) {
+      if (block.linear_succs.size() == 0) {
+         block.kind |= block_kind_uniform;
+         if (endpgm)
             Builder(prog, &block).sopp(aco_opcode::s_endpgm);
-         }
       }
    }
 }

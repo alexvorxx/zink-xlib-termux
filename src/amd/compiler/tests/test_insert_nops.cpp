@@ -3,6 +3,8 @@
  *
  * SPDX-License-Identifier: MIT
  */
+#include "common/amdgfxregs.h"
+
 #include "helpers.h"
 
 using namespace aco;
@@ -1198,6 +1200,157 @@ BEGIN_TEST(insert_nops.wmma_raw)
    C.setFixed(PhysReg(256 + 20));
    bld.vop3p(aco_opcode::v_wmma_f16_16x16x16_f16, Definition(C.physReg(), C.regClass()), A, B, C, 0,
              0);
+
+   finish_insert_nops_test();
+END_TEST
+
+enum StageInfoFlags {
+   stage_separate = 1 << 0,
+   stage_has_prolog = 1 << 1,
+   stage_has_export = 1 << 2,
+   stage_is_prolog = 1 << 3,
+   stage_is_epilog = 1 << 4,
+};
+
+struct StageInfo {
+   const char* name;
+   Stage stage;
+   unsigned flags;
+};
+
+BEGIN_TEST(insert_nops.export_priority.stages)
+   Stage geometry_ngg(AC_HW_NEXT_GEN_GEOMETRY_SHADER, SWStage::GS);
+   for (StageInfo stage : (StageInfo[]){
+           {"_fs_first_last", fragment_fs, stage_has_export},
+           {"_fs_with_epilog_first", fragment_fs, 0},
+           {"_fs_prolog_first", fragment_fs, stage_is_prolog},
+           {"_fs_epilog_last", fragment_fs, stage_is_epilog | stage_has_export},
+           {"_vs_first_last", vertex_ngg, stage_has_export},
+           {"_vs_with_prolog_last", vertex_ngg, stage_has_export | stage_has_prolog},
+           {"_tes_first_last", tess_eval_ngg, stage_has_export},
+           {"_ms_first_last", mesh_ngg, stage_has_export},
+           {"_tesgs_first_last", tess_eval_geometry_ngg, stage_has_export},
+           {"_vsgs_first_last", vertex_geometry_ngg, stage_has_export},
+           {"_vsgs_with_prolog_last", vertex_geometry_ngg, stage_has_export | stage_has_prolog},
+           {"_separate_vs_first", vertex_ngg, stage_separate},
+           {"_separate_vs_with_prolog", vertex_ngg, stage_separate | stage_has_prolog},
+           {"_separate_tes_first", tess_eval_ngg, stage_separate},
+           {"_separate_gs_last", geometry_ngg, stage_separate | stage_has_export}}) {
+      if (!setup_cs(NULL, GFX11_5, CHIP_UNKNOWN, stage.name))
+         continue;
+
+      program->stage = stage.stage;
+      program->info.merged_shader_compiled_separately = stage.flags & stage_separate;
+      program->info.vs.has_prolog = stage.flags & stage_has_prolog;
+      program->is_prolog = stage.flags & stage_is_prolog;
+      program->is_epilog = stage.flags & stage_is_epilog;
+      //>> /* logical preds: / linear preds: / kind: uniform, top-level, */
+      //~.*first.*! s_setprio imm:2
+      if (stage.flags & stage_has_export) {
+         //~.*last.*! exp v1: undef, v1: undef, v1: undef, v1: undef en:**** pos0
+         //~.*last.*! s_setprio imm:0
+         //~.*last.*! s_nop
+         //~.*last.*! s_nop
+         //~.*last.*! s_endpgm
+         bld.exp(aco_opcode::exp, Operand(v1), Operand(v1), Operand(v1), Operand(v1), 0x0,
+                 V_008DFC_SQ_EXP_POS, false);
+      } else {
+         //(?!.*last.*)! v_nop
+         bld.vop1(aco_opcode::v_nop);
+      }
+
+      finish_insert_nops_test(stage.flags & stage_has_export);
+   }
+END_TEST
+
+BEGIN_TEST(insert_nops.export_priority.instrs_after_export)
+   if (!setup_cs(NULL, GFX11_5))
+      return;
+
+   program->stage = vertex_ngg;
+   //>> /* logical preds: / linear preds: / kind: uniform, top-level, */
+   //! s_setprio imm:2
+   //! exp v1: undef, v1: undef, v1: undef, v1: undef en:**** pos0
+   //! s_setprio imm:0
+   //! s_waitcnt_expcnt %0:null imm:0
+   //! s_nop
+   //! s_nop
+   //! s_setprio imm:2
+   //! v_nop
+   //! s_endpgm
+   bld.exp(aco_opcode::exp, Operand(v1), Operand(v1), Operand(v1), Operand(v1), 0x0,
+           V_008DFC_SQ_EXP_POS, false);
+   bld.vop1(aco_opcode::v_nop);
+
+   finish_insert_nops_test();
+END_TEST
+
+BEGIN_TEST(insert_nops.export_priority.fallthrough_to_endpgm)
+   if (!setup_cs(NULL, GFX11_5))
+      return;
+
+   program->stage = vertex_ngg;
+   //>> /* logical preds: / linear preds: / kind: top-level, */
+   //! s_setprio imm:2
+   //! exp v1: undef, v1: undef, v1: undef, v1: undef en:**** pos0
+   //! s_setprio imm:0
+   //! s_nop
+   //! s_nop
+   //>> BB1
+   //>> /* logical preds: BB0, / linear preds: BB0, / kind: uniform, */
+   //! s_endpgm
+   bld.exp(aco_opcode::exp, Operand(v1), Operand(v1), Operand(v1), Operand(v1), 0x0,
+           V_008DFC_SQ_EXP_POS, false);
+
+   bld.reset(program->create_and_insert_block());
+   program->blocks[0].linear_succs.push_back(1);
+   program->blocks[0].logical_succs.push_back(1);
+   program->blocks[1].linear_preds.push_back(0);
+   program->blocks[1].logical_preds.push_back(0);
+
+   finish_insert_nops_test();
+END_TEST
+
+BEGIN_TEST(insert_nops.export_priority.multiple_exports)
+   if (!setup_cs(NULL, GFX11_5))
+      return;
+
+   program->stage = vertex_ngg;
+   //>> /* logical preds: / linear preds: / kind: uniform, top-level, */
+   //! s_setprio imm:2
+   //! exp v1: undef, v1: undef, v1: undef, v1: undef en:**** pos0
+   //! exp v1: undef, v1: undef, v1: undef, v1: undef en:**** pos1
+   //! s_setprio imm:0
+   //! s_nop
+   //! s_nop
+   //! s_endpgm
+   bld.exp(aco_opcode::exp, Operand(v1), Operand(v1), Operand(v1), Operand(v1), 0x0,
+           V_008DFC_SQ_EXP_POS, false);
+   bld.exp(aco_opcode::exp, Operand(v1), Operand(v1), Operand(v1), Operand(v1), 0x0,
+           V_008DFC_SQ_EXP_POS + 1, false);
+
+   finish_insert_nops_test();
+END_TEST
+
+BEGIN_TEST(insert_nops.export_priority.set_prio)
+   if (!setup_cs(NULL, GFX11_5))
+      return;
+
+   program->stage = vertex_ngg;
+   //>> /* logical preds: / linear preds: / kind: uniform, top-level, */
+   //! s_setprio imm:3
+   //! v_nop
+   //! s_setprio imm:2
+   //! exp v1: undef, v1: undef, v1: undef, v1: undef en:**** pos0
+   //! s_setprio imm:0
+   //! s_nop
+   //! s_nop
+   //! s_endpgm
+   bld.sopp(aco_opcode::s_setprio, 3);
+   bld.vop1(aco_opcode::v_nop);
+   bld.sopp(aco_opcode::s_setprio, 1);
+   bld.exp(aco_opcode::exp, Operand(v1), Operand(v1), Operand(v1), Operand(v1), 0x0,
+           V_008DFC_SQ_EXP_POS, false);
 
    finish_insert_nops_test();
 END_TEST

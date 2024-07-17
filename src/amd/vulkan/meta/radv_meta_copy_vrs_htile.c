@@ -104,10 +104,9 @@ build_copy_vrs_htile_shader(struct radv_device *device, struct radeon_surf *surf
 }
 
 static VkResult
-radv_device_init_meta_copy_vrs_htile_state(struct radv_device *device, struct radeon_surf *surf)
+create_pipeline(struct radv_device *device, struct radeon_surf *surf)
 {
    struct radv_meta_state *state = &device->meta_state;
-   nir_shader *cs = build_copy_vrs_htile_shader(device, surf);
    VkResult result;
 
    const VkDescriptorSetLayoutBinding bindings[] = {
@@ -127,7 +126,7 @@ radv_device_init_meta_copy_vrs_htile_state(struct radv_device *device, struct ra
 
    result = radv_meta_create_descriptor_set_layout(device, 2, bindings, &state->copy_vrs_htile_ds_layout);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
    const VkPushConstantRange pc_range = {
       .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
@@ -137,12 +136,34 @@ radv_device_init_meta_copy_vrs_htile_state(struct radv_device *device, struct ra
    result = radv_meta_create_pipeline_layout(device, &state->copy_vrs_htile_ds_layout, 1, &pc_range,
                                              &state->copy_vrs_htile_p_layout);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
+
+   nir_shader *cs = build_copy_vrs_htile_shader(device, surf);
 
    result =
       radv_meta_create_compute_pipeline(device, cs, state->copy_vrs_htile_p_layout, &state->copy_vrs_htile_pipeline);
-fail:
+
    ralloc_free(cs);
+   return result;
+}
+
+static VkResult
+get_pipeline(struct radv_device *device, struct radv_image *image, VkPipeline *pipeline_out)
+{
+   struct radv_meta_state *state = &device->meta_state;
+   VkResult result = VK_SUCCESS;
+
+   mtx_lock(&state->mtx);
+   if (!state->copy_vrs_htile_pipeline) {
+      result = create_pipeline(device, &image->planes[0].surface);
+      if (result != VK_SUCCESS)
+         goto fail;
+   }
+
+   *pipeline_out = state->copy_vrs_htile_pipeline;
+
+fail:
+   mtx_unlock(&state->mtx);
    return result;
 }
 
@@ -153,19 +174,16 @@ radv_copy_vrs_htile(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view *
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_meta_state *state = &device->meta_state;
    struct radv_meta_saved_state saved_state;
+   VkPipeline pipeline;
+   VkResult result;
 
    assert(radv_image_has_htile(dst_image));
 
-   mtx_lock(&state->mtx);
-   if (!device->meta_state.copy_vrs_htile_pipeline) {
-      VkResult ret = radv_device_init_meta_copy_vrs_htile_state(device, &dst_image->planes[0].surface);
-      if (ret != VK_SUCCESS) {
-         mtx_unlock(&state->mtx);
-         vk_command_buffer_set_error(&cmd_buffer->vk, ret);
-         return;
-      }
+   result = get_pipeline(device, dst_image, &pipeline);
+   if (result != VK_SUCCESS) {
+      vk_command_buffer_set_error(&cmd_buffer->vk, result);
+      return;
    }
-   mtx_unlock(&state->mtx);
 
    cmd_buffer->state.flush_bits |=
       radv_src_access_flush(cmd_buffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
@@ -175,8 +193,7 @@ radv_copy_vrs_htile(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view *
    radv_meta_save(&saved_state, cmd_buffer,
                   RADV_META_SAVE_COMPUTE_PIPELINE | RADV_META_SAVE_CONSTANTS | RADV_META_SAVE_DESCRIPTORS);
 
-   radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE,
-                        state->copy_vrs_htile_pipeline);
+   radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
 
    radv_meta_push_descriptor_set(
       cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, state->copy_vrs_htile_p_layout, 0, 2,

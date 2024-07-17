@@ -250,6 +250,15 @@ fn eprint_hex(label: &str, data: &[u32]) {
     eprintln!("");
 }
 
+macro_rules! pass {
+    ($s: expr, $pass: ident) => {
+        $s.$pass();
+        if DEBUG.print() {
+            eprintln!("NAK IR after {}:\n{}", stringify!($pass), $s);
+        }
+    };
+}
+
 #[no_mangle]
 pub extern "C" fn nak_compile_shader(
     nir: *mut nir_shader,
@@ -281,59 +290,19 @@ pub extern "C" fn nak_compile_shader(
         eprintln!("NAK IR:\n{}", &s);
     }
 
-    s.opt_bar_prop();
-    if DEBUG.print() {
-        eprintln!("NAK IR after opt_bar_prop:\n{}", &s);
-    }
-
-    s.opt_uniform_instrs();
-    if DEBUG.print() {
-        eprintln!("NAK IR after lower_uniform_instrs:\n{}", &s);
-    }
-
-    s.opt_copy_prop();
-    if DEBUG.print() {
-        eprintln!("NAK IR after opt_copy_prop:\n{}", &s);
-    }
-
-    s.opt_prmt();
-    if DEBUG.print() {
-        eprintln!("NAK IR after opt_prmt:\n{}", &s);
-    }
-
-    s.opt_lop();
-    if DEBUG.print() {
-        eprintln!("NAK IR after opt_lop:\n{}", &s);
-    }
-
-    s.opt_dce();
-    if DEBUG.print() {
-        eprintln!("NAK IR after dce:\n{}", &s);
-    }
-
-    s.opt_out();
-    if DEBUG.print() {
-        eprintln!("NAK IR after opt_out:\n{}", &s);
-    }
-
-    s.legalize();
-    if DEBUG.print() {
-        eprintln!("NAK IR after legalize:\n{}", &s);
-    }
-
-    s.assign_regs();
-    if DEBUG.print() {
-        eprintln!("NAK IR after assign_regs:\n{}", &s);
-    }
-
-    s.lower_par_copies();
-    s.lower_copy_swap();
-    s.opt_jump_thread();
-    s.calc_instr_deps();
-
-    if DEBUG.print() {
-        eprintln!("NAK IR:\n{}", &s);
-    }
+    pass!(s, opt_bar_prop);
+    pass!(s, opt_uniform_instrs);
+    pass!(s, opt_copy_prop);
+    pass!(s, opt_prmt);
+    pass!(s, opt_lop);
+    pass!(s, opt_dce);
+    pass!(s, opt_out);
+    pass!(s, legalize);
+    pass!(s, assign_regs);
+    pass!(s, lower_par_copies);
+    pass!(s, lower_copy_swap);
+    pass!(s, opt_jump_thread);
+    pass!(s, calc_instr_deps);
 
     s.gather_info();
 

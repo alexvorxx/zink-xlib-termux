@@ -264,8 +264,7 @@ radv_device_init_meta_depth_decomp_state(struct radv_device *device, bool on_dem
 }
 
 static VkPipeline *
-radv_get_depth_pipeline(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image,
-                        const VkImageSubresourceRange *subresourceRange)
+radv_get_depth_pipeline(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image)
 {
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_meta_state *state = &device->meta_state;
@@ -361,7 +360,7 @@ radv_process_depth_stencil(struct radv_cmd_buffer *cmd_buffer, struct radv_image
    VkCommandBuffer cmd_buffer_h = radv_cmd_buffer_to_handle(cmd_buffer);
    VkPipeline *pipeline;
 
-   pipeline = radv_get_depth_pipeline(cmd_buffer, image, subresourceRange);
+   pipeline = radv_get_depth_pipeline(cmd_buffer, image);
    if (!pipeline)
        return;
 

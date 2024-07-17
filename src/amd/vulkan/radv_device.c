@@ -587,7 +587,7 @@ radv_device_init_rgp(struct radv_device *device)
    if (!(instance->vk.trace_mode & RADV_TRACE_MODE_RGP))
       return VK_SUCCESS;
 
-   if (pdev->info.gfx_level < GFX8 || pdev->info.gfx_level > GFX11) {
+   if (pdev->info.gfx_level < GFX8 || pdev->info.gfx_level > GFX11_5) {
       fprintf(stderr, "GPU hardware not supported: refer to "
                       "the RGP documentation for the list of "
                       "supported GPUs!\n");

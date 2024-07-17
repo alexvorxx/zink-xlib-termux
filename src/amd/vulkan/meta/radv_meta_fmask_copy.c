@@ -111,38 +111,8 @@ create_fmask_copy_pipeline(struct radv_device *device, int samples, VkPipeline *
 static VkResult
 radv_device_init_meta_fmask_copy_state_internal(struct radv_device *device, uint32_t samples_log2)
 {
-   VkResult result;
-
    if (device->meta_state.fmask_copy.pipeline[samples_log2])
       return VK_SUCCESS;
-
-   if (!device->meta_state.fmask_copy.ds_layout) {
-      const VkDescriptorSetLayoutBinding bindings[] = {
-         {
-            .binding = 0,
-            .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-            .descriptorCount = 1,
-            .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-         },
-         {
-            .binding = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-            .descriptorCount = 1,
-            .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-         },
-      };
-
-      result = radv_meta_create_descriptor_set_layout(device, 2, bindings, &device->meta_state.fmask_copy.ds_layout);
-      if (result != VK_SUCCESS)
-         return result;
-   }
-
-   if (!device->meta_state.fmask_copy.p_layout) {
-      result = radv_meta_create_pipeline_layout(device, &device->meta_state.fmask_copy.ds_layout, 0, NULL,
-                                                &device->meta_state.fmask_copy.p_layout);
-      if (result != VK_SUCCESS)
-         return result;
-   }
 
    return create_fmask_copy_pipeline(device, 1u << samples_log2, &device->meta_state.fmask_copy.pipeline[samples_log2]);
 }
@@ -150,7 +120,32 @@ radv_device_init_meta_fmask_copy_state_internal(struct radv_device *device, uint
 VkResult
 radv_device_init_meta_fmask_copy_state(struct radv_device *device, bool on_demand)
 {
+   struct radv_meta_state *state = &device->meta_state;
    VkResult result;
+
+   const VkDescriptorSetLayoutBinding bindings[] = {
+      {
+         .binding = 0,
+         .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+         .descriptorCount = 1,
+         .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+      },
+      {
+         .binding = 1,
+         .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+         .descriptorCount = 1,
+         .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+      },
+   };
+
+   result = radv_meta_create_descriptor_set_layout(device, 2, bindings, &state->fmask_copy.ds_layout);
+   if (result != VK_SUCCESS)
+      return result;
+
+   result =
+      radv_meta_create_pipeline_layout(device, &state->fmask_copy.ds_layout, 0, NULL, &state->fmask_copy.p_layout);
+   if (result != VK_SUCCESS)
+      return result;
 
    if (on_demand)
       return VK_SUCCESS;

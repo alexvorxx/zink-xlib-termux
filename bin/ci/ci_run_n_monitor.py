@@ -191,7 +191,7 @@ def monitor_pipeline(
 
         print("---------------------------------", flush=False)
 
-        if len(target_statuses) == 1 and {"running"}.intersection(
+        if len(target_statuses) == 1 and RUNNING_STATUSES.intersection(
             target_statuses.values()
         ):
             return target_id, None, execution_times

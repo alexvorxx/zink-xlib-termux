@@ -1090,7 +1090,7 @@ static struct pb_buffer_lean *radeon_winsys_bo_from_ptr(struct radeon_winsys *rw
                 RADEON_GEM_USERPTR_REGISTER |
                 RADEON_GEM_USERPTR_VALIDATE;
 
-   if (drmCommandWriteRead(radeon_drm_winsys_fd(ws), DRM_RADEON_GEM_USERPTR,
+   if (drmCommandWriteRead(ws->fd, DRM_RADEON_GEM_USERPTR,
                            &args, sizeof(args))) {
       FREE(bo);
       return NULL;
@@ -1129,7 +1129,7 @@ static struct pb_buffer_lean *radeon_winsys_bo_from_ptr(struct radeon_winsys *rw
                  RADEON_VM_PAGE_WRITEABLE |
                  RADEON_VM_PAGE_SNOOPED;
       va.offset = bo->va;
-      r = drmCommandWriteRead(radeon_drm_winsys_fd(ws), DRM_RADEON_GEM_VA, &va, sizeof(va));
+      r = drmCommandWriteRead(ws->fd, DRM_RADEON_GEM_VA, &va, sizeof(va));
       if (r && va.operation == RADEON_VA_RESULT_ERROR) {
          fprintf(stderr, "radeon: Failed to assign virtual address space\n");
          radeon_bo_destroy(NULL, &bo->base);
@@ -1179,16 +1179,7 @@ static struct pb_buffer_lean *radeon_winsys_bo_from_handle(struct radeon_winsys 
       bo = util_hash_table_get(ws->bo_names, (void*)(uintptr_t)whandle->handle);
    } else if (whandle->type == WINSYS_HANDLE_TYPE_FD) {
       /* We must first get the GEM handle, as fds are unreliable keys */
-      if (ws->rendernode_fd != -1) {
-         int handle2;
-         r = drmPrimeHandleToFD(ws->rendernode_fd, whandle->handle, DRM_CLOEXEC, &handle2);
-         if (r)
-            goto fail;
-         r = drmPrimeFDToHandle(ws->fd, handle2, &handle);
-         close(handle2);
-      } else {
-         r = drmPrimeFDToHandle(ws->fd, whandle->handle, &handle);
-      }
+      r = drmPrimeFDToHandle(ws->fd, whandle->handle, &handle);
       if (r)
          goto fail;
       bo = util_hash_table_get(ws->bo_handles, (void*)(uintptr_t)handle);
@@ -1214,7 +1205,7 @@ static struct pb_buffer_lean *radeon_winsys_bo_from_handle(struct radeon_winsys 
       memset(&open_arg, 0, sizeof(open_arg));
       /* Open the BO. */
       open_arg.name = whandle->handle;
-      if (drmIoctl(radeon_drm_winsys_fd(ws), DRM_IOCTL_GEM_OPEN, &open_arg)) {
+      if (drmIoctl(ws->fd, DRM_IOCTL_GEM_OPEN, &open_arg)) {
          FREE(bo);
          goto fail;
       }
@@ -1268,7 +1259,7 @@ done:
                  RADEON_VM_PAGE_WRITEABLE |
                  RADEON_VM_PAGE_SNOOPED;
       va.offset = bo->va;
-      r = drmCommandWriteRead(radeon_drm_winsys_fd(ws), DRM_RADEON_GEM_VA, &va, sizeof(va));
+      r = drmCommandWriteRead(ws->fd, DRM_RADEON_GEM_VA, &va, sizeof(va));
       if (r && va.operation == RADEON_VA_RESULT_ERROR) {
          fprintf(stderr, "radeon: Failed to assign virtual address space\n");
          radeon_bo_destroy(NULL, &bo->base);
@@ -1323,7 +1314,7 @@ static bool radeon_winsys_bo_get_handle(struct radeon_winsys *rws,
       if (!bo->flink_name) {
          flink.handle = bo->handle;
 
-         if (ioctl(radeon_drm_winsys_fd(ws), DRM_IOCTL_GEM_FLINK, &flink)) {
+         if (ioctl(ws->fd, DRM_IOCTL_GEM_FLINK, &flink)) {
             return false;
          }
 
@@ -1337,7 +1328,7 @@ static bool radeon_winsys_bo_get_handle(struct radeon_winsys *rws,
    } else if (whandle->type == WINSYS_HANDLE_TYPE_KMS) {
       whandle->handle = bo->handle;
    } else if (whandle->type == WINSYS_HANDLE_TYPE_FD) {
-      if (drmPrimeHandleToFD(radeon_drm_winsys_fd(ws), bo->handle, DRM_CLOEXEC, (int*)&whandle->handle))
+      if (drmPrimeHandleToFD(ws->fd, bo->handle, DRM_CLOEXEC, (int*)&whandle->handle))
          return false;
    }
 

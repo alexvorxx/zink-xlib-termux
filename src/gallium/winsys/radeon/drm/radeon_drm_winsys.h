@@ -39,7 +39,6 @@ struct radeon_drm_winsys {
    struct pb_slabs bo_slabs;
 
    int fd; /* DRM file descriptor */
-   int rendernode_fd; /* valid only when import handles must do an intermediate export -> import onto DRM fd */
    int num_cs; /* The number of command streams created. */
    uint64_t allocated_vram;
    uint64_t allocated_gtt;
@@ -88,12 +87,6 @@ struct radeon_drm_winsys {
 static inline struct radeon_drm_winsys *radeon_drm_winsys(struct radeon_winsys *base)
 {
    return (struct radeon_drm_winsys*)base;
-}
-
-ALWAYS_INLINE static int
-radeon_drm_winsys_fd(const struct radeon_drm_winsys *ws)
-{
-   return ws->rendernode_fd == -1 ? ws->fd : ws->rendernode_fd;
 }
 
 uint32_t radeon_drm_get_gpu_reset_counter(struct radeon_drm_winsys *ws);

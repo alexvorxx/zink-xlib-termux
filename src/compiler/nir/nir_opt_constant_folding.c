@@ -281,6 +281,23 @@ try_fold_intrinsic(nir_builder *b, nir_intrinsic_instr *intrin,
       }
       return false;
 
+   case nir_intrinsic_inverse_ballot: {
+      if (!nir_src_is_const(intrin->src[0]))
+         return false;
+      bool constant_true = true;
+      bool constant_false = true;
+      for (unsigned i = 0; i < nir_src_num_components(intrin->src[0]); i++) {
+         int64_t value = nir_src_comp_as_int(intrin->src[0], i);
+         constant_true &= value == -1;
+         constant_false &= value == 0;
+      }
+      if (!constant_true && !constant_false)
+         return false;
+      b->cursor = nir_before_instr(&intrin->instr);
+      nir_def_replace(&intrin->def, nir_imm_bool(b, constant_true));
+      return true;
+   }
+
    default:
       return false;
    }

@@ -857,6 +857,46 @@ static void radeon_vcn_enc_av1_get_tile_config(struct radeon_encoder *enc,
    enc->enc_pic.av1_tile_config.context_update_tile_id = pic->context_update_tile_id;
 }
 
+static void radeon_vcn_enc_av1_get_meta_param(struct radeon_encoder *enc,
+                                              struct pipe_av1_enc_picture_desc *pic)
+{
+   memset (&enc->enc_pic.enc_sei, 0, sizeof(rvcn_enc_seidata_t));
+
+   if (!pic->metadata_flags.value) {
+      enc->enc_pic.enc_sei.flags.value = 0;
+      return;
+   }
+
+   if (pic->metadata_flags.hdr_cll) {
+      enc->enc_pic.enc_sei.flags.hdr_cll = 1;
+      enc->enc_pic.enc_sei.hdr_cll = (rvcn_enc_sei_hdr_cll_t) {
+         .max_cll = pic->metadata_hdr_cll.max_cll,
+         .max_fall = pic->metadata_hdr_cll.max_fall
+      };
+   }
+
+   if (pic->metadata_flags.hdr_mdcv) {
+      enc->enc_pic.enc_sei.flags.hdr_mdcv = 1;
+      for (int32_t i = 0; i < 3; i++) {
+         enc->enc_pic.enc_sei.hdr_mdcv.primary_chromaticity_x[i]
+            = pic->metadata_hdr_mdcv.primary_chromaticity_x[i];
+         enc->enc_pic.enc_sei.hdr_mdcv.primary_chromaticity_y[i]
+            = pic->metadata_hdr_mdcv.primary_chromaticity_y[i];
+      }
+      enc->enc_pic.enc_sei.hdr_mdcv.white_point_chromaticity_x =
+                  pic->metadata_hdr_mdcv.white_point_chromaticity_x;
+      enc->enc_pic.enc_sei.hdr_mdcv.white_point_chromaticity_y =
+                  pic->metadata_hdr_mdcv.white_point_chromaticity_y;
+      enc->enc_pic.enc_sei.hdr_mdcv.luminance_max =
+                  pic->metadata_hdr_mdcv.luminance_max;
+      enc->enc_pic.enc_sei.hdr_mdcv.luminance_min =
+                  pic->metadata_hdr_mdcv.luminance_min;
+   }
+
+   /* meta data per picture will need to clear it after fetching it up */
+   pic->metadata_flags.value = 0;
+}
+
 static void radeon_vcn_enc_av1_get_param(struct radeon_encoder *enc,
                                          struct pipe_av1_enc_picture_desc *pic)
 {
@@ -917,6 +957,7 @@ static void radeon_vcn_enc_av1_get_param(struct radeon_encoder *enc,
                                          &pic->intra_refresh);
    radeon_vcn_enc_get_roi_param(enc, &pic->roi);
    radeon_vcn_enc_get_latency_param(enc);
+   radeon_vcn_enc_av1_get_meta_param(enc, pic);
 }
 
 static void radeon_vcn_enc_get_param(struct radeon_encoder *enc, struct pipe_picture_desc *picture)

@@ -188,6 +188,7 @@ struct radeon_enc_pic {
    rvcn_enc_qp_map_t enc_qp_map;
    rvcn_enc_metadata_buffer_t metadata;
    rvcn_enc_latency_t enc_latency;
+   rvcn_enc_seidata_t enc_sei;
 };
 
 struct radeon_encoder {

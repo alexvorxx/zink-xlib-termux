@@ -574,6 +574,33 @@ typedef struct rvcn_enc_metadata_buffer_s {
    uint32_t two_pass_search_center_map_offset;
 } rvcn_enc_metadata_buffer_t;
 
+typedef struct rvcn_enc_sei_hdr_cll_s {
+   uint16_t max_cll;
+   uint16_t max_fall;
+} rvcn_enc_sei_hdr_cll_t;
+
+typedef struct rvcn_enc_sei_hdr_mdcv_s {
+   uint16_t primary_chromaticity_x[3];
+   uint16_t primary_chromaticity_y[3];
+   uint16_t white_point_chromaticity_x;
+   uint16_t white_point_chromaticity_y;
+   uint32_t luminance_max;
+   uint32_t luminance_min;
+} rvcn_enc_sei_hdr_mdcv_t;
+
+/* shared sei structure */
+typedef struct rvcn_enc_seidata_s {
+   union {
+      struct {
+         uint32_t hdr_cll:1;
+         uint32_t hdr_mdcv:1;
+      };
+      uint32_t value;
+   } flags;
+   rvcn_enc_sei_hdr_cll_t hdr_cll;
+   rvcn_enc_sei_hdr_mdcv_t hdr_mdcv;
+} rvcn_enc_seidata_t;
+
 typedef struct rvcn_enc_video_bitstream_buffer_s {
    uint32_t mode;
    uint32_t video_bitstream_buffer_address_hi;

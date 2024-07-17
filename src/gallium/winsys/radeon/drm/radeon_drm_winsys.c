@@ -62,7 +62,7 @@ static bool radeon_set_fd_access(struct radeon_drm_cs *applier,
    /* Pass through the request to the kernel. */
    info.value = (unsigned long)&value;
    info.request = request;
-   if (drmCommandWriteRead(applier->ws->fd, DRM_RADEON_INFO,
+   if (drmCommandWriteRead(radeon_drm_winsys_fd(applier->ws), DRM_RADEON_INFO,
                            &info, sizeof(info)) != 0) {
       mtx_unlock(&*mutex);
       return false;
@@ -94,7 +94,7 @@ static bool radeon_get_drm_value(struct radeon_drm_winsys *ws, unsigned request,
    info.value = (unsigned long)out;
    info.request = request;
 
-   retval = drmCommandWriteRead(ws->fd, DRM_RADEON_INFO, &info, sizeof(info));
+   retval = drmCommandWriteRead(radeon_drm_winsys_fd(ws), DRM_RADEON_INFO, &info, sizeof(info));
    if (retval) {
       if (errname) {
          fprintf(stderr, "radeon: Failed to get %s, error number %d\n",
@@ -328,12 +328,12 @@ static bool do_winsys_init(struct radeon_drm_winsys *ws)
        * aren't set.
        */
       ws->info.has_userptr =
-            drmCommandWriteRead(ws->fd, DRM_RADEON_GEM_USERPTR,
+            drmCommandWriteRead(radeon_drm_winsys_fd(ws), DRM_RADEON_GEM_USERPTR,
                                 &args, sizeof(args)) == -EACCES;
    }
 
    /* Get GEM info. */
-   retval = drmCommandWriteRead(ws->fd, DRM_RADEON_GEM_INFO,
+   retval = drmCommandWriteRead(radeon_drm_winsys_fd(ws), DRM_RADEON_GEM_INFO,
                                 &gem_info, sizeof(gem_info));
    if (retval) {
       fprintf(stderr, "radeon: Failed to get MM info, error number %d\n",
@@ -855,7 +855,7 @@ radeon_drm_winsys_get_fd(struct radeon_winsys *ws)
 {
    struct radeon_drm_winsys *rws = (struct radeon_drm_winsys*)ws;
 
-   return rws->fd;
+   return radeon_drm_winsys_fd(rws);
 }
 
 PUBLIC struct radeon_winsys *
@@ -915,7 +915,7 @@ radeon_drm_winsys_create(int fd, const struct pipe_screen_config *config,
    }
 
    if (ws->gen >= DRV_R600) {
-      ws->surf_man = radeon_surface_manager_new(ws->fd);
+      ws->surf_man = radeon_surface_manager_new(radeon_drm_winsys_fd(ws));
       if (!ws->surf_man)
          goto fail_slab;
    }

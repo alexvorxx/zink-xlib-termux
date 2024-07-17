@@ -1090,7 +1090,7 @@ static struct pb_buffer_lean *radeon_winsys_bo_from_ptr(struct radeon_winsys *rw
                 RADEON_GEM_USERPTR_REGISTER |
                 RADEON_GEM_USERPTR_VALIDATE;
 
-   if (drmCommandWriteRead(ws->fd, DRM_RADEON_GEM_USERPTR,
+   if (drmCommandWriteRead(radeon_drm_winsys_fd(ws), DRM_RADEON_GEM_USERPTR,
                            &args, sizeof(args))) {
       FREE(bo);
       return NULL;
@@ -1129,7 +1129,7 @@ static struct pb_buffer_lean *radeon_winsys_bo_from_ptr(struct radeon_winsys *rw
                  RADEON_VM_PAGE_WRITEABLE |
                  RADEON_VM_PAGE_SNOOPED;
       va.offset = bo->va;
-      r = drmCommandWriteRead(ws->fd, DRM_RADEON_GEM_VA, &va, sizeof(va));
+      r = drmCommandWriteRead(radeon_drm_winsys_fd(ws), DRM_RADEON_GEM_VA, &va, sizeof(va));
       if (r && va.operation == RADEON_VA_RESULT_ERROR) {
          fprintf(stderr, "radeon: Failed to assign virtual address space\n");
          radeon_bo_destroy(NULL, &bo->base);
@@ -1205,7 +1205,7 @@ static struct pb_buffer_lean *radeon_winsys_bo_from_handle(struct radeon_winsys 
       memset(&open_arg, 0, sizeof(open_arg));
       /* Open the BO. */
       open_arg.name = whandle->handle;
-      if (drmIoctl(ws->fd, DRM_IOCTL_GEM_OPEN, &open_arg)) {
+      if (drmIoctl(radeon_drm_winsys_fd(ws), DRM_IOCTL_GEM_OPEN, &open_arg)) {
          FREE(bo);
          goto fail;
       }
@@ -1259,7 +1259,7 @@ done:
                  RADEON_VM_PAGE_WRITEABLE |
                  RADEON_VM_PAGE_SNOOPED;
       va.offset = bo->va;
-      r = drmCommandWriteRead(ws->fd, DRM_RADEON_GEM_VA, &va, sizeof(va));
+      r = drmCommandWriteRead(radeon_drm_winsys_fd(ws), DRM_RADEON_GEM_VA, &va, sizeof(va));
       if (r && va.operation == RADEON_VA_RESULT_ERROR) {
          fprintf(stderr, "radeon: Failed to assign virtual address space\n");
          radeon_bo_destroy(NULL, &bo->base);
@@ -1314,7 +1314,7 @@ static bool radeon_winsys_bo_get_handle(struct radeon_winsys *rws,
       if (!bo->flink_name) {
          flink.handle = bo->handle;
 
-         if (ioctl(ws->fd, DRM_IOCTL_GEM_FLINK, &flink)) {
+         if (ioctl(radeon_drm_winsys_fd(ws), DRM_IOCTL_GEM_FLINK, &flink)) {
             return false;
          }
 
@@ -1328,7 +1328,7 @@ static bool radeon_winsys_bo_get_handle(struct radeon_winsys *rws,
    } else if (whandle->type == WINSYS_HANDLE_TYPE_KMS) {
       whandle->handle = bo->handle;
    } else if (whandle->type == WINSYS_HANDLE_TYPE_FD) {
-      if (drmPrimeHandleToFD(ws->fd, bo->handle, DRM_CLOEXEC, (int*)&whandle->handle))
+      if (drmPrimeHandleToFD(radeon_drm_winsys_fd(ws), bo->handle, DRM_CLOEXEC, (int*)&whandle->handle))
          return false;
    }
 

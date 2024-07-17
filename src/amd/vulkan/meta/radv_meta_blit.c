@@ -742,28 +742,23 @@ radv_device_init_meta_blit_color(struct radv_device *device, bool on_demand)
       VkFormat format = radv_fs_key_format_exemplars[i];
       unsigned key = radv_format_meta_fs_key(device, format);
 
-      if (on_demand)
-         continue;
-
       result = build_pipeline(device, VK_IMAGE_ASPECT_COLOR_BIT, GLSL_SAMPLER_DIM_1D, format,
                               &device->meta_state.blit.pipeline_1d_src[key]);
       if (result != VK_SUCCESS)
-         goto fail;
+         return result;
 
       result = build_pipeline(device, VK_IMAGE_ASPECT_COLOR_BIT, GLSL_SAMPLER_DIM_2D, format,
                               &device->meta_state.blit.pipeline_2d_src[key]);
       if (result != VK_SUCCESS)
-         goto fail;
+         return result;
 
       result = build_pipeline(device, VK_IMAGE_ASPECT_COLOR_BIT, GLSL_SAMPLER_DIM_3D, format,
                               &device->meta_state.blit.pipeline_3d_src[key]);
       if (result != VK_SUCCESS)
-         goto fail;
+         return result;
    }
 
-   result = VK_SUCCESS;
-fail:
-   return result;
+   return VK_SUCCESS;
 }
 
 static VkResult
@@ -771,26 +766,18 @@ radv_device_init_meta_blit_depth(struct radv_device *device, bool on_demand)
 {
    VkResult result;
 
-   if (on_demand)
-      return VK_SUCCESS;
-
    result = build_pipeline(device, VK_IMAGE_ASPECT_DEPTH_BIT, GLSL_SAMPLER_DIM_1D, VK_FORMAT_D32_SFLOAT,
                            &device->meta_state.blit.depth_only_1d_pipeline);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
    result = build_pipeline(device, VK_IMAGE_ASPECT_DEPTH_BIT, GLSL_SAMPLER_DIM_2D, VK_FORMAT_D32_SFLOAT,
                            &device->meta_state.blit.depth_only_2d_pipeline);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
-   result = build_pipeline(device, VK_IMAGE_ASPECT_DEPTH_BIT, GLSL_SAMPLER_DIM_3D, VK_FORMAT_D32_SFLOAT,
-                           &device->meta_state.blit.depth_only_3d_pipeline);
-   if (result != VK_SUCCESS)
-      goto fail;
-
-fail:
-   return result;
+   return build_pipeline(device, VK_IMAGE_ASPECT_DEPTH_BIT, GLSL_SAMPLER_DIM_3D, VK_FORMAT_D32_SFLOAT,
+                         &device->meta_state.blit.depth_only_3d_pipeline);
 }
 
 static VkResult
@@ -798,26 +785,18 @@ radv_device_init_meta_blit_stencil(struct radv_device *device, bool on_demand)
 {
    VkResult result;
 
-   if (on_demand)
-      return VK_SUCCESS;
-
    result = build_pipeline(device, VK_IMAGE_ASPECT_STENCIL_BIT, GLSL_SAMPLER_DIM_1D, VK_FORMAT_S8_UINT,
                            &device->meta_state.blit.stencil_only_1d_pipeline);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
    result = build_pipeline(device, VK_IMAGE_ASPECT_STENCIL_BIT, GLSL_SAMPLER_DIM_2D, VK_FORMAT_S8_UINT,
                            &device->meta_state.blit.stencil_only_2d_pipeline);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
-   result = build_pipeline(device, VK_IMAGE_ASPECT_STENCIL_BIT, GLSL_SAMPLER_DIM_3D, VK_FORMAT_S8_UINT,
-                           &device->meta_state.blit.stencil_only_3d_pipeline);
-   if (result != VK_SUCCESS)
-      goto fail;
-
-fail:
-   return result;
+   return build_pipeline(device, VK_IMAGE_ASPECT_STENCIL_BIT, GLSL_SAMPLER_DIM_3D, VK_FORMAT_S8_UINT,
+                         &device->meta_state.blit.stencil_only_3d_pipeline);
 }
 
 VkResult
@@ -842,6 +821,9 @@ radv_device_init_meta_blit_state(struct radv_device *device, bool on_demand)
                                              &device->meta_state.blit.pipeline_layout);
    if (result != VK_SUCCESS)
       return result;
+
+   if (on_demand)
+      return VK_SUCCESS;
 
    result = radv_device_init_meta_blit_color(device, on_demand);
    if (result != VK_SUCCESS)

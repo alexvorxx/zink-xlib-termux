@@ -1772,6 +1772,70 @@ mitigate_hazards(Program* program)
    }
 }
 
+/* FeatureRequiredExportPriority in LLVM */
+void
+required_export_priority(Program* program)
+{
+   /* Skip callees, assuming that the caller has already increased the priority. */
+   bool increase_priority = !program->is_epilog && !program->info.vs.has_prolog &&
+                            (!program->info.merged_shader_compiled_separately ||
+                             program->stage.sw == SWStage::VS || program->stage.sw == SWStage::TES);
+   increase_priority |= program->is_prolog;
+
+   for (Block& block : program->blocks) {
+      std::vector<aco_ptr<Instruction>> new_instructions;
+      new_instructions.reserve(block.instructions.size() + 6);
+
+      Builder bld(program, &new_instructions);
+
+      if (increase_priority && block.index == 0) {
+         if (!block.instructions.empty() && block.instructions[0]->opcode == aco_opcode::s_setprio)
+            block.instructions[0]->salu().imm = MAX2(block.instructions[0]->salu().imm, 2);
+         else
+            bld.sopp(aco_opcode::s_setprio, 2);
+      }
+
+      for (unsigned i = 0; i < block.instructions.size(); i++) {
+         Instruction* instr = block.instructions[i].get();
+         new_instructions.push_back(std::move(block.instructions[i]));
+
+         if (instr->opcode == aco_opcode::s_setprio) {
+            instr->salu().imm = MAX2(instr->salu().imm, 2);
+            continue;
+         }
+
+         bool end_of_export_sequence = instr->isEXP() && (i == block.instructions.size() - 1 ||
+                                                          !block.instructions[i + 1]->isEXP());
+         if (!end_of_export_sequence)
+            continue;
+
+         bool before_endpgm = false;
+         if (i != block.instructions.size() - 1) {
+            before_endpgm = block.instructions[i + 1]->opcode == aco_opcode::s_endpgm;
+         } else {
+            /* Does this fallthrough to a s_endpgm? */
+            for (unsigned j = block.index + 1; j < program->blocks.size(); j++) {
+               if (program->blocks[j].instructions.size() == 1 &&
+                   program->blocks[j].instructions[0]->opcode == aco_opcode::s_endpgm)
+                  before_endpgm = true;
+               if (!program->blocks[j].instructions.empty())
+                  break;
+            }
+         }
+
+         bld.sopp(aco_opcode::s_setprio, 0);
+         if (!before_endpgm)
+            bld.sopk(aco_opcode::s_waitcnt_expcnt, Operand(sgpr_null, s1), 0);
+         bld.sopp(aco_opcode::s_nop, 0);
+         bld.sopp(aco_opcode::s_nop, 0);
+         if (!before_endpgm)
+            bld.sopp(aco_opcode::s_setprio, 2);
+      }
+
+      block.instructions = std::move(new_instructions);
+   }
+}
+
 } /* end namespace */
 
 void
@@ -1785,6 +1849,10 @@ insert_NOPs(Program* program)
       mitigate_hazards<NOP_ctx_gfx10, handle_instruction_gfx10, resolve_all_gfx10>(program);
    else
       mitigate_hazards<NOP_ctx_gfx6, handle_instruction_gfx6, resolve_all_gfx6>(program);
+
+   if (program->gfx_level == GFX11_5 && (program->stage.hw == AC_HW_NEXT_GEN_GEOMETRY_SHADER ||
+                                         program->stage.hw == AC_HW_PIXEL_SHADER))
+      required_export_priority(program);
 }
 
 } // namespace aco

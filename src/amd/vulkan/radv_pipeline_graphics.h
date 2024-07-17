@@ -629,7 +629,6 @@ struct radv_graphics_pipeline_create_info {
    bool db_stencil_clear;
    bool depth_compress_disable;
    bool stencil_compress_disable;
-   bool resummarize_enable;
    uint32_t custom_blend_mode;
 };
 

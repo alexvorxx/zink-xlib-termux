@@ -258,7 +258,6 @@ struct radv_meta_state {
    struct {
       VkPipelineLayout p_layout;
       VkPipeline decompress_pipeline;
-      VkPipeline resummarize_pipeline;
    } depth_decomp[MAX_SAMPLES_LOG2];
 
    VkDescriptorSetLayout expand_depth_stencil_compute_ds_layout;

@@ -829,6 +829,15 @@ impl SrcRef {
         }
     }
 
+    pub fn as_u32(&self) -> Option<u32> {
+        match self {
+            SrcRef::Zero => Some(0),
+            SrcRef::Imm32(u) => Some(*u),
+            SrcRef::CBuf(_) | SrcRef::SSA(_) | SrcRef::Reg(_) => None,
+            _ => panic!("Invalid integer source"),
+        }
+    }
+
     pub fn get_reg(&self) -> Option<&RegRef> {
         match self {
             SrcRef::Zero
@@ -1221,12 +1230,7 @@ impl Src {
 
     pub fn as_u32(&self) -> Option<u32> {
         if self.src_mod.is_none() {
-            match self.src_ref {
-                SrcRef::Zero => Some(0),
-                SrcRef::Imm32(u) => Some(u),
-                SrcRef::CBuf(_) | SrcRef::SSA(_) | SrcRef::Reg(_) => None,
-                _ => panic!("Invalid integer source"),
-            }
+            self.src_ref.as_u32()
         } else {
             None
         }
@@ -3669,6 +3673,21 @@ impl_display_for_op!(OpMov);
 pub struct PrmtSelByte(u8);
 
 impl PrmtSelByte {
+    pub const INVALID: PrmtSelByte = PrmtSelByte(u8::MAX);
+
+    pub fn new(src_idx: usize, byte_idx: usize, msb: bool) -> PrmtSelByte {
+        assert!(src_idx < 2);
+        assert!(byte_idx < 4);
+
+        let mut nib = 0;
+        nib |= (src_idx as u8) << 2;
+        nib |= byte_idx as u8;
+        if msb {
+            nib |= 0x8;
+        }
+        PrmtSelByte(nib)
+    }
+
     pub fn src(&self) -> usize {
         ((self.0 >> 2) & 0x1).into()
     }
@@ -3694,6 +3713,15 @@ impl PrmtSelByte {
 pub struct PrmtSel(pub u16);
 
 impl PrmtSel {
+    pub fn new(bytes: [PrmtSelByte; 4]) -> PrmtSel {
+        let mut sel = 0;
+        for i in 0..4 {
+            assert!(bytes[i].0 <= 0xf);
+            sel |= u16::from(bytes[i].0) << (i * 4);
+        }
+        PrmtSel(sel)
+    }
+
     pub fn get(&self, byte_idx: usize) -> PrmtSelByte {
         assert!(byte_idx < 4);
         PrmtSelByte(((self.0 >> (byte_idx * 4)) & 0xf) as u8)

@@ -286,6 +286,7 @@ def cancel_jobs(
     if not to_cancel:
         return
 
+    print("Cancelled jobs: ", end=" ")
     with ThreadPoolExecutor(max_workers=6) as exe:
         part = partial(cancel_job, project)
         exe.map(part, to_cancel)

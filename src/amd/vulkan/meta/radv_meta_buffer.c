@@ -30,6 +30,35 @@ build_buffer_fill_shader(struct radv_device *dev)
    return b.shader;
 }
 
+struct fill_constants {
+   uint64_t addr;
+   uint32_t max_offset;
+   uint32_t data;
+};
+
+static VkResult
+create_fill_pipeline(struct radv_device *device)
+{
+   VkResult result;
+
+   const VkPushConstantRange pc_range = {
+      .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+      .size = sizeof(struct fill_constants),
+   };
+
+   result = radv_meta_create_pipeline_layout(device, NULL, 1, &pc_range, &device->meta_state.buffer.fill_p_layout);
+   if (result != VK_SUCCESS)
+      return result;
+
+   nir_shader *cs = build_buffer_fill_shader(device);
+
+   result = radv_meta_create_compute_pipeline(device, cs, device->meta_state.buffer.fill_p_layout,
+                                              &device->meta_state.buffer.fill_pipeline);
+
+   ralloc_free(cs);
+   return result;
+}
+
 static nir_shader *
 build_buffer_copy_shader(struct radv_device *dev)
 {
@@ -53,59 +82,48 @@ build_buffer_copy_shader(struct radv_device *dev)
    return b.shader;
 }
 
-struct fill_constants {
-   uint64_t addr;
-   uint32_t max_offset;
-   uint32_t data;
-};
-
 struct copy_constants {
    uint64_t src_addr;
    uint64_t dst_addr;
    uint32_t max_offset;
 };
 
-VkResult
-radv_device_init_meta_buffer_state(struct radv_device *device)
+static VkResult
+create_copy_pipeline(struct radv_device *device)
 {
    VkResult result;
-   nir_shader *fill_cs = build_buffer_fill_shader(device);
-   nir_shader *copy_cs = build_buffer_copy_shader(device);
 
-   const VkPushConstantRange pc_range_fill = {
-      .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-      .size = sizeof(struct fill_constants),
-   };
-
-   result = radv_meta_create_pipeline_layout(device, NULL, 1, &pc_range_fill, &device->meta_state.buffer.fill_p_layout);
-   if (result != VK_SUCCESS)
-      goto fail;
-
-   const VkPushConstantRange pc_range_copy = {
+   const VkPushConstantRange pc_range = {
       .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
       .size = sizeof(struct copy_constants),
    };
 
-   result = radv_meta_create_pipeline_layout(device, NULL, 1, &pc_range_copy, &device->meta_state.buffer.copy_p_layout);
+   result = radv_meta_create_pipeline_layout(device, NULL, 1, &pc_range, &device->meta_state.buffer.copy_p_layout);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
-   result = radv_meta_create_compute_pipeline(device, fill_cs, device->meta_state.buffer.fill_p_layout,
-                                              &device->meta_state.buffer.fill_pipeline);
-   if (result != VK_SUCCESS)
-      goto fail;
+   nir_shader *cs = build_buffer_copy_shader(device);
 
-   result = radv_meta_create_compute_pipeline(device, copy_cs, device->meta_state.buffer.copy_p_layout,
+   result = radv_meta_create_compute_pipeline(device, cs, device->meta_state.buffer.copy_p_layout,
                                               &device->meta_state.buffer.copy_pipeline);
-   if (result != VK_SUCCESS)
-      goto fail;
 
-   ralloc_free(fill_cs);
-   ralloc_free(copy_cs);
-   return VK_SUCCESS;
-fail:
-   ralloc_free(fill_cs);
-   ralloc_free(copy_cs);
+   ralloc_free(cs);
+   return result;
+}
+
+VkResult
+radv_device_init_meta_buffer_state(struct radv_device *device)
+{
+   VkResult result;
+
+   result = create_fill_pipeline(device);
+   if (result != VK_SUCCESS)
+      return result;
+
+   result = create_copy_pipeline(device);
+   if (result != VK_SUCCESS)
+      return result;
+
    return result;
 }
 

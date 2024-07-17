@@ -54,7 +54,6 @@ static VkResult
 create_pipeline_cs(struct radv_device *device, VkPipeline *pipeline)
 {
    VkResult result = VK_SUCCESS;
-   nir_shader *cs = build_expand_depth_stencil_compute_shader(device);
 
    const VkDescriptorSetLayoutBinding bindings[] = {
       {
@@ -75,19 +74,18 @@ create_pipeline_cs(struct radv_device *device, VkPipeline *pipeline)
    result = radv_meta_create_descriptor_set_layout(device, 2, bindings,
                                                    &device->meta_state.expand_depth_stencil_compute_ds_layout);
    if (result != VK_SUCCESS)
-      goto cleanup;
+       return result;
 
    result = radv_meta_create_pipeline_layout(device, &device->meta_state.expand_depth_stencil_compute_ds_layout, 0,
                                              NULL, &device->meta_state.expand_depth_stencil_compute_p_layout);
    if (result != VK_SUCCESS)
-      goto cleanup;
+       return result;
+
+   nir_shader *cs = build_expand_depth_stencil_compute_shader(device);
 
    result =
       radv_meta_create_compute_pipeline(device, cs, device->meta_state.expand_depth_stencil_compute_p_layout, pipeline);
-   if (result != VK_SUCCESS)
-      goto cleanup;
 
-cleanup:
    ralloc_free(cs);
    return result;
 }

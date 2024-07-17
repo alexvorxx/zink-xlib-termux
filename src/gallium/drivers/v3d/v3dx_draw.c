@@ -974,7 +974,7 @@ v3d_update_job_ez(struct v3d_context *v3d, struct v3d_job *job)
                  */
                 bool needs_depth_load = v3d->zsa && job->zsbuf &&
                         v3d->zsa->base.depth_enabled &&
-                        (PIPE_CLEAR_DEPTH & ~job->clear);
+                        (PIPE_CLEAR_DEPTH & ~job->clear_tlb);
                 if (needs_depth_load) {
                         if (job->zsbuf->texture->format == PIPE_FORMAT_Z16_UNORM &&
                             job->zsbuf->texture->nr_samples > 0) {
@@ -1357,7 +1357,7 @@ v3d_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
                                 u_stream_outputs_for_vertices(info->mode, draws[0].count);
         }
 
-        uint32_t clear_mask = job->clear | job->clear_draw;
+        uint32_t clear_mask = job->clear_tlb | job->clear_draw;
         if (v3d->zsa && job->zsbuf && v3d->zsa->base.depth_enabled) {
                 struct v3d_resource *rsc = v3d_resource(job->zsbuf->texture);
                 v3d_job_add_bo(job, rsc->bo);
@@ -1757,7 +1757,7 @@ v3d_tlb_clear(struct v3d_job *job, unsigned buffers,
         job->draw_min_y = 0;
         job->draw_max_x = v3d->framebuffer.width;
         job->draw_max_y = v3d->framebuffer.height;
-        job->clear |= buffers;
+        job->clear_tlb |= buffers;
         job->store |= buffers;
         job->scissor.disabled = true;
 

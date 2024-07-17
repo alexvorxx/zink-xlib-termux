@@ -431,7 +431,7 @@ struct v3d_job {
         /* Bitmask of PIPE_CLEAR_* of buffers that were cleared before the
          * first rendering.
          */
-        uint32_t clear;
+        uint32_t clear_tlb;
         /* Bitmask of PIPE_CLEAR_* of buffers that were cleared using a draw
          * call (not necessarily before the first rendering) instead of a TLB
          * clear.

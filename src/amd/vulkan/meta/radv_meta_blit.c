@@ -166,17 +166,18 @@ translate_sampler_dim(VkImageType type)
 }
 
 static void
-meta_emit_blit(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image, struct radv_image_view *src_iview,
-               VkImageLayout src_image_layout, float src_offset_0[3], float src_offset_1[3],
-               struct radv_image *dst_image, struct radv_image_view *dst_iview, VkImageLayout dst_image_layout,
-               VkRect2D dst_box, VkSampler sampler)
+meta_emit_blit(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view *src_iview, VkImageLayout src_image_layout,
+               float src_offset_0[3], float src_offset_1[3], struct radv_image_view *dst_iview,
+               VkImageLayout dst_image_layout, VkRect2D dst_box, VkSampler sampler)
 {
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
-   uint32_t src_width = u_minify(src_iview->image->vk.extent.width, src_iview->vk.base_mip_level);
-   uint32_t src_height = u_minify(src_iview->image->vk.extent.height, src_iview->vk.base_mip_level);
-   uint32_t src_depth = u_minify(src_iview->image->vk.extent.depth, src_iview->vk.base_mip_level);
-   uint32_t dst_width = u_minify(dst_iview->image->vk.extent.width, dst_iview->vk.base_mip_level);
-   uint32_t dst_height = u_minify(dst_iview->image->vk.extent.height, dst_iview->vk.base_mip_level);
+   const struct radv_image *src_image = src_iview->image;
+   const struct radv_image *dst_image = dst_iview->image;
+   uint32_t src_width = u_minify(src_image->vk.extent.width, src_iview->vk.base_mip_level);
+   uint32_t src_height = u_minify(src_image->vk.extent.height, src_iview->vk.base_mip_level);
+   uint32_t src_depth = u_minify(src_image->vk.extent.depth, src_iview->vk.base_mip_level);
+   uint32_t dst_width = u_minify(dst_image->vk.extent.width, dst_iview->vk.base_mip_level);
+   uint32_t dst_height = u_minify(dst_image->vk.extent.height, dst_iview->vk.base_mip_level);
 
    assert(src_image->vk.samples == dst_image->vk.samples);
 
@@ -292,7 +293,7 @@ meta_emit_blit(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
    };
 
    VkRenderingAttachmentInfo color_att;
-   if (src_iview->image->vk.aspects == VK_IMAGE_ASPECT_COLOR_BIT) {
+   if (src_image->vk.aspects == VK_IMAGE_ASPECT_COLOR_BIT) {
       unsigned dst_layout = radv_meta_dst_layout_from_layout(dst_image_layout);
       VkImageLayout layout = radv_meta_dst_layout_to_layout(dst_layout);
 
@@ -308,7 +309,7 @@ meta_emit_blit(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
    }
 
    VkRenderingAttachmentInfo depth_att;
-   if (src_iview->image->vk.aspects & VK_IMAGE_ASPECT_DEPTH_BIT) {
+   if (src_image->vk.aspects & VK_IMAGE_ASPECT_DEPTH_BIT) {
       enum radv_blit_ds_layout ds_layout = radv_meta_blit_ds_to_type(dst_image_layout);
       VkImageLayout layout = radv_meta_blit_ds_to_layout(ds_layout);
 
@@ -323,7 +324,7 @@ meta_emit_blit(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
    }
 
    VkRenderingAttachmentInfo stencil_att;
-   if (src_iview->image->vk.aspects & VK_IMAGE_ASPECT_STENCIL_BIT) {
+   if (src_image->vk.aspects & VK_IMAGE_ASPECT_STENCIL_BIT) {
       enum radv_blit_ds_layout ds_layout = radv_meta_blit_ds_to_type(dst_image_layout);
       VkImageLayout layout = radv_meta_blit_ds_to_layout(ds_layout);
 
@@ -520,8 +521,8 @@ blit_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image, VkI
                                                    .layerCount = 1},
                            },
                            0, NULL);
-      meta_emit_blit(cmd_buffer, src_image, &src_iview, src_image_layout, src_offset_0, src_offset_1, dst_image,
-                     &dst_iview, dst_image_layout, dst_box, sampler);
+      meta_emit_blit(cmd_buffer, &src_iview, src_image_layout, src_offset_0, src_offset_1, &dst_iview, dst_image_layout,
+                     dst_box, sampler);
 
       radv_image_view_finish(&dst_iview);
       radv_image_view_finish(&src_iview);

@@ -147,13 +147,16 @@ radv_retile_dcc(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image)
    unsigned swizzle_mode = image->planes[0].surface.u.gfx9.swizzle_mode;
 
    /* Compile pipelines if not already done so. */
+   mtx_lock(&device->meta_state.mtx);
    if (!device->meta_state.dcc_retile.pipeline[swizzle_mode]) {
       VkResult ret = radv_device_init_meta_dcc_retile_state(device, &image->planes[0].surface);
       if (ret != VK_SUCCESS) {
+         mtx_unlock(&device->meta_state.mtx);
          vk_command_buffer_set_error(&cmd_buffer->vk, ret);
          return;
       }
    }
+   mtx_unlock(&device->meta_state.mtx);
 
    radv_meta_save(&saved_state, cmd_buffer,
                   RADV_META_SAVE_DESCRIPTORS | RADV_META_SAVE_COMPUTE_PIPELINE | RADV_META_SAVE_CONSTANTS);

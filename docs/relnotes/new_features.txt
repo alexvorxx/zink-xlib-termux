@@ -6,3 +6,4 @@ VK_KHR_maintenance5 on v3dv
 VK_KHR_maintenance7 on RADV
 VK_EXT_depth_clamp_zero_one on v3dv
 GL_ARB_depth_clamp on v3d
+Defaulting to a new shader cache implementation, reducing filesystem overhead.

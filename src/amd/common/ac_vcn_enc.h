@@ -72,6 +72,7 @@
 #define RENCODE_RATE_CONTROL_METHOD_LATENCY_CONSTRAINED_VBR                         0x00000001
 #define RENCODE_RATE_CONTROL_METHOD_PEAK_CONSTRAINED_VBR                            0x00000002
 #define RENCODE_RATE_CONTROL_METHOD_CBR                                             0x00000003
+#define RENCODE_RATE_CONTROL_METHOD_QUALITY_VBR                                     0x00000004
 
 #define RENCODE_DIRECT_OUTPUT_NALU_TYPE_AUD                                         0x00000000
 #define RENCODE_DIRECT_OUTPUT_NALU_TYPE_VPS                                         0x00000001
@@ -391,7 +392,7 @@ typedef struct rvcn_enc_rate_ctl_per_picture_s {
    uint32_t enabled_filler_data;
    uint32_t skip_frame_enable;
    uint32_t enforce_hrd;
-   uint32_t reserved_0xff;
+   uint32_t qvbr_quality_level;
 } rvcn_enc_rate_ctl_per_picture_t;
 
 typedef struct rvcn_enc_quality_params_s {

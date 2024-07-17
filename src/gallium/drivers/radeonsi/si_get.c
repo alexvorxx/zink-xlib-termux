@@ -876,6 +876,17 @@ static int si_get_video_param(struct pipe_screen *screen, enum pipe_video_profil
          else
             return 0;
 
+      case PIPE_VIDEO_CAP_ENC_RATE_CONTROL_QVBR:
+         if (sscreen->info.vcn_ip_version >= VCN_3_0_0 &&
+             sscreen->info.vcn_ip_version < VCN_4_0_0)
+            return sscreen->info.vcn_enc_minor_version >= 30;
+
+         if (sscreen->info.vcn_ip_version >= VCN_4_0_0 &&
+             sscreen->info.vcn_ip_version < VCN_5_0_0)
+            return sscreen->info.vcn_enc_minor_version >= 15;
+
+         return 0;
+
       default:
          return 0;
       }

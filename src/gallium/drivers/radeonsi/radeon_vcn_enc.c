@@ -295,6 +295,7 @@ static void radeon_vcn_enc_h264_get_rc_param(struct radeon_encoder *enc,
    enc->enc_pic.rc_per_pic.enabled_filler_data = 0;
    enc->enc_pic.rc_per_pic.skip_frame_enable = pic->rate_ctrl[0].skip_frame_enable;
    enc->enc_pic.rc_per_pic.enforce_hrd = pic->rate_ctrl[0].enforce_hrd;
+   enc->enc_pic.rc_per_pic.qvbr_quality_level = pic->rate_ctrl[0].vbr_quality_factor;
 
    switch (pic->rate_ctrl[0].rate_ctrl_method) {
       case PIPE_H2645_ENC_RATE_CONTROL_METHOD_DISABLE:
@@ -309,6 +310,12 @@ static void radeon_vcn_enc_h264_get_rc_param(struct radeon_encoder *enc,
       case PIPE_H2645_ENC_RATE_CONTROL_METHOD_VARIABLE:
          enc->enc_pic.rc_session_init.rate_control_method =
             RENCODE_RATE_CONTROL_METHOD_PEAK_CONSTRAINED_VBR;
+         break;
+      case PIPE_H2645_ENC_RATE_CONTROL_METHOD_QUALITY_VARIABLE:
+         enc->enc_pic.rc_session_init.rate_control_method =
+            RENCODE_RATE_CONTROL_METHOD_QUALITY_VBR;
+         /* QVBR requires pre-encode enabled. */
+         enc->enc_pic.quality_modes.pre_encode_mode = RENCODE_PREENCODE_MODE_4X;
          break;
       default:
          enc->enc_pic.rc_session_init.rate_control_method = RENCODE_RATE_CONTROL_METHOD_NONE;
@@ -564,6 +571,7 @@ static void radeon_vcn_enc_hevc_get_rc_param(struct radeon_encoder *enc,
    enc->enc_pic.rc_per_pic.enabled_filler_data = 0;
    enc->enc_pic.rc_per_pic.skip_frame_enable = pic->rc.skip_frame_enable;
    enc->enc_pic.rc_per_pic.enforce_hrd = pic->rc.enforce_hrd;
+   enc->enc_pic.rc_per_pic.qvbr_quality_level = pic->rc.vbr_quality_factor;
    switch (pic->rc.rate_ctrl_method) {
       case PIPE_H2645_ENC_RATE_CONTROL_METHOD_DISABLE:
          enc->enc_pic.rc_session_init.rate_control_method = RENCODE_RATE_CONTROL_METHOD_NONE;
@@ -577,6 +585,12 @@ static void radeon_vcn_enc_hevc_get_rc_param(struct radeon_encoder *enc,
       case PIPE_H2645_ENC_RATE_CONTROL_METHOD_VARIABLE:
          enc->enc_pic.rc_session_init.rate_control_method =
             RENCODE_RATE_CONTROL_METHOD_PEAK_CONSTRAINED_VBR;
+         break;
+      case PIPE_H2645_ENC_RATE_CONTROL_METHOD_QUALITY_VARIABLE:
+         enc->enc_pic.rc_session_init.rate_control_method =
+            RENCODE_RATE_CONTROL_METHOD_QUALITY_VBR;
+         /* QVBR requires pre-encode enabled. */
+         enc->enc_pic.quality_modes.pre_encode_mode = RENCODE_PREENCODE_MODE_4X;
          break;
       default:
          enc->enc_pic.rc_session_init.rate_control_method = RENCODE_RATE_CONTROL_METHOD_NONE;
@@ -813,6 +827,7 @@ static void radeon_vcn_enc_av1_get_rc_param(struct radeon_encoder *enc,
    enc->enc_pic.rc_per_pic.enabled_filler_data = 0;
    enc->enc_pic.rc_per_pic.skip_frame_enable = pic->rc[0].skip_frame_enable;
    enc->enc_pic.rc_per_pic.enforce_hrd = pic->rc[0].enforce_hrd;
+   enc->enc_pic.rc_per_pic.qvbr_quality_level = (pic->rc[0].vbr_quality_factor + 2) / 5;
    switch (pic->rc[0].rate_ctrl_method) {
       case PIPE_H2645_ENC_RATE_CONTROL_METHOD_DISABLE:
          enc->enc_pic.rc_session_init.rate_control_method = RENCODE_RATE_CONTROL_METHOD_NONE;
@@ -826,6 +841,12 @@ static void radeon_vcn_enc_av1_get_rc_param(struct radeon_encoder *enc,
       case PIPE_H2645_ENC_RATE_CONTROL_METHOD_VARIABLE:
          enc->enc_pic.rc_session_init.rate_control_method =
             RENCODE_RATE_CONTROL_METHOD_PEAK_CONSTRAINED_VBR;
+         break;
+      case PIPE_H2645_ENC_RATE_CONTROL_METHOD_QUALITY_VARIABLE:
+         enc->enc_pic.rc_session_init.rate_control_method =
+            RENCODE_RATE_CONTROL_METHOD_QUALITY_VBR;
+         /* QVBR requires pre-encode enabled. */
+         enc->enc_pic.quality_modes.pre_encode_mode = RENCODE_PREENCODE_MODE_4X;
          break;
       default:
          enc->enc_pic.rc_session_init.rate_control_method = RENCODE_RATE_CONTROL_METHOD_NONE;

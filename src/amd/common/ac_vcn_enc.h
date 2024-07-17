@@ -115,6 +115,11 @@
 #define RENCODE_OBU_TYPE_TILE_LIST                                                  8
 #define RENCODE_OBU_TYPE_PADDING                                                    15
 
+#define RENCODE_METADATA_TYPE_HDR_CLL                                               1
+#define RENCODE_METADATA_TYPE_HDR_MDCV                                              2
+#define RENCODE_METADATA_TYPE_ITUT_T35                                              4
+#define RENCODE_METADATA_TYPE_TIMECODE                                              5
+
 #define RENCODE_AV1_MV_PRECISION_ALLOW_HIGH_PRECISION                               0x00
 #define RENCODE_AV1_MV_PRECISION_DISALLOW_HIGH_PRECISION                            0x10
 #define RENCODE_AV1_MV_PRECISION_FORCE_INTEGER_MV                                   0x30

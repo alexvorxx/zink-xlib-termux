@@ -140,6 +140,20 @@ vlVaBeginPicture(VADriverContextP ctx, VAContextID context_id, VASurfaceID rende
    if (context->decoder->entrypoint != PIPE_VIDEO_ENTRYPOINT_ENCODE)
       context->needs_begin_frame = true;
 
+   /* meta data and seis are per picture basis, it needs to be
+    * cleared before rendering the picture. */
+   if (context->decoder->entrypoint == PIPE_VIDEO_ENTRYPOINT_ENCODE) {
+      switch (u_reduce_video_profile(context->templat.profile)) {
+         case PIPE_VIDEO_FORMAT_AV1:
+            context->desc.av1enc.metadata_flags.value = 0;
+            break;
+         case PIPE_VIDEO_FORMAT_HEVC:
+         case PIPE_VIDEO_FORMAT_MPEG4_AVC:
+         default:
+            break;
+      }
+   }
+
    context->slice_data_offset = 0;
    context->have_slice_params = false;
 

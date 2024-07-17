@@ -943,6 +943,105 @@ void radeon_enc_av1_tile_group(struct radeon_encoder *enc)
    radeon_enc_av1_bs_instruction_type(enc, RENCODE_AV1_BITSTREAM_INSTRUCTION_OBU_END, 0);
 }
 
+static void radeon_enc_av1_metadata_obu_hdr_cll(struct radeon_encoder *enc)
+{
+   uint8_t *size_offset;
+   uint8_t obu_size_bin;
+   uint8_t metadata_type;
+   uint8_t *p;
+   uint32_t obu_size;
+   uint32_t nb_obu_size_byte = sizeof(obu_size_bin);
+   rvcn_enc_sei_hdr_cll_t *p_cll = &enc->enc_pic.enc_sei.hdr_cll;
+
+   radeon_enc_av1_obu_header(enc, RENCODE_OBU_TYPE_METADATA);
+   /* obu_size, use nb_obu_size_byte bytes for header,
+    * the size will be written in afterwards */
+   size_offset = radeon_enc_av1_header_size_offset(enc);
+   radeon_enc_code_fixed_bits(enc, 0, nb_obu_size_byte * 8);
+   radeon_enc_code_leb128(&metadata_type, RENCODE_METADATA_TYPE_HDR_CLL, 1);
+   radeon_enc_code_fixed_bits(enc, metadata_type, 8);
+
+   radeon_enc_code_fixed_bits(enc, p_cll->max_cll, 16);
+   radeon_enc_code_fixed_bits(enc, p_cll->max_fall, 16);
+
+   /*  trailing_one_bit  */
+   radeon_enc_code_fixed_bits(enc, 1, 1);
+   radeon_enc_byte_align(enc);
+
+   /* obu_size doesn't include the bytes within obu_header
+    * or obu_size syntax element (6.2.1), here we use
+    * nb_obu_size_byte bytes for obu_size syntax
+    * which needs to be removed from the size.
+    */
+   obu_size = (uint32_t)(radeon_enc_av1_header_size_offset(enc)
+                        - size_offset - nb_obu_size_byte);
+
+   radeon_enc_code_leb128(&obu_size_bin, obu_size, nb_obu_size_byte);
+
+   p = (uint8_t *)((((uintptr_t)size_offset & 3) ^ 3) | ((uintptr_t)size_offset & ~3));
+   *p = obu_size_bin;
+}
+
+static void radeon_enc_av1_metadata_obu_hdr_mdcv(struct radeon_encoder *enc)
+{
+   uint8_t *size_offset;
+   uint8_t obu_size_bin;
+   uint8_t metadata_type;
+   uint8_t *p;
+   uint32_t obu_size;
+   uint32_t nb_obu_size_byte = sizeof(obu_size_bin);
+   rvcn_enc_sei_hdr_mdcv_t *p_mdcv = &enc->enc_pic.enc_sei.hdr_mdcv;
+
+   radeon_enc_av1_obu_header(enc, RENCODE_OBU_TYPE_METADATA);
+   /* obu_size, use nb_obu_size_byte bytes for header,
+    * the size will be written in afterwards */
+   size_offset = radeon_enc_av1_header_size_offset(enc);
+   radeon_enc_code_fixed_bits(enc, 0, nb_obu_size_byte * 8);
+   radeon_enc_code_leb128(&metadata_type, RENCODE_METADATA_TYPE_HDR_MDCV, 1);
+   radeon_enc_code_fixed_bits(enc, metadata_type, 8);
+
+   for (int32_t i = 0; i < 3; i++) {
+      radeon_enc_code_fixed_bits(enc, p_mdcv->primary_chromaticity_x[i], 16);
+      radeon_enc_code_fixed_bits(enc, p_mdcv->primary_chromaticity_y[i], 16);
+   }
+
+   radeon_enc_code_fixed_bits(enc, p_mdcv->white_point_chromaticity_x, 16);
+   radeon_enc_code_fixed_bits(enc, p_mdcv->white_point_chromaticity_y, 16);
+
+   radeon_enc_code_fixed_bits(enc, p_mdcv->luminance_max, 32);
+   radeon_enc_code_fixed_bits(enc, p_mdcv->luminance_min, 32);
+
+   /*  trailing_one_bit  */
+   radeon_enc_code_fixed_bits(enc, 1, 1);
+   radeon_enc_byte_align(enc);
+
+   /* obu_size doesn't include the bytes within obu_header
+    * or obu_size syntax element (6.2.1), here we use
+    * nb_obu_size_byte bytes for obu_size syntax
+    * which needs to be removed from the size.
+    */
+   obu_size = (uint32_t)(radeon_enc_av1_header_size_offset(enc)
+                        - size_offset - nb_obu_size_byte);
+
+   radeon_enc_code_leb128(&obu_size_bin, obu_size, nb_obu_size_byte);
+
+   p = (uint8_t *)((((uintptr_t)size_offset & 3) ^ 3) | ((uintptr_t)size_offset & ~3));
+   *p = obu_size_bin;
+}
+
+void radeon_enc_av1_metadata_obu(struct radeon_encoder *enc)
+{
+   if (!enc->enc_pic.enc_sei.flags.value)
+      return;
+
+   if (enc->enc_pic.enc_sei.flags.hdr_mdcv)
+      radeon_enc_av1_metadata_obu_hdr_mdcv(enc);
+
+   if (enc->enc_pic.enc_sei.flags.hdr_cll)
+      radeon_enc_av1_metadata_obu_hdr_cll(enc);
+
+}
+
 static void radeon_enc_obu_instruction(struct radeon_encoder *enc)
 {
    bool frame_header = !enc->enc_pic.stream_obu_frame ||
@@ -959,6 +1058,7 @@ static void radeon_enc_obu_instruction(struct radeon_encoder *enc)
     *
     * if (others)
     *    radeon_enc_av1_others(enc); */
+   radeon_enc_av1_metadata_obu(enc);
 
    radeon_enc_av1_bs_instruction_type(enc,
          RENCODE_AV1_BITSTREAM_INSTRUCTION_OBU_START,

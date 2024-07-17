@@ -892,9 +892,6 @@ static void radeon_vcn_enc_av1_get_meta_param(struct radeon_encoder *enc,
       enc->enc_pic.enc_sei.hdr_mdcv.luminance_min =
                   pic->metadata_hdr_mdcv.luminance_min;
    }
-
-   /* meta data per picture will need to clear it after fetching it up */
-   pic->metadata_flags.value = 0;
 }
 
 static void radeon_vcn_enc_av1_get_param(struct radeon_encoder *enc,

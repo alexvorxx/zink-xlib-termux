@@ -977,6 +977,7 @@ static void radeon_enc_obu_instruction(struct radeon_encoder *enc)
     *
     * if (others)
     *    radeon_enc_av1_others(enc); */
+   radeon_enc_av1_metadata_obu(enc);
 
    radeon_enc_av1_bs_instruction_type(enc,
          RENCODE_AV1_BITSTREAM_INSTRUCTION_OBU_START,

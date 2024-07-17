@@ -364,6 +364,8 @@ void radeon_enc_av1_sequence_header(struct radeon_encoder *enc, bool separate_de
 
 void radeon_enc_av1_tile_group(struct radeon_encoder *enc);
 
+void radeon_enc_av1_metadata_obu(struct radeon_encoder *enc);
+
 unsigned char *radeon_enc_av1_header_size_offset(struct radeon_encoder *enc);
 
 unsigned int radeon_enc_value_bits(unsigned int value);

@@ -9,8 +9,8 @@
 #include "vk_command_pool.h"
 #include "vk_common_entrypoints.h"
 
-static VkResult build_pipeline(struct radv_device *device, VkImageAspectFlagBits aspect, enum glsl_sampler_dim tex_dim,
-                               VkFormat format, VkPipeline *pipeline);
+static VkResult create_pipeline(struct radv_device *device, VkImageAspectFlagBits aspect, enum glsl_sampler_dim tex_dim,
+                                VkFormat format, VkPipeline *pipeline);
 
 static nir_shader *
 build_nir_vertex_shader(struct radv_device *dev)
@@ -165,36 +165,20 @@ translate_sampler_dim(VkImageType type)
    }
 }
 
-static void
-meta_emit_blit(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view *src_iview, VkImageLayout src_image_layout,
-               float src_offset_0[3], float src_offset_1[3], struct radv_image_view *dst_iview,
-               VkImageLayout dst_image_layout, VkRect2D dst_box, VkSampler sampler)
+static VkResult
+get_pipeline(struct radv_device *device, const struct radv_image_view *src_iview,
+             const struct radv_image_view *dst_iview, VkPipeline *pipeline_out)
 {
-   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   struct radv_meta_state *state = &device->meta_state;
    const struct radv_image *src_image = src_iview->image;
    const struct radv_image *dst_image = dst_iview->image;
-   uint32_t src_width = u_minify(src_image->vk.extent.width, src_iview->vk.base_mip_level);
-   uint32_t src_height = u_minify(src_image->vk.extent.height, src_iview->vk.base_mip_level);
-   uint32_t src_depth = u_minify(src_image->vk.extent.depth, src_iview->vk.base_mip_level);
-   uint32_t dst_width = u_minify(dst_image->vk.extent.width, dst_iview->vk.base_mip_level);
-   uint32_t dst_height = u_minify(dst_image->vk.extent.height, dst_iview->vk.base_mip_level);
-
-   assert(src_image->vk.samples == dst_image->vk.samples);
-
-   float vertex_push_constants[5] = {
-      src_offset_0[0] / (float)src_width,  src_offset_0[1] / (float)src_height, src_offset_1[0] / (float)src_width,
-      src_offset_1[1] / (float)src_height, src_offset_0[2] / (float)src_depth,
-   };
-
-   vk_common_CmdPushConstants(radv_cmd_buffer_to_handle(cmd_buffer), device->meta_state.blit.pipeline_layout,
-                              VK_SHADER_STAGE_VERTEX_BIT, 0, 20, vertex_push_constants);
-
-   VkPipeline *pipeline = NULL;
-   unsigned fs_key = 0;
    VkFormat format = VK_FORMAT_UNDEFINED;
+   VkPipeline *pipeline;
+   unsigned fs_key = 0;
+   VkResult result = VK_SUCCESS;
 
-   mtx_lock(&device->meta_state.mtx);
-   switch (src_iview->vk.aspects) {
+   mtx_lock(&state->mtx);
+   switch (src_image->vk.aspects) {
    case VK_IMAGE_ASPECT_COLOR_BIT: {
       fs_key = radv_format_meta_fs_key(device, dst_image->vk.format);
       format = radv_fs_key_format_exemplars[fs_key];
@@ -255,17 +239,52 @@ meta_emit_blit(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view *src_i
    }
 
    if (!*pipeline) {
-      VkResult ret = build_pipeline(device, src_iview->vk.aspects, translate_sampler_dim(src_image->vk.image_type),
-                                    format, pipeline);
-      if (ret != VK_SUCCESS) {
-         mtx_unlock(&device->meta_state.mtx);
-         vk_command_buffer_set_error(&cmd_buffer->vk, ret);
-         return;
-      }
+      result = create_pipeline(device, src_iview->vk.aspects, translate_sampler_dim(src_image->vk.image_type), format,
+                               pipeline);
+      if (result != VK_SUCCESS)
+         goto fail;
    }
-   mtx_unlock(&device->meta_state.mtx);
 
-   radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_GRAPHICS, *pipeline);
+   *pipeline_out = *pipeline;
+
+fail:
+   mtx_unlock(&state->mtx);
+   return result;
+}
+
+static void
+meta_emit_blit(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view *src_iview, VkImageLayout src_image_layout,
+               float src_offset_0[3], float src_offset_1[3], struct radv_image_view *dst_iview,
+               VkImageLayout dst_image_layout, VkRect2D dst_box, VkSampler sampler)
+{
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   const struct radv_image *src_image = src_iview->image;
+   const struct radv_image *dst_image = dst_iview->image;
+   uint32_t src_width = u_minify(src_image->vk.extent.width, src_iview->vk.base_mip_level);
+   uint32_t src_height = u_minify(src_image->vk.extent.height, src_iview->vk.base_mip_level);
+   uint32_t src_depth = u_minify(src_image->vk.extent.depth, src_iview->vk.base_mip_level);
+   uint32_t dst_width = u_minify(dst_image->vk.extent.width, dst_iview->vk.base_mip_level);
+   uint32_t dst_height = u_minify(dst_image->vk.extent.height, dst_iview->vk.base_mip_level);
+   VkPipeline pipeline;
+   VkResult result;
+
+   assert(src_image->vk.samples == dst_image->vk.samples);
+
+   float vertex_push_constants[5] = {
+      src_offset_0[0] / (float)src_width,  src_offset_0[1] / (float)src_height, src_offset_1[0] / (float)src_width,
+      src_offset_1[1] / (float)src_height, src_offset_0[2] / (float)src_depth,
+   };
+
+   vk_common_CmdPushConstants(radv_cmd_buffer_to_handle(cmd_buffer), device->meta_state.blit.pipeline_layout,
+                              VK_SHADER_STAGE_VERTEX_BIT, 0, 20, vertex_push_constants);
+
+   result = get_pipeline(device, src_iview, dst_iview, &pipeline);
+   if (result != VK_SUCCESS) {
+      vk_command_buffer_set_error(&cmd_buffer->vk, result);
+      return;
+   }
+
+   radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
    radv_meta_push_descriptor_set(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, device->meta_state.blit.pipeline_layout,
                                  0, 1,
@@ -571,8 +590,8 @@ radv_device_finish_meta_blit_state(struct radv_device *device)
 }
 
 static VkResult
-build_pipeline(struct radv_device *device, VkImageAspectFlagBits aspect, enum glsl_sampler_dim tex_dim, VkFormat format,
-               VkPipeline *pipeline)
+create_pipeline(struct radv_device *device, VkImageAspectFlagBits aspect, enum glsl_sampler_dim tex_dim,
+                VkFormat format, VkPipeline *pipeline)
 {
    VkResult result = VK_SUCCESS;
 
@@ -738,18 +757,18 @@ radv_device_init_meta_blit_color(struct radv_device *device, bool on_demand)
       VkFormat format = radv_fs_key_format_exemplars[i];
       unsigned key = radv_format_meta_fs_key(device, format);
 
-      result = build_pipeline(device, VK_IMAGE_ASPECT_COLOR_BIT, GLSL_SAMPLER_DIM_1D, format,
-                              &device->meta_state.blit.pipeline_1d_src[key]);
+      result = create_pipeline(device, VK_IMAGE_ASPECT_COLOR_BIT, GLSL_SAMPLER_DIM_1D, format,
+                               &device->meta_state.blit.pipeline_1d_src[key]);
       if (result != VK_SUCCESS)
          return result;
 
-      result = build_pipeline(device, VK_IMAGE_ASPECT_COLOR_BIT, GLSL_SAMPLER_DIM_2D, format,
-                              &device->meta_state.blit.pipeline_2d_src[key]);
+      result = create_pipeline(device, VK_IMAGE_ASPECT_COLOR_BIT, GLSL_SAMPLER_DIM_2D, format,
+                               &device->meta_state.blit.pipeline_2d_src[key]);
       if (result != VK_SUCCESS)
          return result;
 
-      result = build_pipeline(device, VK_IMAGE_ASPECT_COLOR_BIT, GLSL_SAMPLER_DIM_3D, format,
-                              &device->meta_state.blit.pipeline_3d_src[key]);
+      result = create_pipeline(device, VK_IMAGE_ASPECT_COLOR_BIT, GLSL_SAMPLER_DIM_3D, format,
+                               &device->meta_state.blit.pipeline_3d_src[key]);
       if (result != VK_SUCCESS)
          return result;
    }
@@ -762,18 +781,18 @@ radv_device_init_meta_blit_depth(struct radv_device *device, bool on_demand)
 {
    VkResult result;
 
-   result = build_pipeline(device, VK_IMAGE_ASPECT_DEPTH_BIT, GLSL_SAMPLER_DIM_1D, VK_FORMAT_D32_SFLOAT,
-                           &device->meta_state.blit.depth_only_1d_pipeline);
+   result = create_pipeline(device, VK_IMAGE_ASPECT_DEPTH_BIT, GLSL_SAMPLER_DIM_1D, VK_FORMAT_D32_SFLOAT,
+                            &device->meta_state.blit.depth_only_1d_pipeline);
    if (result != VK_SUCCESS)
       return result;
 
-   result = build_pipeline(device, VK_IMAGE_ASPECT_DEPTH_BIT, GLSL_SAMPLER_DIM_2D, VK_FORMAT_D32_SFLOAT,
-                           &device->meta_state.blit.depth_only_2d_pipeline);
+   result = create_pipeline(device, VK_IMAGE_ASPECT_DEPTH_BIT, GLSL_SAMPLER_DIM_2D, VK_FORMAT_D32_SFLOAT,
+                            &device->meta_state.blit.depth_only_2d_pipeline);
    if (result != VK_SUCCESS)
       return result;
 
-   return build_pipeline(device, VK_IMAGE_ASPECT_DEPTH_BIT, GLSL_SAMPLER_DIM_3D, VK_FORMAT_D32_SFLOAT,
-                         &device->meta_state.blit.depth_only_3d_pipeline);
+   return create_pipeline(device, VK_IMAGE_ASPECT_DEPTH_BIT, GLSL_SAMPLER_DIM_3D, VK_FORMAT_D32_SFLOAT,
+                          &device->meta_state.blit.depth_only_3d_pipeline);
 }
 
 static VkResult
@@ -781,18 +800,18 @@ radv_device_init_meta_blit_stencil(struct radv_device *device, bool on_demand)
 {
    VkResult result;
 
-   result = build_pipeline(device, VK_IMAGE_ASPECT_STENCIL_BIT, GLSL_SAMPLER_DIM_1D, VK_FORMAT_S8_UINT,
-                           &device->meta_state.blit.stencil_only_1d_pipeline);
+   result = create_pipeline(device, VK_IMAGE_ASPECT_STENCIL_BIT, GLSL_SAMPLER_DIM_1D, VK_FORMAT_S8_UINT,
+                            &device->meta_state.blit.stencil_only_1d_pipeline);
    if (result != VK_SUCCESS)
       return result;
 
-   result = build_pipeline(device, VK_IMAGE_ASPECT_STENCIL_BIT, GLSL_SAMPLER_DIM_2D, VK_FORMAT_S8_UINT,
-                           &device->meta_state.blit.stencil_only_2d_pipeline);
+   result = create_pipeline(device, VK_IMAGE_ASPECT_STENCIL_BIT, GLSL_SAMPLER_DIM_2D, VK_FORMAT_S8_UINT,
+                            &device->meta_state.blit.stencil_only_2d_pipeline);
    if (result != VK_SUCCESS)
       return result;
 
-   return build_pipeline(device, VK_IMAGE_ASPECT_STENCIL_BIT, GLSL_SAMPLER_DIM_3D, VK_FORMAT_S8_UINT,
-                         &device->meta_state.blit.stencil_only_3d_pipeline);
+   return create_pipeline(device, VK_IMAGE_ASPECT_STENCIL_BIT, GLSL_SAMPLER_DIM_3D, VK_FORMAT_S8_UINT,
+                          &device->meta_state.blit.stencil_only_3d_pipeline);
 }
 
 VkResult

@@ -907,8 +907,8 @@ SPDX-License-Identifier: MIT
 	<field name="SRC1_RGROUP" low="96" high="98" type="#reg_group"/>
 </bitset>
 
-<bitset name="#left-shift" size="2">
-	<field name="LEFT_SHIFT" low="0" high="1" type="uint"/>
+<bitset name="#left-shift" size="3">
+	<field name="LEFT_SHIFT" low="0" high="2" type="uint"/>
 
 	<override>
 		<expr>
@@ -940,8 +940,8 @@ SPDX-License-Identifier: MIT
 	<pattern low="27" high="31">00000</pattern> <!-- TEX_ID -->
 	<pattern low="32" high="33">00</pattern> <!-- RMODE -->
 	<field name="PMODE" pos="34" type="bool_inv" display=".pack"/>
-	<field name="LEFT_SHIFT" low="35" high="36" type="#left-shift"/>
-	<pattern low="37" high="38">00</pattern>
+	<field name="LEFT_SHIFT" low="35" high="37" type="#left-shift"/>
+	<pattern pos="38">0</pattern>
 	<field name="SKPHP" pos="39" type="bool" display=".skpHp"/>
 	<field name="LOCAL" pos="40" type="bool" display=".local"/>
 	<pattern pos="41">0</pattern>
@@ -1003,8 +1003,8 @@ SPDX-License-Identifier: MIT
 	<pattern low="27" high="31">xxxxx</pattern>
 	<pattern low="32" high="33">xx</pattern>
 	<field name="PMODE" pos="34" type="bool_inv" display=".pack"/>
-	<field name="LEFT_SHIFT" low="35" high="36" type="#left-shift"/>
-	<pattern low="37" high="38">00</pattern>
+	<field name="LEFT_SHIFT" low="35" high="37" type="#left-shift"/>
+	<pattern pos="38">0</pattern>
 	<field name="SKPHP" pos="39" type="bool" display=".skpHp"/>
 	<field name="LOCAL" pos="40" type="bool" display=".local"/>
 	<pattern low="41" high="41">x</pattern>

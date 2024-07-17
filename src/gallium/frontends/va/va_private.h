@@ -85,6 +85,12 @@
 #define VBAQ_DISABLE (0)
 #define VBAQ_AUTO    (1)
 
+#define ENC_PACKED_HEADERS_H264 (VA_ENC_PACKED_HEADER_SEQUENCE)
+#define ENC_PACKED_HEADERS_HEVC (VA_ENC_PACKED_HEADER_SEQUENCE)
+#define ENC_PACKED_HEADERS_AV1  (VA_ENC_PACKED_HEADER_SEQUENCE | \
+                                 VA_ENC_PACKED_HEADER_PICTURE  | \
+                                 VA_ENC_PACKED_HEADER_MISC)
+
 static inline enum pipe_video_chroma_format
 ChromaToPipe(int format)
 {

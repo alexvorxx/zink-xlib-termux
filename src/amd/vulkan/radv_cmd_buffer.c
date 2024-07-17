@@ -4263,7 +4263,7 @@ radv_emit_null_ds_state(struct radv_cmd_buffer *cmd_buffer)
       radeon_emit(cmd_buffer->cs, S_028044_FORMAT(V_028044_STENCIL_INVALID));
       uint32_t db_render_control = 0;
 
-      if (gfx_level == GFX11)
+      if (gfx_level == GFX11 || gfx_level == GFX11_5)
          radv_gfx11_set_db_render_control(device, 1, &db_render_control);
 
       radeon_set_context_reg(cmd_buffer->cs, R_028000_DB_RENDER_CONTROL, db_render_control);

@@ -192,6 +192,7 @@ meta_emit_blit(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
    unsigned fs_key = 0;
    VkFormat format = VK_FORMAT_UNDEFINED;
 
+   mtx_lock(&device->meta_state.mtx);
    switch (src_iview->vk.aspects) {
    case VK_IMAGE_ASPECT_COLOR_BIT: {
       fs_key = radv_format_meta_fs_key(device, dst_image->vk.format);
@@ -256,10 +257,12 @@ meta_emit_blit(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
       VkResult ret = build_pipeline(device, src_iview->vk.aspects, translate_sampler_dim(src_image->vk.image_type),
                                     format, pipeline);
       if (ret != VK_SUCCESS) {
+         mtx_unlock(&device->meta_state.mtx);
          vk_command_buffer_set_error(&cmd_buffer->vk, ret);
          return;
       }
    }
+   mtx_unlock(&device->meta_state.mtx);
 
    radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_GRAPHICS, *pipeline);
 
@@ -572,13 +575,6 @@ build_pipeline(struct radv_device *device, VkImageAspectFlagBits aspect, enum gl
 {
    VkResult result = VK_SUCCESS;
 
-   mtx_lock(&device->meta_state.mtx);
-
-   if (*pipeline) {
-      mtx_unlock(&device->meta_state.mtx);
-      return VK_SUCCESS;
-   }
-
    nir_shader *fs;
    nir_shader *vs = build_nir_vertex_shader(device);
 
@@ -729,7 +725,6 @@ build_pipeline(struct radv_device *device, VkImageAspectFlagBits aspect, enum gl
                                           &radv_pipeline_info, &device->meta_state.alloc, pipeline);
    ralloc_free(vs);
    ralloc_free(fs);
-   mtx_unlock(&device->meta_state.mtx);
    return result;
 }
 

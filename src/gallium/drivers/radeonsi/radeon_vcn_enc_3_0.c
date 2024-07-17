@@ -17,7 +17,7 @@
 #include "radeon_vcn_enc.h"
 
 #define RENCODE_FW_INTERFACE_MAJOR_VERSION   1
-#define RENCODE_FW_INTERFACE_MINOR_VERSION   20
+#define RENCODE_FW_INTERFACE_MINOR_VERSION   30
 
 static void radeon_enc_session_info(struct radeon_encoder *enc)
 {

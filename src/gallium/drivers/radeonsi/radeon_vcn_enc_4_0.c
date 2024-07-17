@@ -14,7 +14,7 @@
 #include "radeon_vcn_enc.h"
 
 #define RENCODE_FW_INTERFACE_MAJOR_VERSION   1
-#define RENCODE_FW_INTERFACE_MINOR_VERSION   11
+#define RENCODE_FW_INTERFACE_MINOR_VERSION   15
 
 #define RENCODE_IB_PARAM_CDF_DEFAULT_TABLE_BUFFER  0x00000019
 #define RENCODE_IB_PARAM_ENCODE_STATISTICS         0x0000001a
@@ -518,6 +518,8 @@ static void radeon_enc_spec_misc_av1(struct radeon_encoder *enc)
    RADEON_ENC_CS(enc->enc_pic.av1_spec_misc.disable_cdf_update);
    RADEON_ENC_CS(enc->enc_pic.av1_spec_misc.disable_frame_end_update_cdf);
    RADEON_ENC_CS(num_of_tiles);
+   RADEON_ENC_CS(0);
+   RADEON_ENC_CS(0);
    RADEON_ENC_CS(0xFFFFFFFF);
    RADEON_ENC_CS(0xFFFFFFFF);
    RADEON_ENC_END();

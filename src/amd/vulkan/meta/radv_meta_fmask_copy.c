@@ -82,6 +82,38 @@ build_fmask_copy_compute_shader(struct radv_device *dev, int samples)
    return b.shader;
 }
 
+static VkResult
+create_pipeline(struct radv_device *device, int samples, VkPipeline *pipeline)
+{
+   struct radv_meta_state *state = &device->meta_state;
+   nir_shader *cs = build_fmask_copy_compute_shader(device, samples);
+   VkResult result;
+
+   result = radv_meta_create_compute_pipeline(device, cs, state->fmask_copy.p_layout, pipeline);
+   ralloc_free(cs);
+   return result;
+}
+
+static VkResult
+get_pipeline(struct radv_device *device, uint32_t samples_log2, VkPipeline *pipeline_out)
+{
+   struct radv_meta_state *state = &device->meta_state;
+   VkResult result = VK_SUCCESS;
+
+   mtx_lock(&state->mtx);
+   if (!state->fmask_copy.pipeline[samples_log2]) {
+      result = create_pipeline(device, 1 << samples_log2, &state->fmask_copy.pipeline[samples_log2]);
+      if (result != VK_SUCCESS)
+         goto fail;
+   }
+
+   *pipeline_out = state->fmask_copy.pipeline[samples_log2];
+
+fail:
+   mtx_unlock(&state->mtx);
+   return result;
+}
+
 void
 radv_device_finish_meta_fmask_copy_state(struct radv_device *device)
 {
@@ -94,27 +126,6 @@ radv_device_finish_meta_fmask_copy_state(struct radv_device *device)
    for (uint32_t i = 0; i < MAX_SAMPLES_LOG2; ++i) {
       radv_DestroyPipeline(radv_device_to_handle(device), state->fmask_copy.pipeline[i], &state->alloc);
    }
-}
-
-static VkResult
-create_fmask_copy_pipeline(struct radv_device *device, int samples, VkPipeline *pipeline)
-{
-   struct radv_meta_state *state = &device->meta_state;
-   nir_shader *cs = build_fmask_copy_compute_shader(device, samples);
-   VkResult result;
-
-   result = radv_meta_create_compute_pipeline(device, cs, state->fmask_copy.p_layout, pipeline);
-   ralloc_free(cs);
-   return result;
-}
-
-static VkResult
-radv_device_init_meta_fmask_copy_state_internal(struct radv_device *device, uint32_t samples_log2)
-{
-   if (device->meta_state.fmask_copy.pipeline[samples_log2])
-      return VK_SUCCESS;
-
-   return create_fmask_copy_pipeline(device, 1u << samples_log2, &device->meta_state.fmask_copy.pipeline[samples_log2]);
 }
 
 VkResult
@@ -151,7 +162,7 @@ radv_device_init_meta_fmask_copy_state(struct radv_device *device, bool on_deman
       return VK_SUCCESS;
 
    for (uint32_t i = 0; i < MAX_SAMPLES_LOG2; i++) {
-      result = radv_device_init_meta_fmask_copy_state_internal(device, i);
+      result = create_pipeline(device, 1u << i, &device->meta_state.fmask_copy.pipeline[i]);
       if (result != VK_SUCCESS)
          return result;
    }
@@ -230,15 +241,16 @@ radv_fmask_copy(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_blit2d_surf
    struct radv_image_view src_iview, dst_iview;
    uint32_t samples = src->image->vk.samples;
    uint32_t samples_log2 = ffs(samples) - 1;
+   VkPipeline pipeline;
+   VkResult result;
 
-   VkResult result = radv_device_init_meta_fmask_copy_state_internal(device, samples_log2);
+   result = get_pipeline(device, samples_log2, &pipeline);
    if (result != VK_SUCCESS) {
       vk_command_buffer_set_error(&cmd_buffer->vk, result);
       return;
    }
 
-   radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE,
-                        device->meta_state.fmask_copy.pipeline[samples_log2]);
+   radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
 
    radv_image_view_init(&src_iview, device,
                         &(VkImageViewCreateInfo){

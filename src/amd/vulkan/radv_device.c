@@ -605,7 +605,7 @@ radv_device_init_rgp(struct radv_device *device)
            radv_sqtt_queue_events_enabled() ? "enabled" : "disabled");
 
    if (radv_spm_trace_enabled(instance)) {
-      if (pdev->info.gfx_level >= GFX10) {
+      if (pdev->info.gfx_level >= GFX10 && pdev->info.gfx_level < GFX11_5) {
          if (!radv_spm_init(device))
             return VK_ERROR_INITIALIZATION_FAILED;
       } else {

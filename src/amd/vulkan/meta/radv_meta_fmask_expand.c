@@ -9,8 +9,6 @@
 #include "radv_meta.h"
 #include "vk_format.h"
 
-static VkResult radv_device_init_meta_fmask_expand_state_internal(struct radv_device *device, uint32_t samples_log2);
-
 static nir_shader *
 build_fmask_expand_compute_shader(struct radv_device *device, int samples)
 {
@@ -51,6 +49,39 @@ build_fmask_expand_compute_shader(struct radv_device *device, int samples)
    return b.shader;
 }
 
+static VkResult
+create_pipeline(struct radv_device *device, int samples, VkPipeline *pipeline)
+{
+   struct radv_meta_state *state = &device->meta_state;
+   VkResult result;
+   nir_shader *cs = build_fmask_expand_compute_shader(device, samples);
+
+   result = radv_meta_create_compute_pipeline(device, cs, state->fmask_expand.p_layout, pipeline);
+
+   ralloc_free(cs);
+   return result;
+}
+
+static VkResult
+get_pipeline(struct radv_device *device, uint32_t samples_log2, VkPipeline *pipeline_out)
+{
+   struct radv_meta_state *state = &device->meta_state;
+   VkResult result = VK_SUCCESS;
+
+   mtx_lock(&state->mtx);
+   if (!state->fmask_expand.pipeline[samples_log2]) {
+      result = create_pipeline(device, 1 << samples_log2, &state->fmask_expand.pipeline[samples_log2]);
+      if (result != VK_SUCCESS)
+         goto fail;
+   }
+
+   *pipeline_out = state->fmask_expand.pipeline[samples_log2];
+
+fail:
+   mtx_unlock(&state->mtx);
+   return result;
+}
+
 void
 radv_expand_fmask_image_inplace(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image,
                                 const VkImageSubresourceRange *subresourceRange)
@@ -61,16 +92,16 @@ radv_expand_fmask_image_inplace(struct radv_cmd_buffer *cmd_buffer, struct radv_
    const uint32_t samples_log2 = ffs(samples) - 1;
    unsigned layer_count = vk_image_subresource_layer_count(&image->vk, subresourceRange);
    struct radv_image_view iview;
+   VkPipeline pipeline;
+   VkResult result;
 
-   VkResult result = radv_device_init_meta_fmask_expand_state_internal(device, samples_log2);
+   result = get_pipeline(device, samples_log2, &pipeline);
    if (result != VK_SUCCESS) {
       vk_command_buffer_set_error(&cmd_buffer->vk, result);
       return;
    }
 
    radv_meta_save(&saved_state, cmd_buffer, RADV_META_SAVE_COMPUTE_PIPELINE | RADV_META_SAVE_DESCRIPTORS);
-
-   VkPipeline pipeline = device->meta_state.fmask_expand.pipeline[samples_log2];
 
    radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
 
@@ -146,33 +177,6 @@ radv_device_finish_meta_fmask_expand_state(struct radv_device *device)
                                                         &state->alloc);
 }
 
-static VkResult
-create_fmask_expand_pipeline(struct radv_device *device, int samples, VkPipeline *pipeline)
-{
-   struct radv_meta_state *state = &device->meta_state;
-   VkResult result;
-   nir_shader *cs = build_fmask_expand_compute_shader(device, samples);
-
-   result = radv_meta_create_compute_pipeline(device, cs, state->fmask_expand.p_layout, pipeline);
-
-   ralloc_free(cs);
-   return result;
-}
-
-static VkResult
-radv_device_init_meta_fmask_expand_state_internal(struct radv_device *device, uint32_t samples_log2)
-{
-   struct radv_meta_state *state = &device->meta_state;
-   VkResult result;
-
-   if (state->fmask_expand.pipeline[samples_log2])
-      return VK_SUCCESS;
-
-   result = create_fmask_expand_pipeline(device, 1 << samples_log2, &state->fmask_expand.pipeline[samples_log2]);
-
-   return result;
-}
-
 VkResult
 radv_device_init_meta_fmask_expand_state(struct radv_device *device, bool on_demand)
 {
@@ -207,7 +211,7 @@ radv_device_init_meta_fmask_expand_state(struct radv_device *device, bool on_dem
       return VK_SUCCESS;
 
    for (uint32_t i = 0; i < MAX_SAMPLES_LOG2; i++) {
-      result = radv_device_init_meta_fmask_expand_state_internal(device, i);
+      result = create_pipeline(device, 1 << i, &state->fmask_expand.pipeline[i]);
       if (result != VK_SUCCESS)
          return result;
    }

@@ -51,7 +51,7 @@ build_expand_depth_stencil_compute_shader(struct radv_device *dev)
 }
 
 static VkResult
-create_expand_depth_stencil_compute(struct radv_device *device)
+create_pipeline_cs(struct radv_device *device, VkPipeline *pipeline)
 {
    VkResult result = VK_SUCCESS;
    nir_shader *cs = build_expand_depth_stencil_compute_shader(device);
@@ -82,8 +82,8 @@ create_expand_depth_stencil_compute(struct radv_device *device)
    if (result != VK_SUCCESS)
       goto cleanup;
 
-   result = radv_meta_create_compute_pipeline(device, cs, device->meta_state.expand_depth_stencil_compute_p_layout,
-                                              &device->meta_state.expand_depth_stencil_compute_pipeline);
+   result =
+      radv_meta_create_compute_pipeline(device, cs, device->meta_state.expand_depth_stencil_compute_p_layout, pipeline);
    if (result != VK_SUCCESS)
       goto cleanup;
 
@@ -260,7 +260,10 @@ radv_device_init_meta_depth_decomp_state(struct radv_device *device, bool on_dem
          return res;
    }
 
-   return create_expand_depth_stencil_compute(device);
+   if (on_demand)
+      return VK_SUCCESS;
+
+   return create_pipeline_cs(device, &state->expand_depth_stencil_compute_pipeline);
 }
 
 static VkResult
@@ -410,6 +413,26 @@ radv_process_depth_stencil(struct radv_cmd_buffer *cmd_buffer, struct radv_image
    radv_meta_restore(&saved_state, cmd_buffer);
 }
 
+static VkResult
+get_pipeline_cs(struct radv_device *device, VkPipeline *pipeline_out)
+{
+   struct radv_meta_state *state = &device->meta_state;
+   VkResult result = VK_SUCCESS;
+
+   mtx_lock(&state->mtx);
+   if (!state->expand_depth_stencil_compute_pipeline) {
+      result = create_pipeline_cs(device, &state->expand_depth_stencil_compute_pipeline);
+      if (result != VK_SUCCESS)
+         goto fail;
+   }
+
+   *pipeline_out = state->expand_depth_stencil_compute_pipeline;
+
+fail:
+   mtx_unlock(&state->mtx);
+   return result;
+}
+
 static void
 radv_expand_depth_stencil_compute(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image,
                                   const VkImageSubresourceRange *subresourceRange)
@@ -418,13 +441,20 @@ radv_expand_depth_stencil_compute(struct radv_cmd_buffer *cmd_buffer, struct rad
    struct radv_meta_saved_state saved_state;
    struct radv_image_view load_iview = {0};
    struct radv_image_view store_iview = {0};
+   VkPipeline pipeline;
+   VkResult result;
 
    assert(radv_image_is_tc_compat_htile(image));
 
+   result = get_pipeline_cs(device, &pipeline);
+   if (result != VK_SUCCESS) {
+      vk_command_buffer_set_error(&cmd_buffer->vk, result);
+      return;
+   }
+
    radv_meta_save(&saved_state, cmd_buffer, RADV_META_SAVE_DESCRIPTORS | RADV_META_SAVE_COMPUTE_PIPELINE);
 
-   radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE,
-                        device->meta_state.expand_depth_stencil_compute_pipeline);
+   radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
 
    for (uint32_t l = 0; l < vk_image_subresource_level_count(&image->vk, subresourceRange); l++) {
       uint32_t width, height;

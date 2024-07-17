@@ -614,9 +614,9 @@ static void radeon_enc_tile_config_av1(struct radeon_encoder *enc)
    num_tile_cols = CLAMP(p_config->num_tile_cols,
                          MAX2(1, min_tile_num_in_width),
                          MIN2(RENCODE_AV1_TILE_CONFIG_MAX_NUM_COLS, max_tile_num_in_width));
-   /* legacy way of spliting tiles, if width is less than or equal to 64 sbs, it cannot be
+   /* legacy way of splitting tiles, if width is less than or equal to 64 sbs, it cannot be
     * split */
-   if (enc->enc_pic.av1_tile_spliting_legacy_flag)
+   if (enc->enc_pic.av1_tile_splitting_legacy_flag)
       num_tile_cols = (frame_width_in_sb <= 64) ? 1 : num_tile_cols;
 
    num_tile_rows = CLAMP(p_config->num_tile_rows,

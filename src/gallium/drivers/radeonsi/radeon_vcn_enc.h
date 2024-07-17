@@ -108,7 +108,7 @@ struct radeon_enc_pic {
    bool pcm_enabled_flag;
    bool sps_temporal_mvp_enabled_flag;
    bool use_rc_per_pic_ex;
-   bool av1_tile_spliting_legacy_flag;
+   bool av1_tile_splitting_legacy_flag;
 
    struct {
       struct {

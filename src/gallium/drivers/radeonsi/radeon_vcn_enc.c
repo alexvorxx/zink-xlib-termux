@@ -1569,7 +1569,7 @@ struct pipe_video_codec *radeon_create_encoder(struct pipe_context *context,
       radeon_enc_5_0_init(enc);
       if (sscreen->info.vcn_ip_version == VCN_5_0_0) {
          /* this limits tile splitting scheme to use legacy method */
-         enc->enc_pic.av1_tile_spliting_legacy_flag = true;
+         enc->enc_pic.av1_tile_splitting_legacy_flag = true;
       }
    }
    else if (sscreen->info.vcn_ip_version >= VCN_4_0_0) {

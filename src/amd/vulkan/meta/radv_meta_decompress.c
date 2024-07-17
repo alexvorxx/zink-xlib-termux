@@ -93,7 +93,7 @@ cleanup:
 }
 
 static VkResult
-create_pipeline(struct radv_device *device, uint32_t samples, VkPipelineLayout layout, VkPipeline *pipeline)
+create_pipeline_gfx(struct radv_device *device, uint32_t samples, VkPipelineLayout layout, VkPipeline *pipeline)
 {
    VkResult result;
    VkDevice device_h = radv_device_to_handle(device);
@@ -254,8 +254,8 @@ radv_device_init_meta_depth_decomp_state(struct radv_device *device, bool on_dem
       if (on_demand)
          continue;
 
-      res =
-         create_pipeline(device, samples, state->depth_decomp[i].p_layout, &state->depth_decomp[i].decompress_pipeline);
+      res = create_pipeline_gfx(device, samples, state->depth_decomp[i].p_layout,
+                                &state->depth_decomp[i].decompress_pipeline);
       if (res != VK_SUCCESS)
          return res;
    }
@@ -263,31 +263,27 @@ radv_device_init_meta_depth_decomp_state(struct radv_device *device, bool on_dem
    return create_expand_depth_stencil_compute(device);
 }
 
-static VkPipeline *
-radv_get_depth_pipeline(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image)
+static VkResult
+get_pipeline_gfx(struct radv_device *device, struct radv_image *image, VkPipeline *pipeline_out)
 {
-   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_meta_state *state = &device->meta_state;
    uint32_t samples = image->vk.samples;
    uint32_t samples_log2 = ffs(samples) - 1;
+   VkResult result = VK_SUCCESS;
 
    mtx_lock(&state->mtx);
    if (!state->depth_decomp[samples_log2].decompress_pipeline) {
-      VkResult ret;
-
-      ret = create_pipeline(device, samples, state->depth_decomp[samples_log2].p_layout,
-                            &state->depth_decomp[samples_log2].decompress_pipeline);
-      if (ret != VK_SUCCESS) {
-         mtx_unlock(&state->mtx);
-         vk_command_buffer_set_error(&cmd_buffer->vk, ret);
-         return NULL;
-      }
+      result = create_pipeline_gfx(device, samples, state->depth_decomp[samples_log2].p_layout,
+                                   &state->depth_decomp[samples_log2].decompress_pipeline);
+      if (result != VK_SUCCESS)
+         goto fail;
    }
 
-   VkPipeline *pipeline = &state->depth_decomp[samples_log2].decompress_pipeline;
+   *pipeline_out = state->depth_decomp[samples_log2].decompress_pipeline;
 
+fail:
    mtx_unlock(&state->mtx);
-   return pipeline;
+   return result;
 }
 
 static void
@@ -356,17 +352,21 @@ radv_process_depth_stencil(struct radv_cmd_buffer *cmd_buffer, struct radv_image
                            const VkImageSubresourceRange *subresourceRange,
                            struct radv_sample_locations_state *sample_locs)
 {
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_meta_saved_state saved_state;
    VkCommandBuffer cmd_buffer_h = radv_cmd_buffer_to_handle(cmd_buffer);
-   VkPipeline *pipeline;
+   VkPipeline pipeline;
+   VkResult result;
 
-   pipeline = radv_get_depth_pipeline(cmd_buffer, image);
-   if (!pipeline)
-       return;
+   result = get_pipeline_gfx(device, image, &pipeline);
+   if (result != VK_SUCCESS) {
+      vk_command_buffer_set_error(&cmd_buffer->vk, result);
+      return;
+   }
 
    radv_meta_save(&saved_state, cmd_buffer, RADV_META_SAVE_GRAPHICS_PIPELINE | RADV_META_SAVE_RENDER);
 
-   radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_GRAPHICS, *pipeline);
+   radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
    if (sample_locs) {
       assert(image->vk.create_flags & VK_IMAGE_CREATE_SAMPLE_LOCATIONS_COMPATIBLE_DEPTH_BIT_EXT);

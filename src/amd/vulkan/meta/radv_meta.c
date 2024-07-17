@@ -473,7 +473,7 @@ radv_device_init_meta(struct radv_device *device)
    if (result != VK_SUCCESS)
       goto fail_depth_decomp;
 
-   result = radv_device_init_meta_buffer_state(device);
+   result = radv_device_init_meta_buffer_state(device, on_demand);
    if (result != VK_SUCCESS)
       goto fail_buffer;
 

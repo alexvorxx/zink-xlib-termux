@@ -59,6 +59,26 @@ create_fill_pipeline(struct radv_device *device)
    return result;
 }
 
+static VkResult
+get_fill_pipeline(struct radv_device *device, VkPipeline *pipeline_out)
+{
+   struct radv_meta_state *state = &device->meta_state;
+   VkResult result = VK_SUCCESS;
+
+   mtx_lock(&state->mtx);
+   if (!state->buffer.fill_pipeline) {
+      result = create_fill_pipeline(device);
+      if (result != VK_SUCCESS)
+         goto fail;
+   }
+
+   *pipeline_out = state->buffer.fill_pipeline;
+
+fail:
+   mtx_unlock(&state->mtx);
+   return result;
+}
+
 static nir_shader *
 build_buffer_copy_shader(struct radv_device *dev)
 {
@@ -111,10 +131,33 @@ create_copy_pipeline(struct radv_device *device)
    return result;
 }
 
+static VkResult
+get_copy_pipeline(struct radv_device *device, VkPipeline *pipeline_out)
+{
+   struct radv_meta_state *state = &device->meta_state;
+   VkResult result = VK_SUCCESS;
+
+   mtx_lock(&state->mtx);
+   if (!state->buffer.copy_pipeline) {
+      result = create_copy_pipeline(device);
+      if (result != VK_SUCCESS)
+         goto fail;
+   }
+
+   *pipeline_out = state->buffer.copy_pipeline;
+
+fail:
+   mtx_unlock(&state->mtx);
+   return result;
+}
+
 VkResult
-radv_device_init_meta_buffer_state(struct radv_device *device)
+radv_device_init_meta_buffer_state(struct radv_device *device, bool on_demand)
 {
    VkResult result;
+
+   if (on_demand)
+      return VK_SUCCESS;
 
    result = create_fill_pipeline(device);
    if (result != VK_SUCCESS)
@@ -143,11 +186,18 @@ fill_buffer_shader(struct radv_cmd_buffer *cmd_buffer, uint64_t va, uint64_t siz
 {
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_meta_saved_state saved_state;
+   VkPipeline pipeline;
+   VkResult result;
+
+   result = get_fill_pipeline(device, &pipeline);
+   if (result != VK_SUCCESS) {
+      vk_command_buffer_set_error(&cmd_buffer->vk, result);
+      return;
+   }
 
    radv_meta_save(&saved_state, cmd_buffer, RADV_META_SAVE_COMPUTE_PIPELINE | RADV_META_SAVE_CONSTANTS);
 
-   radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE,
-                        device->meta_state.buffer.fill_pipeline);
+   radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
 
    assert(size >= 16 && size <= UINT32_MAX);
 
@@ -170,11 +220,18 @@ copy_buffer_shader(struct radv_cmd_buffer *cmd_buffer, uint64_t src_va, uint64_t
 {
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_meta_saved_state saved_state;
+   VkPipeline pipeline;
+   VkResult result;
+
+   result = get_copy_pipeline(device, &pipeline);
+   if (result != VK_SUCCESS) {
+      vk_command_buffer_set_error(&cmd_buffer->vk, result);
+      return;
+   }
 
    radv_meta_save(&saved_state, cmd_buffer, RADV_META_SAVE_COMPUTE_PIPELINE | RADV_META_SAVE_CONSTANTS);
 
-   radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE,
-                        device->meta_state.buffer.copy_pipeline);
+   radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
 
    assert(size >= 16 && size <= UINT32_MAX);
 

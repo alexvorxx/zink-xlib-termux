@@ -108,17 +108,41 @@ impl Event {
             self.cv.notify_all();
         }
 
-        // on error we need to call the CL_COMPLETE callbacks
-        let cb_idx = if new < 0 { CL_COMPLETE } else { new as u32 };
+        // errors we treat as CL_COMPLETE
+        let cb_max = if new < 0 { CL_COMPLETE } else { new as u32 };
 
-        if [CL_COMPLETE, CL_RUNNING, CL_SUBMITTED].contains(&cb_idx) {
-            if let Some(cbs) = lock.cbs.get_mut(cb_idx as usize) {
-                let cbs = mem::take(cbs);
-                // applications might want to access the event in the callback, so drop the lock
-                // before calling into the callbacks.
-                drop(lock);
-                cbs.into_iter().for_each(|cb| cb.call(self, new));
-            }
+        // there are only callbacks for those
+        if ![CL_COMPLETE, CL_RUNNING, CL_SUBMITTED].contains(&cb_max) {
+            return;
+        }
+
+        let mut cbs = Vec::new();
+        // Collect all cbs we need to call first. Technically it is not required to call them in
+        // order, but let's be nice to applications as it's for free
+        for idx in (cb_max..=CL_SUBMITTED).rev() {
+            cbs.extend(
+                // use mem::take as each callback is only supposed to be called exactly once
+                mem::take(&mut lock.cbs[idx as usize])
+                    .into_iter()
+                    // we need to save the status this cb was registered with
+                    .map(|cb| (idx as cl_int, cb)),
+            );
+        }
+
+        // applications might want to access the event in the callback, so drop the lock before
+        // calling into the callbacks.
+        drop(lock);
+
+        for (idx, cb) in cbs {
+            // from the CL spec:
+            //
+            // event_command_status is equal to the command_exec_callback_type used while
+            // registering the callback. [...] If the callback is called as the result of the
+            // command associated with event being abnormally terminated, an appropriate error code
+            // for the error that caused the termination will be passed to event_command_status
+            // instead.
+            let status = if new < 0 { new } else { idx };
+            cb.call(self, status);
         }
     }
 

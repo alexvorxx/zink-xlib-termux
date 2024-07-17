@@ -1346,6 +1346,9 @@ should_form_clause(const Instruction* a, const Instruction* b)
    if (a->isVMEM() || a->isSMEM())
       return a->operands[0].tempId() == b->operands[0].tempId();
 
+   if (a->isEXP() && b->isEXP())
+      return true;
+
    return false;
 }
 

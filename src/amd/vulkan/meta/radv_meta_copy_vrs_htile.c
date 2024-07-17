@@ -156,13 +156,16 @@ radv_copy_vrs_htile(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view *
 
    assert(radv_image_has_htile(dst_image));
 
+   mtx_lock(&state->mtx);
    if (!device->meta_state.copy_vrs_htile_pipeline) {
       VkResult ret = radv_device_init_meta_copy_vrs_htile_state(device, &dst_image->planes[0].surface);
       if (ret != VK_SUCCESS) {
+         mtx_unlock(&state->mtx);
          vk_command_buffer_set_error(&cmd_buffer->vk, ret);
          return;
       }
    }
+   mtx_unlock(&state->mtx);
 
    cmd_buffer->state.flush_bits |=
       radv_src_access_flush(cmd_buffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,

@@ -151,6 +151,17 @@ enum v3d_flush_cond {
         V3D_FLUSH_NOT_CURRENT_JOB,
 };
 
+/* bitmask */
+enum v3d_blitter_op {
+        V3D_SAVE_TEXTURES         = (1u << 1),
+        V3D_DISABLE_RENDER_COND   = (1u << 2),
+
+        V3D_BLIT          = V3D_SAVE_TEXTURES,
+        V3D_BLIT_COND     = V3D_BLIT | V3D_DISABLE_RENDER_COND,
+        V3D_CLEAR         = 0,
+        V3D_CLEAR_COND    = V3D_CLEAR | V3D_DISABLE_RENDER_COND,
+};
+
 struct v3d_sampler_view {
         struct pipe_sampler_view base;
         uint32_t p0;
@@ -790,7 +801,7 @@ bool v3d_format_supports_tlb_msaa_resolve(const struct v3d_device_info *devinfo,
 
 void v3d_init_query_functions(struct v3d_context *v3d);
 void v3d_blit(struct pipe_context *pctx, const struct pipe_blit_info *blit_info);
-void v3d_blitter_save(struct v3d_context *v3d, bool op_blit,  bool render_cond);
+void v3d_blitter_save(struct v3d_context *v3d, enum v3d_blitter_op op);
 bool v3d_generate_mipmap(struct pipe_context *pctx,
                          struct pipe_resource *prsc,
                          enum pipe_format format,

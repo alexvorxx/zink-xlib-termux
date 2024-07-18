@@ -38,7 +38,7 @@
  */
 
 void
-v3d_blitter_save(struct v3d_context *v3d, bool op_blit, bool render_cond)
+v3d_blitter_save(struct v3d_context *v3d, enum v3d_blitter_op op)
 {
         util_blitter_save_fragment_constant_buffer_slot(v3d->blitter,
                                                         v3d->constbuf[PIPE_SHADER_FRAGMENT].cb);
@@ -59,7 +59,7 @@ v3d_blitter_save(struct v3d_context *v3d, bool op_blit, bool render_cond)
                                      v3d->streamout.targets);
         util_blitter_save_framebuffer(v3d->blitter, &v3d->framebuffer);
 
-        if (op_blit) {
+        if (op & V3D_SAVE_TEXTURES) {
                 util_blitter_save_scissor(v3d->blitter, &v3d->scissor);
                 util_blitter_save_fragment_sampler_states(v3d->blitter,
                                                           v3d->tex[PIPE_SHADER_FRAGMENT].num_samplers,
@@ -69,7 +69,7 @@ v3d_blitter_save(struct v3d_context *v3d, bool op_blit, bool render_cond)
                                                          v3d->tex[PIPE_SHADER_FRAGMENT].textures);
         }
 
-        if (!render_cond) {
+        if (!(op & V3D_DISABLE_RENDER_COND)) {
                 util_blitter_save_render_condition(v3d->blitter, v3d->cond_query,
                                                    v3d->cond_cond, v3d->cond_mode);
         }
@@ -126,7 +126,8 @@ v3d_render_blit(struct pipe_context *ctx, struct pipe_blit_info *info)
                 return;
         }
 
-        v3d_blitter_save(v3d, true, info->render_condition_enable);
+        v3d_blitter_save(v3d, info->render_condition_enable ?
+                         V3D_BLIT_COND : V3D_BLIT);
         util_blitter_blit(v3d->blitter, info, NULL);
 
         pipe_resource_reference(&tiled, NULL);
@@ -196,7 +197,8 @@ v3d_stencil_blit(struct pipe_context *ctx, struct pipe_blit_info *info)
         struct pipe_sampler_view *src_view =
                 ctx->create_sampler_view(ctx, &src->base, &src_tmpl);
 
-        v3d_blitter_save(v3d, true, info->render_condition_enable);
+        v3d_blitter_save(v3d, info->render_condition_enable ?
+                         V3D_BLIT_COND : V3D_BLIT);
         util_blitter_blit_generic(v3d->blitter, dst_surf, &info->dst.box,
                                   src_view, &info->src.box,
                                   src->base.width0, src->base.height0,
@@ -654,7 +656,8 @@ v3d_sand8_blit(struct pipe_context *pctx, struct pipe_blit_info *info)
         assert(info->src.box.width == info->dst.box.width);
         assert(info->src.box.height == info->dst.box.height);
 
-        v3d_blitter_save(v3d, true, info->render_condition_enable);
+        v3d_blitter_save(v3d, info->render_condition_enable ?
+                         V3D_BLIT_COND : V3D_BLIT);
 
         struct pipe_surface dst_tmpl;
         util_blitter_default_dst_texture(&dst_tmpl, info->dst.resource,
@@ -971,7 +974,8 @@ v3d_sand30_blit(struct pipe_context *pctx, struct pipe_blit_info *info)
         assert(info->src.box.width == info->dst.box.width);
         assert(info->src.box.height == info->dst.box.height);
 
-        v3d_blitter_save(v3d, true, info->render_condition_enable);
+        v3d_blitter_save(v3d, info->render_condition_enable ?
+                         V3D_BLIT_COND : V3D_BLIT);
 
         struct pipe_surface dst_tmpl;
         util_blitter_default_dst_texture(&dst_tmpl, info->dst.resource,

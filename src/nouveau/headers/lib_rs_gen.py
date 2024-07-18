@@ -88,6 +88,10 @@ def main():
     try:
         with open(args.out_rs, 'w', encoding='utf-8') as f:
             f.write(TEMPLATE_RS.render(root=root))
+            try:
+                subprocess.run(['rustfmt', args.out_rs], check=True)
+            except subprocess.CalledProcessError:
+                pass
 
     except Exception:
         # In the event there's an error, this imports some helpers from mako

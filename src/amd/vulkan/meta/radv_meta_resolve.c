@@ -29,13 +29,14 @@ build_nir_fs(struct radv_device *dev)
 }
 
 static VkResult
-create_pipeline(struct radv_device *device, VkShaderModule vs_module_h, VkFormat format, VkPipeline *pipeline)
+create_pipeline(struct radv_device *device, VkFormat format, VkPipeline *pipeline)
 {
    VkResult result;
    VkDevice device_h = radv_device_to_handle(device);
 
+   nir_shader *vs_module = radv_meta_build_nir_vs_generate_vertices(device);
    nir_shader *fs_module = build_nir_fs(device);
-   if (!fs_module) {
+   if (!vs_module || !fs_module) {
       /* XXX: Need more accurate error */
       result = VK_ERROR_OUT_OF_HOST_MEMORY;
       goto cleanup;
@@ -65,7 +66,7 @@ create_pipeline(struct radv_device *device, VkShaderModule vs_module_h, VkFormat
                {
                   .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                   .stage = VK_SHADER_STAGE_VERTEX_BIT,
-                  .module = vs_module_h,
+                  .module = vk_shader_module_handle_from_nir(vs_module),
                   .pName = "main",
                },
                {
@@ -152,6 +153,7 @@ create_pipeline(struct radv_device *device, VkShaderModule vs_module_h, VkFormat
    goto cleanup;
 
 cleanup:
+   ralloc_free(vs_module);
    ralloc_free(fs_module);
    return result;
 }
@@ -175,25 +177,15 @@ radv_device_init_meta_resolve_state(struct radv_device *device, bool on_demand)
 
    VkResult res = VK_SUCCESS;
    struct radv_meta_state *state = &device->meta_state;
-   nir_shader *vs_module = radv_meta_build_nir_vs_generate_vertices(device);
-   if (!vs_module) {
-      /* XXX: Need more accurate error */
-      res = VK_ERROR_OUT_OF_HOST_MEMORY;
-      goto cleanup;
-   }
 
    for (uint32_t i = 0; i < NUM_META_FS_KEYS; ++i) {
       VkFormat format = radv_fs_key_format_exemplars[i];
       unsigned fs_key = radv_format_meta_fs_key(device, format);
 
-      VkShaderModule vs_module_h = vk_shader_module_handle_from_nir(vs_module);
-      res = create_pipeline(device, vs_module_h, format, &state->resolve.pipeline[fs_key]);
+      res = create_pipeline(device, format, &state->resolve.pipeline[fs_key]);
       if (res != VK_SUCCESS)
-         goto cleanup;
+          return res;
    }
-
-cleanup:
-   ralloc_free(vs_module);
 
    return res;
 }
@@ -286,13 +278,9 @@ build_resolve_pipeline(struct radv_device *device, unsigned fs_key)
       return result;
    }
 
-   nir_shader *vs_module = radv_meta_build_nir_vs_generate_vertices(device);
-
-   VkShaderModule vs_module_h = vk_shader_module_handle_from_nir(vs_module);
-   result = create_pipeline(device, vs_module_h, radv_fs_key_format_exemplars[fs_key],
+   result = create_pipeline(device, radv_fs_key_format_exemplars[fs_key],
                             &device->meta_state.resolve.pipeline[fs_key]);
 
-   ralloc_free(vs_module);
    mtx_unlock(&device->meta_state.mtx);
    return result;
 }

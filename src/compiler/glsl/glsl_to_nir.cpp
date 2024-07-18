@@ -1731,9 +1731,6 @@ nir_visitor::visit(ir_expression *ir)
       ir_dereference *deref = ir->operands[0]->as_dereference();
       ir_swizzle *swizzle = NULL;
       if (!deref) {
-         /* the api does not allow a swizzle here, but the varying packing code
-          * may have pushed one into here.
-          */
          swizzle = ir->operands[0]->as_swizzle();
          assert(swizzle);
          deref = swizzle->val->as_dereference();

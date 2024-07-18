@@ -941,7 +941,7 @@ create_dcc_comp_to_single_pipeline(struct radv_device *device, bool is_msaa, VkP
 }
 
 static VkResult
-init_meta_clear_dcc_comp_to_single_state(struct radv_device *device)
+init_meta_clear_dcc_comp_to_single_state(struct radv_device *device, bool on_demand)
 {
    struct radv_meta_state *state = &device->meta_state;
    VkResult result;
@@ -966,6 +966,9 @@ init_meta_clear_dcc_comp_to_single_state(struct radv_device *device)
                                              &state->clear_dcc_comp_to_single_p_layout);
    if (result != VK_SUCCESS)
       goto fail;
+
+   if (on_demand)
+      return VK_SUCCESS;
 
    for (uint32_t i = 0; i < 2; i++) {
       result = create_dcc_comp_to_single_pipeline(device, !!i, &state->clear_dcc_comp_to_single_pipeline[i]);
@@ -1011,7 +1014,7 @@ radv_device_init_meta_clear_state(struct radv_device *device, bool on_demand)
    if (res != VK_SUCCESS)
       return res;
 
-   res = init_meta_clear_dcc_comp_to_single_state(device);
+   res = init_meta_clear_dcc_comp_to_single_state(device, on_demand);
    if (res != VK_SUCCESS)
       return res;
 
@@ -1182,6 +1185,26 @@ radv_clear_dcc(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image, con
    return flush_bits;
 }
 
+static VkResult
+get_clear_dcc_comp_to_single_pipeline(struct radv_device *device, bool is_msaa, VkPipeline *pipeline_out)
+{
+   struct radv_meta_state *state = &device->meta_state;
+   VkResult result = VK_SUCCESS;
+
+   mtx_lock(&state->mtx);
+   if (!state->clear_dcc_comp_to_single_pipeline[is_msaa]) {
+      result = create_dcc_comp_to_single_pipeline(device, is_msaa, &state->clear_dcc_comp_to_single_pipeline[is_msaa]);
+      if (result != VK_SUCCESS)
+         goto fail;
+   }
+
+   *pipeline_out = state->clear_dcc_comp_to_single_pipeline[is_msaa];
+
+fail:
+   mtx_unlock(&state->mtx);
+   return result;
+}
+
 static uint32_t
 radv_clear_dcc_comp_to_single(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image,
                               const VkImageSubresourceRange *range, uint32_t color_values[4])
@@ -1192,6 +1215,8 @@ radv_clear_dcc_comp_to_single(struct radv_cmd_buffer *cmd_buffer, struct radv_im
    struct radv_meta_saved_state saved_state;
    bool is_msaa = image->vk.samples > 1;
    struct radv_image_view iview;
+   VkPipeline pipeline;
+   VkResult result;
    VkFormat format;
 
    switch (bytes_per_pixel) {
@@ -1214,10 +1239,14 @@ radv_clear_dcc_comp_to_single(struct radv_cmd_buffer *cmd_buffer, struct radv_im
       unreachable("Unsupported number of bytes per pixel");
    }
 
+   result = get_clear_dcc_comp_to_single_pipeline(device, is_msaa, &pipeline);
+   if (result != VK_SUCCESS) {
+      vk_command_buffer_set_error(&cmd_buffer->vk, result);
+      return 0;
+   }
+
    radv_meta_save(&saved_state, cmd_buffer,
                   RADV_META_SAVE_DESCRIPTORS | RADV_META_SAVE_COMPUTE_PIPELINE | RADV_META_SAVE_CONSTANTS);
-
-   VkPipeline pipeline = device->meta_state.clear_dcc_comp_to_single_pipeline[is_msaa];
 
    radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
 

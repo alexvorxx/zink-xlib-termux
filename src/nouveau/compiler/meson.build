@@ -84,7 +84,7 @@ libnak_deps = [
   idep_nvidia_headers,
 ]
 
-nak_bindings_rs = rust.bindgen(
+_nak_bindings_rs = rust.bindgen(
   input : ['nak_bindings.h'],
   output : 'nak_bindings.rs',
   c_args : [
@@ -120,9 +120,9 @@ nak_bindings_rs = rust.bindgen(
   dependencies : libnak_deps,
 )
 
-libnak_bindings_gen = static_library(
+_libnak_bindings_rs = static_library(
   'nak_bindings',
-  nak_bindings_rs,
+  _nak_bindings_rs,
   gnu_symbol_visibility : 'hidden',
   rust_abi : 'rust',
 )
@@ -145,7 +145,7 @@ _libnak_qmd_rs = static_library(
   ],
   link_with: [
     _libbitview_rs,
-    libnak_bindings_gen,
+    _libnak_bindings_rs,
   ],
 )
 
@@ -157,7 +157,7 @@ _libnak_rs = static_library(
   rust_args : nak_rust_args,
   link_with: [
     _libbitview_rs,
-    libnak_bindings_gen,
+    _libnak_bindings_rs,
     _libnak_ir_proc_rs,
     _libnak_qmd_rs,
   ],

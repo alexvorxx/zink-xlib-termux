@@ -776,9 +776,9 @@ build_nir_cleari_compute_shader(struct radv_device *dev, bool is_3d, int samples
 }
 
 static VkResult
-create_cleari_pipeline(struct radv_device *device, int samples, VkPipeline *pipeline)
+create_cleari_pipeline(struct radv_device *device, bool is_3d, int samples, VkPipeline *pipeline)
 {
-   nir_shader *cs = build_nir_cleari_compute_shader(device, false, samples);
+   nir_shader *cs = build_nir_cleari_compute_shader(device, is_3d, samples);
    VkResult result;
 
    result = radv_meta_create_compute_pipeline(device, cs, device->meta_state.cleari.img_p_layout, pipeline);
@@ -800,7 +800,7 @@ radv_device_init_meta_cleari_state(struct radv_device *device)
 
    result = radv_meta_create_descriptor_set_layout(device, 1, &binding, &device->meta_state.cleari.img_ds_layout);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
    const VkPushConstantRange pc_range = {
       .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
@@ -810,24 +810,16 @@ radv_device_init_meta_cleari_state(struct radv_device *device)
    result = radv_meta_create_pipeline_layout(device, &device->meta_state.cleari.img_ds_layout, 1, &pc_range,
                                              &device->meta_state.cleari.img_p_layout);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
    for (uint32_t i = 0; i < MAX_SAMPLES_LOG2; i++) {
       uint32_t samples = 1 << i;
-      result = create_cleari_pipeline(device, samples, &device->meta_state.cleari.pipeline[i]);
+      result = create_cleari_pipeline(device, false, samples, &device->meta_state.cleari.pipeline[i]);
       if (result != VK_SUCCESS)
-         goto fail;
+         return result;
    }
 
-   nir_shader *cs_3d = build_nir_cleari_compute_shader(device, true, 1);
-
-   result = radv_meta_create_compute_pipeline(device, cs_3d, device->meta_state.cleari.img_p_layout,
-                                              &device->meta_state.cleari.pipeline_3d);
-   ralloc_free(cs_3d);
-
-   return VK_SUCCESS;
-fail:
-   return result;
+   return create_cleari_pipeline(device, true, 1, &device->meta_state.cleari.pipeline_3d);
 }
 
 static void

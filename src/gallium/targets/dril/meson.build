@@ -132,7 +132,7 @@ prog_ln = find_program('ln', required : false)
 if prog_ln.found()
   foreach d : dril_drivers
     custom_target(
-      'devenv_@0@'.format(d),
+      d,
       input : dril_dri,
       output : d,
       command : [prog_ln, '-f', '@INPUT@', '@OUTPUT@'],

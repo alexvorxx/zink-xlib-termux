@@ -579,6 +579,88 @@ emit_depthstencil_clear(struct radv_cmd_buffer *cmd_buffer, VkClearDepthStencilV
    }
 }
 
+static nir_shader *
+build_clear_htile_mask_shader(struct radv_device *dev)
+{
+   nir_builder b = radv_meta_init_shader(dev, MESA_SHADER_COMPUTE, "meta_clear_htile_mask");
+   b.shader->info.workgroup_size[0] = 64;
+
+   nir_def *global_id = get_global_ids(&b, 1);
+
+   nir_def *offset = nir_imul_imm(&b, global_id, 16);
+   offset = nir_channel(&b, offset, 0);
+
+   nir_def *buf = radv_meta_load_descriptor(&b, 0, 0);
+
+   nir_def *constants = nir_load_push_constant(&b, 2, 32, nir_imm_int(&b, 0), .range = 8);
+
+   nir_def *load = nir_load_ssbo(&b, 4, 32, buf, offset, .align_mul = 16);
+
+   /* data = (data & ~htile_mask) | (htile_value & htile_mask) */
+   nir_def *data = nir_iand(&b, load, nir_channel(&b, constants, 1));
+   data = nir_ior(&b, data, nir_channel(&b, constants, 0));
+
+   nir_store_ssbo(&b, data, buf, offset, .access = ACCESS_NON_READABLE, .align_mul = 16);
+
+   return b.shader;
+}
+
+static VkResult
+create_clear_htile_mask_pipeline(struct radv_device *device)
+{
+   struct radv_meta_state *state = &device->meta_state;
+   VkResult result;
+
+   const VkDescriptorSetLayoutBinding binding = {
+      .binding = 0,
+      .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+      .descriptorCount = 1,
+      .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+   };
+
+   result = radv_meta_create_descriptor_set_layout(device, 1, &binding, &state->clear_htile_mask_ds_layout);
+   if (result != VK_SUCCESS)
+      return result;
+
+   const VkPushConstantRange pc_range = {
+      .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+      .size = 8,
+   };
+
+   result = radv_meta_create_pipeline_layout(device, &state->clear_htile_mask_ds_layout, 1, &pc_range,
+                                             &state->clear_htile_mask_p_layout);
+   if (result != VK_SUCCESS)
+      return result;
+
+   nir_shader *cs = build_clear_htile_mask_shader(device);
+
+   result = radv_meta_create_compute_pipeline(device, cs, state->clear_htile_mask_p_layout,
+                                              &state->clear_htile_mask_pipeline);
+
+   ralloc_free(cs);
+   return result;
+}
+
+static VkResult
+get_clear_htile_mask_pipeline(struct radv_device *device, VkPipeline *pipeline_out)
+{
+   struct radv_meta_state *state = &device->meta_state;
+   VkResult result = VK_SUCCESS;
+
+   mtx_lock(&state->mtx);
+   if (!state->clear_htile_mask_pipeline) {
+      result = create_clear_htile_mask_pipeline(device);
+      if (result != VK_SUCCESS)
+         goto fail;
+   }
+
+   *pipeline_out = state->clear_htile_mask_pipeline;
+
+fail:
+   mtx_unlock(&state->mtx);
+   return result;
+}
+
 static uint32_t
 clear_htile_mask(struct radv_cmd_buffer *cmd_buffer, const struct radv_image *image, struct radeon_winsys_bo *bo,
                  uint64_t offset, uint64_t size, uint32_t htile_value, uint32_t htile_mask)
@@ -588,14 +670,21 @@ clear_htile_mask(struct radv_cmd_buffer *cmd_buffer, const struct radv_image *im
    uint64_t block_count = DIV_ROUND_UP(size, 1024);
    struct radv_meta_saved_state saved_state;
    struct radv_buffer dst_buffer;
+   VkPipeline pipeline;
+   VkResult result;
+
+   result = get_clear_htile_mask_pipeline(device, &pipeline);
+   if (result != VK_SUCCESS) {
+      vk_command_buffer_set_error(&cmd_buffer->vk, result);
+      return 0;
+   }
 
    radv_meta_save(&saved_state, cmd_buffer,
                   RADV_META_SAVE_COMPUTE_PIPELINE | RADV_META_SAVE_CONSTANTS | RADV_META_SAVE_DESCRIPTORS);
 
    radv_buffer_init(&dst_buffer, device, bo, size, offset);
 
-   radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE,
-                        state->clear_htile_mask_pipeline);
+   radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
 
    radv_meta_push_descriptor_set(
       cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, state->clear_htile_mask_p_layout, 0, 1,
@@ -795,68 +884,6 @@ radv_fast_clear_depth(struct radv_cmd_buffer *cmd_buffer, const struct radv_imag
    }
 }
 
-static nir_shader *
-build_clear_htile_mask_shader(struct radv_device *dev)
-{
-   nir_builder b = radv_meta_init_shader(dev, MESA_SHADER_COMPUTE, "meta_clear_htile_mask");
-   b.shader->info.workgroup_size[0] = 64;
-
-   nir_def *global_id = get_global_ids(&b, 1);
-
-   nir_def *offset = nir_imul_imm(&b, global_id, 16);
-   offset = nir_channel(&b, offset, 0);
-
-   nir_def *buf = radv_meta_load_descriptor(&b, 0, 0);
-
-   nir_def *constants = nir_load_push_constant(&b, 2, 32, nir_imm_int(&b, 0), .range = 8);
-
-   nir_def *load = nir_load_ssbo(&b, 4, 32, buf, offset, .align_mul = 16);
-
-   /* data = (data & ~htile_mask) | (htile_value & htile_mask) */
-   nir_def *data = nir_iand(&b, load, nir_channel(&b, constants, 1));
-   data = nir_ior(&b, data, nir_channel(&b, constants, 0));
-
-   nir_store_ssbo(&b, data, buf, offset, .access = ACCESS_NON_READABLE, .align_mul = 16);
-
-   return b.shader;
-}
-
-static VkResult
-init_meta_clear_htile_mask_state(struct radv_device *device)
-{
-   struct radv_meta_state *state = &device->meta_state;
-   VkResult result;
-   nir_shader *cs = build_clear_htile_mask_shader(device);
-
-   const VkDescriptorSetLayoutBinding binding = {
-      .binding = 0,
-      .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-      .descriptorCount = 1,
-      .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-   };
-
-   result = radv_meta_create_descriptor_set_layout(device, 1, &binding, &state->clear_htile_mask_ds_layout);
-   if (result != VK_SUCCESS)
-      goto fail;
-
-   const VkPushConstantRange pc_range = {
-      .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-      .size = 8,
-   };
-
-   result = radv_meta_create_pipeline_layout(device, &state->clear_htile_mask_ds_layout, 1, &pc_range,
-                                             &state->clear_htile_mask_p_layout);
-   if (result != VK_SUCCESS)
-      goto fail;
-
-   result = radv_meta_create_compute_pipeline(device, cs, state->clear_htile_mask_p_layout,
-                                              &state->clear_htile_mask_pipeline);
-
-fail:
-   ralloc_free(cs);
-   return result;
-}
-
 /* Clear DCC using comp-to-single by storing the clear value at the beginning of every 256B block.
  * For MSAA images, clearing the first sample should be enough as long as CMASK is also cleared.
  */
@@ -984,7 +1011,7 @@ radv_device_init_meta_clear_state(struct radv_device *device, bool on_demand)
    if (res != VK_SUCCESS)
       return res;
 
-   res = init_meta_clear_htile_mask_state(device);
+   res = create_clear_htile_mask_pipeline(device);
    if (res != VK_SUCCESS)
       return res;
 

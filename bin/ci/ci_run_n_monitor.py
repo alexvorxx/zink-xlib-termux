@@ -275,7 +275,7 @@ def cancel_job(
         return
     pjob = project.jobs.get(job.id, lazy=True)
     pjob.cancel()
-    print(f"♲ {job.name}", end=" ")  # U+2672 Universal Recycling symbol
+    print(f"🗙 {job.name}", end=" ")  # U+1F5D9 Cancellation X
 
 
 def cancel_jobs(

@@ -189,13 +189,24 @@ build_nir_btoi_compute_shader(struct radv_device *dev, bool is_3d)
    return b.shader;
 }
 
+static VkResult
+create_btoi_pipeline(struct radv_device *device, bool is_3d, VkPipeline *pipeline)
+{
+   VkResult result;
+
+   nir_shader *cs = build_nir_btoi_compute_shader(device, is_3d);
+
+   result = radv_meta_create_compute_pipeline(device, cs, device->meta_state.btoi.img_p_layout, pipeline);
+
+   ralloc_free(cs);
+   return result;
+}
+
 /* Buffer to image - don't write use image accessors */
 static VkResult
 radv_device_init_meta_btoi_state(struct radv_device *device)
 {
    VkResult result;
-   nir_shader *cs = build_nir_btoi_compute_shader(device, false);
-   nir_shader *cs_3d = build_nir_btoi_compute_shader(device, true);
 
    const VkDescriptorSetLayoutBinding bindings[] = {
       {
@@ -214,7 +225,7 @@ radv_device_init_meta_btoi_state(struct radv_device *device)
 
    result = radv_meta_create_descriptor_set_layout(device, 2, bindings, &device->meta_state.btoi.img_ds_layout);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
    const VkPushConstantRange pc_range = {
       .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
@@ -224,24 +235,13 @@ radv_device_init_meta_btoi_state(struct radv_device *device)
    result = radv_meta_create_pipeline_layout(device, &device->meta_state.btoi.img_ds_layout, 1,
       &pc_range, &device->meta_state.btoi.img_p_layout);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
-   result = radv_meta_create_compute_pipeline(device, cs, device->meta_state.btoi.img_p_layout,
-                                              &device->meta_state.btoi.pipeline);
+   result = create_btoi_pipeline(device, false, &device->meta_state.btoi.pipeline);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
-   result = radv_meta_create_compute_pipeline(device, cs_3d, device->meta_state.btoi.img_p_layout,
-                                              &device->meta_state.btoi.pipeline_3d);
-
-   ralloc_free(cs_3d);
-   ralloc_free(cs);
-
-   return VK_SUCCESS;
-fail:
-   ralloc_free(cs_3d);
-   ralloc_free(cs);
-   return result;
+   return create_btoi_pipeline(device, true, &device->meta_state.btoi.pipeline_3d);
 }
 
 static void

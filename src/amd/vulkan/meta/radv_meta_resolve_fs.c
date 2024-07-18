@@ -83,14 +83,8 @@ static const VkPipelineVertexInputStateCreateInfo normal_vi_create_info = {
 static VkResult
 create_resolve_pipeline(struct radv_device *device, int samples_log2, VkFormat format)
 {
-   mtx_lock(&device->meta_state.mtx);
-
    unsigned fs_key = radv_format_meta_fs_key(device, format);
    VkPipeline *pipeline = &device->meta_state.resolve_fragment.rc[samples_log2].pipeline[fs_key];
-   if (*pipeline) {
-      mtx_unlock(&device->meta_state.mtx);
-      return VK_SUCCESS;
-   }
 
    VkResult result;
    bool is_integer = false;
@@ -189,8 +183,6 @@ create_resolve_pipeline(struct radv_device *device, int samples_log2, VkFormat f
                                           &radv_pipeline_info, &device->meta_state.alloc, pipeline);
    ralloc_free(vs);
    ralloc_free(fs);
-
-   mtx_unlock(&device->meta_state.mtx);
    return result;
 }
 
@@ -579,28 +571,29 @@ radv_device_finish_meta_resolve_fragment_state(struct radv_device *device)
    radv_DestroyPipelineLayout(radv_device_to_handle(device), state->resolve_fragment.p_layout, &state->alloc);
 }
 
-static VkPipeline *
-radv_get_resolve_pipeline(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view *src_iview,
-                          struct radv_image_view *dst_iview)
+static VkResult
+get_color_resolve_pipeline(struct radv_device *device, struct radv_image_view *src_iview,
+                           struct radv_image_view *dst_iview, VkPipeline *pipeline_out)
 {
-   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   struct radv_meta_state *state = &device->meta_state;
    unsigned fs_key = radv_format_meta_fs_key(device, dst_iview->vk.format);
    const uint32_t samples = src_iview->image->vk.samples;
    const uint32_t samples_log2 = ffs(samples) - 1;
-   VkPipeline *pipeline;
+   VkResult result = VK_SUCCESS;
 
-   pipeline = &device->meta_state.resolve_fragment.rc[samples_log2].pipeline[fs_key];
-   if (!*pipeline) {
-      VkResult ret;
+   mtx_lock(&state->mtx);
 
-      ret = create_resolve_pipeline(device, samples_log2, radv_fs_key_format_exemplars[fs_key]);
-      if (ret != VK_SUCCESS) {
-         vk_command_buffer_set_error(&cmd_buffer->vk, ret);
-         return NULL;
-      }
+   if (!state->resolve_fragment.rc[samples_log2].pipeline[fs_key]) {
+      result = create_resolve_pipeline(device, samples_log2, radv_fs_key_format_exemplars[fs_key]);
+      if (result != VK_SUCCESS)
+         goto fail;
    }
 
-   return pipeline;
+   *pipeline_out = state->resolve_fragment.rc[samples_log2].pipeline[fs_key];
+
+fail:
+   mtx_unlock(&state->mtx);
+   return result;
 }
 
 static void
@@ -609,7 +602,8 @@ emit_resolve(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view *src_ivi
 {
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    VkCommandBuffer cmd_buffer_h = radv_cmd_buffer_to_handle(cmd_buffer);
-   VkPipeline *pipeline;
+   VkPipeline pipeline;
+   VkResult result;
 
    radv_meta_push_descriptor_set(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                  device->meta_state.resolve_fragment.p_layout, 0, 1,
@@ -641,9 +635,13 @@ emit_resolve(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view *src_ivi
    vk_common_CmdPushConstants(radv_cmd_buffer_to_handle(cmd_buffer), device->meta_state.resolve_fragment.p_layout,
                               VK_SHADER_STAGE_FRAGMENT_BIT, 0, 8, push_constants);
 
-   pipeline = radv_get_resolve_pipeline(cmd_buffer, src_iview, dst_iview);
+   result = get_color_resolve_pipeline(device, src_iview, dst_iview, &pipeline);
+   if (result != VK_SUCCESS) {
+      vk_command_buffer_set_error(&cmd_buffer->vk, result);
+      return;
+   }
 
-   radv_CmdBindPipeline(cmd_buffer_h, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipeline);
+   radv_CmdBindPipeline(cmd_buffer_h, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
    radv_CmdDraw(cmd_buffer_h, 3, 1, 0, 0);
    cmd_buffer->state.flush_bits |= radv_src_access_flush(cmd_buffer, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,

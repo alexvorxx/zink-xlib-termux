@@ -962,6 +962,7 @@ add_gpus([
         GPUId(chip_id=0xffff43050a01, name="FD740"), # Default no-speedbin fallback
         GPUId(chip_id=0x43050B00, name="FD740"), # Quest 3
         GPUId(chip_id=0xffff43050B00, name="FD740"),
+        GPUId(chip_id=0xffff43050c01, name="Adreno X1-85"),
     ], A6xxGPUInfo(
         CHIP.A7XX,
         [a7xx_base, a7xx_740],

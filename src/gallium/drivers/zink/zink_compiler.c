@@ -5049,7 +5049,13 @@ type_image(nir_shader *nir, nir_variable *var)
                nir_variable *img = nir_deref_instr_get_variable(deref);
                if (img != var)
                   continue;
-               nir_alu_type alu_type = nir_intrinsic_src_type(intr);
+
+               nir_alu_type alu_type;
+               if (nir_intrinsic_has_src_type(intr))
+                  alu_type = nir_intrinsic_src_type(intr);
+               else
+                  alu_type = nir_intrinsic_dest_type(intr);
+
                const struct glsl_type *type = glsl_without_array(var->type);
                if (glsl_get_sampler_result_type(type) != GLSL_TYPE_VOID) {
                   assert(glsl_get_sampler_result_type(type) == nir_get_glsl_base_type_for_nir_type(alu_type));

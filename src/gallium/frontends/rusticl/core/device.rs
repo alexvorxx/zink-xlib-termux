@@ -52,6 +52,7 @@ pub struct Device {
 pub struct DeviceCaps {
     pub has_3d_image_writes: bool,
     pub has_images: bool,
+    pub has_rw_images: bool,
     pub has_timestamp: bool,
     pub image_2d_size: u32,
     pub max_read_images: u32,
@@ -276,9 +277,7 @@ impl Device {
                         PIPE_BIND_SHADER_IMAGE,
                     )
                 {
-                    flags |= CL_MEM_WRITE_ONLY;
-                    // TODO: enable once we support it
-                    // flags |= CL_MEM_KERNEL_READ_AND_WRITE;
+                    flags |= CL_MEM_WRITE_ONLY | CL_MEM_KERNEL_READ_AND_WRITE;
                 }
 
                 // TODO: cl_khr_srgb_image_writes
@@ -313,9 +312,39 @@ impl Device {
         // if we can't advertize 3d image write ext, we have to disable them all
         if !self.caps.has_3d_image_writes {
             for f in &mut self.formats.values_mut() {
-                *f.get_mut(&CL_MEM_OBJECT_IMAGE3D).unwrap() &=
-                    !cl_mem_flags::from(CL_MEM_WRITE_ONLY | CL_MEM_READ_WRITE);
+                *f.get_mut(&CL_MEM_OBJECT_IMAGE3D).unwrap() &= !cl_mem_flags::from(
+                    CL_MEM_WRITE_ONLY | CL_MEM_READ_WRITE | CL_MEM_KERNEL_READ_AND_WRITE,
+                );
             }
+        }
+
+        // we require formatted loads
+        if self.screen.param(pipe_cap::PIPE_CAP_IMAGE_LOAD_FORMATTED) != 0 {
+            // "For embedded profiles devices that support reading from and writing to the same
+            // image object from the same kernel instance (see CL_DEVICE_MAX_READ_WRITE_IMAGE_ARGS)
+            // there is no required minimum list of supported image formats."
+            self.caps.has_rw_images = if self.embedded {
+                FORMATS
+                    .iter()
+                    .flat_map(|f| self.formats[&f.cl_image_format].values())
+                    .any(|f| f & cl_mem_flags::from(CL_MEM_KERNEL_READ_AND_WRITE) != 0)
+            } else {
+                !FORMATS
+                    .iter()
+                    .filter(|f| f.req_for_full_read_and_write)
+                    .flat_map(|f| &self.formats[&f.cl_image_format])
+                    // maybe? things being all optional is kinda a mess
+                    .filter(|(target, _)| **target != CL_MEM_OBJECT_IMAGE3D)
+                    .any(|(_, mask)| mask & cl_mem_flags::from(CL_MEM_KERNEL_READ_AND_WRITE) == 0)
+            }
+        }
+
+        // if we can't advertize read_write images, disable them all
+        if !self.caps.has_rw_images {
+            self.formats
+                .values_mut()
+                .flat_map(|f| f.values_mut())
+                .for_each(|f| *f &= !cl_mem_flags::from(CL_MEM_KERNEL_READ_AND_WRITE));
         }
     }
 
@@ -603,7 +632,7 @@ impl Device {
                 add_ext(1, 0, 0, "cl_khr_image2d_from_buffer");
             }
 
-            if self.image_read_write_supported() {
+            if self.caps.has_rw_images {
                 add_feat(1, 0, 0, "__opencl_c_read_write_images");
             }
 
@@ -847,16 +876,6 @@ impl Device {
         self.image_pitch_alignment() != 0 && self.image_base_address_alignment() != 0
     }
 
-    pub fn image_read_write_supported(&self) -> bool {
-        self.caps.has_images
-            && !FORMATS
-                .iter()
-                .filter(|f| f.req_for_full_read_and_write)
-                .map(|f| self.formats.get(&f.cl_image_format).unwrap())
-                .map(|f| f.get(&CL_MEM_OBJECT_IMAGE3D).unwrap())
-                .any(|f| *f & cl_mem_flags::from(CL_MEM_KERNEL_READ_AND_WRITE) == 0)
-    }
-
     pub fn little_endian(&self) -> bool {
         let endianness = self.screen.param(pipe_cap::PIPE_CAP_ENDIANNESS);
         endianness == (pipe_endian::PIPE_ENDIAN_LITTLE as i32)
@@ -1028,7 +1047,7 @@ impl Device {
             fp64: self.fp64_supported(),
             int64: self.int64_supported(),
             images: self.caps.has_images,
-            images_read_write: self.image_read_write_supported(),
+            images_read_write: self.caps.has_rw_images,
             images_write_3d: self.caps.has_3d_image_writes,
             integer_dot_product: true,
             subgroups: subgroups_supported,

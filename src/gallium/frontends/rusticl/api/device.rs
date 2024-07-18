@@ -183,13 +183,11 @@ impl CLInfo<cl_device_info> for cl_device_id {
             CL_DEVICE_MAX_PARAMETER_SIZE => cl_prop::<usize>(dev.param_max_size()),
             CL_DEVICE_MAX_PIPE_ARGS => cl_prop::<cl_uint>(0),
             CL_DEVICE_MAX_READ_IMAGE_ARGS => cl_prop::<cl_uint>(dev.caps.max_read_images),
-            CL_DEVICE_MAX_READ_WRITE_IMAGE_ARGS => {
-                cl_prop::<cl_uint>(if dev.image_read_write_supported() {
-                    dev.caps.max_write_images
-                } else {
-                    0
-                })
-            }
+            CL_DEVICE_MAX_READ_WRITE_IMAGE_ARGS => cl_prop::<cl_uint>(if dev.caps.has_rw_images {
+                dev.caps.max_write_images
+            } else {
+                0
+            }),
             CL_DEVICE_MAX_SAMPLERS => cl_prop::<cl_uint>(dev.max_samplers()),
             CL_DEVICE_MAX_WORK_GROUP_SIZE => cl_prop::<usize>(dev.max_threads_per_block()),
             CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS => cl_prop::<cl_uint>(dev.max_grid_dimensions()),

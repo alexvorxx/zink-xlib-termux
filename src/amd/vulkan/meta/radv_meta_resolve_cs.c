@@ -204,28 +204,16 @@ fail:
 }
 
 static VkResult
-create_resolve_pipeline(struct radv_device *device, int samples, bool is_integer, bool is_srgb, VkPipeline *pipeline)
+create_color_resolve_pipeline(struct radv_device *device, int samples, bool is_integer, bool is_srgb,
+                              VkPipeline *pipeline)
 {
    VkResult result;
-
-   mtx_lock(&device->meta_state.mtx);
-   if (*pipeline) {
-      mtx_unlock(&device->meta_state.mtx);
-      return VK_SUCCESS;
-   }
 
    nir_shader *cs = build_resolve_compute_shader(device, is_integer, is_srgb, samples);
 
    result = radv_meta_create_compute_pipeline(device, cs, device->meta_state.resolve_compute.p_layout, pipeline);
-   if (result != VK_SUCCESS)
-      goto fail;
 
    ralloc_free(cs);
-   mtx_unlock(&device->meta_state.mtx);
-   return VK_SUCCESS;
-fail:
-   ralloc_free(cs);
-   mtx_unlock(&device->meta_state.mtx);
    return result;
 }
 
@@ -272,15 +260,15 @@ radv_device_init_meta_resolve_compute_state(struct radv_device *device, bool on_
    for (uint32_t i = 0; i < MAX_SAMPLES_LOG2; ++i) {
       uint32_t samples = 1 << i;
 
-      res = create_resolve_pipeline(device, samples, false, false, &state->resolve_compute.rc[i].pipeline);
+      res = create_color_resolve_pipeline(device, samples, false, false, &state->resolve_compute.rc[i].pipeline);
       if (res != VK_SUCCESS)
          return res;
 
-      res = create_resolve_pipeline(device, samples, true, false, &state->resolve_compute.rc[i].i_pipeline);
+      res = create_color_resolve_pipeline(device, samples, true, false, &state->resolve_compute.rc[i].i_pipeline);
       if (res != VK_SUCCESS)
          return res;
 
-      res = create_resolve_pipeline(device, samples, false, true, &state->resolve_compute.rc[i].srgb_pipeline);
+      res = create_color_resolve_pipeline(device, samples, false, true, &state->resolve_compute.rc[i].srgb_pipeline);
       if (res != VK_SUCCESS)
          return res;
 
@@ -353,14 +341,16 @@ radv_device_finish_meta_resolve_compute_state(struct radv_device *device)
    radv_DestroyPipelineLayout(radv_device_to_handle(device), state->resolve_compute.p_layout, &state->alloc);
 }
 
-static VkPipeline *
-radv_get_resolve_pipeline(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view *src_iview)
+static VkResult
+get_color_resolve_pipeline(struct radv_device *device, struct radv_image_view *src_iview, VkPipeline *pipeline_out)
 {
-   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_meta_state *state = &device->meta_state;
    uint32_t samples = src_iview->image->vk.samples;
    uint32_t samples_log2 = ffs(samples) - 1;
+   VkResult result = VK_SUCCESS;
    VkPipeline *pipeline;
+
+   mtx_lock(&state->mtx);
 
    if (vk_format_is_int(src_iview->vk.format))
       pipeline = &state->resolve_compute.rc[samples_log2].i_pipeline;
@@ -370,17 +360,17 @@ radv_get_resolve_pipeline(struct radv_cmd_buffer *cmd_buffer, struct radv_image_
       pipeline = &state->resolve_compute.rc[samples_log2].pipeline;
 
    if (!*pipeline) {
-      VkResult ret;
-
-      ret = create_resolve_pipeline(device, samples, vk_format_is_int(src_iview->vk.format),
-                                    vk_format_is_srgb(src_iview->vk.format), pipeline);
-      if (ret != VK_SUCCESS) {
-         vk_command_buffer_set_error(&cmd_buffer->vk, ret);
-         return NULL;
-      }
+      result = create_color_resolve_pipeline(device, samples, vk_format_is_int(src_iview->vk.format),
+                                             vk_format_is_srgb(src_iview->vk.format), pipeline);
+      if (result != VK_SUCCESS)
+         goto fail;
    }
 
-   return pipeline;
+   *pipeline_out = *pipeline;
+
+fail:
+   mtx_unlock(&state->mtx);
+   return result;
 }
 
 static void
@@ -388,7 +378,8 @@ emit_resolve(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view *src_ivi
              const VkOffset2D *src_offset, const VkOffset2D *dst_offset, const VkExtent2D *resolve_extent)
 {
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
-   VkPipeline *pipeline;
+   VkPipeline pipeline;
+   VkResult result;
 
    radv_meta_push_descriptor_set(cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
                                  device->meta_state.resolve_compute.p_layout, 0, 2,
@@ -416,9 +407,13 @@ emit_resolve(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view *src_ivi
                                                               },
                                                            }}});
 
-   pipeline = radv_get_resolve_pipeline(cmd_buffer, src_iview);
+   result = get_color_resolve_pipeline(device, src_iview, &pipeline);
+   if (result != VK_SUCCESS) {
+      vk_command_buffer_set_error(&cmd_buffer->vk, result);
+      return;
+   }
 
-   radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE, *pipeline);
+   radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
 
    unsigned push_constants[4] = {
       src_offset->x,

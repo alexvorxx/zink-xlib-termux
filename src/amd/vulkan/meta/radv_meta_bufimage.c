@@ -68,9 +68,33 @@ create_itob_pipeline(struct radv_device *device, bool is_3d, VkPipeline *pipelin
    return result;
 }
 
+static VkResult
+get_itob_pipeline(struct radv_device *device, const struct radv_image *image, VkPipeline *pipeline_out)
+{
+   struct radv_meta_state *state = &device->meta_state;
+   const bool is_3d = image->vk.image_type == VK_IMAGE_TYPE_3D;
+   VkResult result = VK_SUCCESS;
+   VkPipeline *pipeline;
+
+   mtx_lock(&state->mtx);
+
+   pipeline = is_3d ? &state->itob.pipeline_3d : &state->itob.pipeline;
+   if (!*pipeline) {
+      result = create_itob_pipeline(device, is_3d, pipeline);
+      if (result != VK_SUCCESS)
+         goto fail;
+   }
+
+   *pipeline_out = *pipeline;
+
+fail:
+   mtx_unlock(&state->mtx);
+   return result;
+}
+
 /* Image to buffer - don't write use image accessors */
 static VkResult
-radv_device_init_meta_itob_state(struct radv_device *device)
+radv_device_init_meta_itob_state(struct radv_device *device, bool on_demand)
 {
    VkResult result;
 
@@ -102,6 +126,9 @@ radv_device_init_meta_itob_state(struct radv_device *device)
                                              &device->meta_state.itob.img_p_layout);
    if (result != VK_SUCCESS)
       return result;
+
+   if (on_demand)
+      return VK_SUCCESS;
 
    result = create_itob_pipeline(device, false, &device->meta_state.itob.pipeline);
    if (result != VK_SUCCESS)
@@ -795,11 +822,11 @@ radv_device_finish_meta_bufimage_state(struct radv_device *device)
 }
 
 VkResult
-radv_device_init_meta_bufimage_state(struct radv_device *device)
+radv_device_init_meta_bufimage_state(struct radv_device *device, bool on_demand)
 {
    VkResult result;
 
-   result = radv_device_init_meta_itob_state(device);
+   result = radv_device_init_meta_itob_state(device, on_demand);
    if (result != VK_SUCCESS)
       return result;
 
@@ -1071,16 +1098,20 @@ radv_meta_image_to_buffer(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_b
                           struct radv_meta_blit2d_buffer *dst, struct radv_meta_blit2d_rect *rect)
 {
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
-   VkPipeline pipeline = device->meta_state.itob.pipeline;
    struct radv_image_view src_view;
    struct radv_buffer_view dst_view;
+   VkPipeline pipeline;
+   VkResult result;
+
+   result = get_itob_pipeline(device, src->image, &pipeline);
+   if (result != VK_SUCCESS) {
+      vk_command_buffer_set_error(&cmd_buffer->vk, result);
+      return;
+   }
 
    create_iview(cmd_buffer, src, &src_view, VK_FORMAT_UNDEFINED, src->aspect_mask);
    create_bview(cmd_buffer, dst->buffer, dst->offset, dst->format, &dst_view);
    itob_bind_descriptors(cmd_buffer, &src_view, &dst_view);
-
-   if (src->image->vk.image_type == VK_IMAGE_TYPE_3D)
-      pipeline = device->meta_state.itob.pipeline_3d;
 
    radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
 

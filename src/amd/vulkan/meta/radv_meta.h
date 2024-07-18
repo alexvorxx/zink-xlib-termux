@@ -201,7 +201,7 @@ void radv_meta_blit2d(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_blit2
 
 void radv_meta_end_blit2d(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_saved_state *save);
 
-VkResult radv_device_init_meta_bufimage_state(struct radv_device *device);
+VkResult radv_device_init_meta_bufimage_state(struct radv_device *device, bool on_demand);
 void radv_device_finish_meta_bufimage_state(struct radv_device *device);
 void radv_meta_image_to_buffer(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_blit2d_surf *src,
                                struct radv_meta_blit2d_buffer *dst, struct radv_meta_blit2d_rect *rect);

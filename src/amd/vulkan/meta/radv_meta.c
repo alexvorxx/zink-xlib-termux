@@ -465,7 +465,7 @@ radv_device_init_meta(struct radv_device *device)
    if (result != VK_SUCCESS)
       goto fail_blit2d;
 
-   result = radv_device_init_meta_bufimage_state(device);
+   result = radv_device_init_meta_bufimage_state(device, on_demand);
    if (result != VK_SUCCESS)
       goto fail_bufimage;
 

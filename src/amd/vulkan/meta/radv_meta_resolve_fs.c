@@ -278,12 +278,10 @@ build_depth_stencil_resolve_fragment_shader(struct radv_device *dev, int samples
 
 static VkResult
 create_depth_stencil_resolve_pipeline(struct radv_device *device, int samples_log2, int index,
-                                      VkResolveModeFlagBits resolve_mode)
+                                      VkResolveModeFlagBits resolve_mode, VkPipeline *_pipeline)
 {
    VkPipeline *pipeline;
    VkResult result;
-
-   mtx_lock(&device->meta_state.mtx);
 
    switch (resolve_mode) {
    case VK_RESOLVE_MODE_SAMPLE_ZERO_BIT:
@@ -313,7 +311,6 @@ create_depth_stencil_resolve_pipeline(struct radv_device *device, int samples_lo
    }
 
    if (*pipeline) {
-      mtx_unlock(&device->meta_state.mtx);
       return VK_SUCCESS;
    }
 
@@ -444,7 +441,56 @@ create_depth_stencil_resolve_pipeline(struct radv_device *device, int samples_lo
    ralloc_free(vs);
    ralloc_free(fs);
 
-   mtx_unlock(&device->meta_state.mtx);
+   return result;
+}
+
+static VkResult
+get_depth_stencil_resolve_pipeline(struct radv_device *device, int samples_log2, VkImageAspectFlags aspects,
+                                   VkResolveModeFlagBits resolve_mode, VkPipeline *pipeline_out)
+{
+   struct radv_meta_state *state = &device->meta_state;
+   const int index = aspects == VK_IMAGE_ASPECT_DEPTH_BIT ? DEPTH_RESOLVE : STENCIL_RESOLVE;
+   VkResult result = VK_SUCCESS;
+   VkPipeline *pipeline;
+
+   mtx_lock(&state->mtx);
+   switch (resolve_mode) {
+   case VK_RESOLVE_MODE_SAMPLE_ZERO_BIT:
+      if (aspects == VK_IMAGE_ASPECT_DEPTH_BIT)
+         pipeline = &device->meta_state.resolve_fragment.depth_zero_pipeline;
+      else
+         pipeline = &device->meta_state.resolve_fragment.stencil_zero_pipeline;
+      break;
+   case VK_RESOLVE_MODE_AVERAGE_BIT:
+      assert(aspects == VK_IMAGE_ASPECT_DEPTH_BIT);
+      pipeline = &device->meta_state.resolve_fragment.depth[samples_log2].average_pipeline;
+      break;
+   case VK_RESOLVE_MODE_MIN_BIT:
+      if (aspects == VK_IMAGE_ASPECT_DEPTH_BIT)
+         pipeline = &device->meta_state.resolve_fragment.depth[samples_log2].min_pipeline;
+      else
+         pipeline = &device->meta_state.resolve_fragment.stencil[samples_log2].min_pipeline;
+      break;
+   case VK_RESOLVE_MODE_MAX_BIT:
+      if (aspects == VK_IMAGE_ASPECT_DEPTH_BIT)
+         pipeline = &device->meta_state.resolve_fragment.depth[samples_log2].max_pipeline;
+      else
+         pipeline = &device->meta_state.resolve_fragment.stencil[samples_log2].max_pipeline;
+      break;
+   default:
+      unreachable("invalid resolve mode");
+   }
+
+   if (!*pipeline) {
+      result = create_depth_stencil_resolve_pipeline(device, samples_log2, index, resolve_mode, pipeline);
+      if (result != VK_SUCCESS)
+         goto fail;
+   }
+
+   *pipeline_out = *pipeline;
+
+fail:
+   mtx_unlock(&state->mtx);
    return result;
 }
 
@@ -467,32 +513,39 @@ radv_device_init_meta_resolve_fragment_state(struct radv_device *device, bool on
             return res;
       }
 
-      res = create_depth_stencil_resolve_pipeline(device, i, DEPTH_RESOLVE, VK_RESOLVE_MODE_AVERAGE_BIT);
+      res = create_depth_stencil_resolve_pipeline(device, i, DEPTH_RESOLVE, VK_RESOLVE_MODE_AVERAGE_BIT,
+                                                  &device->meta_state.resolve_fragment.depth[i].average_pipeline);
       if (res != VK_SUCCESS)
          return res;
 
-      res = create_depth_stencil_resolve_pipeline(device, i, DEPTH_RESOLVE, VK_RESOLVE_MODE_MIN_BIT);
+      res = create_depth_stencil_resolve_pipeline(device, i, DEPTH_RESOLVE, VK_RESOLVE_MODE_MIN_BIT,
+                                                  &device->meta_state.resolve_fragment.depth[i].min_pipeline);
       if (res != VK_SUCCESS)
          return res;
 
-      res = create_depth_stencil_resolve_pipeline(device, i, DEPTH_RESOLVE, VK_RESOLVE_MODE_MAX_BIT);
+      res = create_depth_stencil_resolve_pipeline(device, i, DEPTH_RESOLVE, VK_RESOLVE_MODE_MAX_BIT,
+                                                  &device->meta_state.resolve_fragment.depth[i].max_pipeline);
       if (res != VK_SUCCESS)
          return res;
 
-      res = create_depth_stencil_resolve_pipeline(device, i, STENCIL_RESOLVE, VK_RESOLVE_MODE_MIN_BIT);
+      res = create_depth_stencil_resolve_pipeline(device, i, STENCIL_RESOLVE, VK_RESOLVE_MODE_MIN_BIT,
+                                                  &device->meta_state.resolve_fragment.stencil[i].min_pipeline);
       if (res != VK_SUCCESS)
          return res;
 
-      res = create_depth_stencil_resolve_pipeline(device, i, STENCIL_RESOLVE, VK_RESOLVE_MODE_MAX_BIT);
+      res = create_depth_stencil_resolve_pipeline(device, i, STENCIL_RESOLVE, VK_RESOLVE_MODE_MAX_BIT,
+                                                  &device->meta_state.resolve_fragment.stencil[i].max_pipeline);
       if (res != VK_SUCCESS)
          return res;
    }
 
-   res = create_depth_stencil_resolve_pipeline(device, 0, DEPTH_RESOLVE, VK_RESOLVE_MODE_SAMPLE_ZERO_BIT);
+   res = create_depth_stencil_resolve_pipeline(device, 0, DEPTH_RESOLVE, VK_RESOLVE_MODE_SAMPLE_ZERO_BIT,
+                                               &device->meta_state.resolve_fragment.depth_zero_pipeline);
    if (res != VK_SUCCESS)
       return res;
 
-   return create_depth_stencil_resolve_pipeline(device, 0, STENCIL_RESOLVE, VK_RESOLVE_MODE_SAMPLE_ZERO_BIT);
+   return create_depth_stencil_resolve_pipeline(device, 0, STENCIL_RESOLVE, VK_RESOLVE_MODE_SAMPLE_ZERO_BIT,
+                                                &device->meta_state.resolve_fragment.stencil_zero_pipeline);
 }
 
 void
@@ -606,7 +659,14 @@ emit_depth_stencil_resolve(struct radv_cmd_buffer *cmd_buffer, struct radv_image
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    const uint32_t samples = src_iview->image->vk.samples;
    const uint32_t samples_log2 = ffs(samples) - 1;
-   VkPipeline *pipeline;
+   VkPipeline pipeline;
+   VkResult result;
+
+   result = get_depth_stencil_resolve_pipeline(device, samples_log2, aspects, resolve_mode, &pipeline);
+   if (result != VK_SUCCESS) {
+      vk_command_buffer_set_error(&cmd_buffer->vk, result);
+      return;
+   }
 
    radv_meta_push_descriptor_set(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                  device->meta_state.resolve_fragment.p_layout, 0, 1,
@@ -626,45 +686,7 @@ emit_depth_stencil_resolve(struct radv_cmd_buffer *cmd_buffer, struct radv_image
                                         }},
                                  });
 
-   switch (resolve_mode) {
-   case VK_RESOLVE_MODE_SAMPLE_ZERO_BIT:
-      if (aspects == VK_IMAGE_ASPECT_DEPTH_BIT)
-         pipeline = &device->meta_state.resolve_fragment.depth_zero_pipeline;
-      else
-         pipeline = &device->meta_state.resolve_fragment.stencil_zero_pipeline;
-      break;
-   case VK_RESOLVE_MODE_AVERAGE_BIT:
-      assert(aspects == VK_IMAGE_ASPECT_DEPTH_BIT);
-      pipeline = &device->meta_state.resolve_fragment.depth[samples_log2].average_pipeline;
-      break;
-   case VK_RESOLVE_MODE_MIN_BIT:
-      if (aspects == VK_IMAGE_ASPECT_DEPTH_BIT)
-         pipeline = &device->meta_state.resolve_fragment.depth[samples_log2].min_pipeline;
-      else
-         pipeline = &device->meta_state.resolve_fragment.stencil[samples_log2].min_pipeline;
-      break;
-   case VK_RESOLVE_MODE_MAX_BIT:
-      if (aspects == VK_IMAGE_ASPECT_DEPTH_BIT)
-         pipeline = &device->meta_state.resolve_fragment.depth[samples_log2].max_pipeline;
-      else
-         pipeline = &device->meta_state.resolve_fragment.stencil[samples_log2].max_pipeline;
-      break;
-   default:
-      unreachable("invalid resolve mode");
-   }
-
-   if (!*pipeline) {
-      int index = aspects == VK_IMAGE_ASPECT_DEPTH_BIT ? DEPTH_RESOLVE : STENCIL_RESOLVE;
-      VkResult ret;
-
-      ret = create_depth_stencil_resolve_pipeline(device, samples_log2, index, resolve_mode);
-      if (ret != VK_SUCCESS) {
-         vk_command_buffer_set_error(&cmd_buffer->vk, ret);
-         return;
-      }
-   }
-
-   radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_GRAPHICS, *pipeline);
+   radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
    radv_CmdSetViewport(radv_cmd_buffer_to_handle(cmd_buffer), 0, 1,
                        &(VkViewport){.x = resolve_offset->x,

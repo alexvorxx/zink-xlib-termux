@@ -151,4 +151,16 @@ if with_nouveau_vk
   idep_nvidia_headers_rs = declare_dependency(
     link_with : _nvidia_headers_rs,
   )
+
+  _libnv_push_rs = static_library(
+    'nv_push_rs',
+    files('nv_push_rs/lib.rs'),
+    gnu_symbol_visibility: 'hidden',
+    rust_abi: 'rust',
+    dependencies: [idep_nvidia_headers_rs],
+  )
+
+  idep_nv_push_rs = declare_dependency(
+    link_with : _libnv_push_rs,
+  )
 endif

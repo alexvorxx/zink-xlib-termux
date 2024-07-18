@@ -1290,6 +1290,12 @@ loader_dri3_open(xcb_connection_t *conn,
    xcb_xfixes_query_version_cookie_t fixes_cookie;
    xcb_xfixes_query_version_reply_t *fixes_reply;
    int                          fd;
+   const xcb_query_extension_reply_t *extension;
+
+   xcb_prefetch_extension_data(conn, &xcb_dri3_id);
+   extension = xcb_get_extension_data(conn, &xcb_dri3_id);
+   if (!(extension && extension->present))
+      return -1;
 
    cookie = xcb_dri3_open(conn,
                           root,

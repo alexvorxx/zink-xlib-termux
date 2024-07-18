@@ -55,13 +55,24 @@ build_nir_itob_compute_shader(struct radv_device *dev, bool is_3d)
    return b.shader;
 }
 
+static VkResult
+create_itob_pipeline(struct radv_device *device, bool is_3d, VkPipeline *pipeline)
+{
+   VkResult result;
+
+   nir_shader *cs = build_nir_itob_compute_shader(device, is_3d);
+
+   result = radv_meta_create_compute_pipeline(device, cs, device->meta_state.itob.img_p_layout, pipeline);
+
+   ralloc_free(cs);
+   return result;
+}
+
 /* Image to buffer - don't write use image accessors */
 static VkResult
 radv_device_init_meta_itob_state(struct radv_device *device)
 {
    VkResult result;
-   nir_shader *cs = build_nir_itob_compute_shader(device, false);
-   nir_shader *cs_3d = build_nir_itob_compute_shader(device, true);
 
    const VkDescriptorSetLayoutBinding bindings[] = {
       {
@@ -80,7 +91,7 @@ radv_device_init_meta_itob_state(struct radv_device *device)
 
    result = radv_meta_create_descriptor_set_layout(device, 2, bindings, &device->meta_state.itob.img_ds_layout);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
    const VkPushConstantRange pc_range = {
       .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
@@ -90,26 +101,13 @@ radv_device_init_meta_itob_state(struct radv_device *device)
    result = radv_meta_create_pipeline_layout(device, &device->meta_state.itob.img_ds_layout, 1, &pc_range,
                                              &device->meta_state.itob.img_p_layout);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
-   result = radv_meta_create_compute_pipeline(device, cs, device->meta_state.itob.img_p_layout,
-                                              &device->meta_state.itob.pipeline);
+   result = create_itob_pipeline(device, false, &device->meta_state.itob.pipeline);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
-   result = radv_meta_create_compute_pipeline(device, cs_3d, device->meta_state.itob.img_p_layout,
-                                              &device->meta_state.itob.pipeline_3d);
-   if (result != VK_SUCCESS)
-      goto fail;
-
-   ralloc_free(cs_3d);
-   ralloc_free(cs);
-
-   return VK_SUCCESS;
-fail:
-   ralloc_free(cs);
-   ralloc_free(cs_3d);
-   return result;
+   return create_itob_pipeline(device, true, &device->meta_state.itob.pipeline_3d);
 }
 
 static void

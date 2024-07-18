@@ -471,10 +471,10 @@ build_nir_itoi_compute_shader(struct radv_device *dev, bool src_3d, bool dst_3d,
 }
 
 static VkResult
-create_itoi_pipeline(struct radv_device *device, int samples, VkPipeline *pipeline)
+create_itoi_pipeline(struct radv_device *device, bool src_3d, bool dst_3d, int samples, VkPipeline *pipeline)
 {
    struct radv_meta_state *state = &device->meta_state;
-   nir_shader *cs = build_nir_itoi_compute_shader(device, false, false, samples);
+   nir_shader *cs = build_nir_itoi_compute_shader(device, src_3d, dst_3d, samples);
    VkResult result;
 
    result = radv_meta_create_compute_pipeline(device, cs, state->itoi.img_p_layout, pipeline);
@@ -519,7 +519,7 @@ radv_device_init_meta_itoi_state(struct radv_device *device)
 
    for (uint32_t i = 0; i < MAX_SAMPLES_LOG2; i++) {
       uint32_t samples = 1 << i;
-      result = create_itoi_pipeline(device, samples, &device->meta_state.itoi.pipeline[i]);
+      result = create_itoi_pipeline(device, false, false, samples, &device->meta_state.itoi.pipeline[i]);
       if (result != VK_SUCCESS)
          goto fail;
    }
@@ -536,12 +536,7 @@ radv_device_init_meta_itoi_state(struct radv_device *device)
          else
             continue;
 
-         nir_shader *cs_3d = build_nir_itoi_compute_shader(device, src_3d, dst_3d, 1);
-
-         result = radv_meta_create_compute_pipeline(device, cs_3d, device->meta_state.itoi.img_p_layout, pipeline);
-
-         ralloc_free(cs_3d);
-
+         result = create_itoi_pipeline(device, src_3d, dst_3d, 1, pipeline);
          if (result != VK_SUCCESS)
             goto fail;
       }

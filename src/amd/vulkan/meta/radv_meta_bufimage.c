@@ -482,9 +482,44 @@ create_itoi_pipeline(struct radv_device *device, bool src_3d, bool dst_3d, int s
    return result;
 }
 
+static VkResult
+get_itoi_pipeline(struct radv_device *device, const struct radv_image *src_image, const struct radv_image *dst_image,
+                  int samples, VkPipeline *pipeline_out)
+{
+   struct radv_meta_state *state = &device->meta_state;
+   const bool src_3d = src_image->vk.image_type == VK_IMAGE_TYPE_3D;
+   const bool dst_3d = dst_image->vk.image_type == VK_IMAGE_TYPE_3D;
+   const uint32_t samples_log2 = ffs(samples) - 1;
+   VkResult result = VK_SUCCESS;
+   VkPipeline *pipeline;
+
+   mtx_lock(&state->mtx);
+
+   if (src_3d && dst_3d)
+      pipeline = &device->meta_state.itoi.pipeline_3d_3d;
+   else if (src_3d)
+      pipeline = &device->meta_state.itoi.pipeline_3d_2d;
+   else if (dst_3d)
+      pipeline = &device->meta_state.itoi.pipeline_2d_3d;
+   else
+      pipeline = &state->itoi.pipeline[samples_log2];
+
+   if (!*pipeline) {
+      result = create_itoi_pipeline(device, src_3d, dst_3d, samples, pipeline);
+      if (result != VK_SUCCESS)
+         goto fail;
+   }
+
+   *pipeline_out = *pipeline;
+
+fail:
+   mtx_unlock(&state->mtx);
+   return result;
+}
+
 /* image to image - don't write use image accessors */
 static VkResult
-radv_device_init_meta_itoi_state(struct radv_device *device)
+radv_device_init_meta_itoi_state(struct radv_device *device, bool on_demand)
 {
    VkResult result;
 
@@ -516,6 +551,9 @@ radv_device_init_meta_itoi_state(struct radv_device *device)
                                              &device->meta_state.itoi.img_p_layout);
    if (result != VK_SUCCESS)
       goto fail;
+
+   if (on_demand)
+      return VK_SUCCESS;
 
    for (uint32_t i = 0; i < MAX_SAMPLES_LOG2; i++) {
       uint32_t samples = 1 << i;
@@ -890,7 +928,7 @@ radv_device_init_meta_bufimage_state(struct radv_device *device, bool on_demand)
    if (result != VK_SUCCESS)
       return result;
 
-   result = radv_device_init_meta_itoi_state(device);
+   result = radv_device_init_meta_itoi_state(device, on_demand);
    if (result != VK_SUCCESS)
       return result;
 
@@ -1437,11 +1475,18 @@ radv_meta_image_to_image_cs(struct radv_cmd_buffer *cmd_buffer, struct radv_meta
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_image_view src_view, dst_view;
    uint32_t samples = src->image->vk.samples;
-   uint32_t samples_log2 = ffs(samples) - 1;
+   VkPipeline pipeline;
+   VkResult result;
 
    if (src->format == VK_FORMAT_R32G32B32_UINT || src->format == VK_FORMAT_R32G32B32_SINT ||
        src->format == VK_FORMAT_R32G32B32_SFLOAT) {
       radv_meta_image_to_image_cs_r32g32b32(cmd_buffer, src, dst, rect);
+      return;
+   }
+
+   result = get_itoi_pipeline(device, src->image, dst->image, samples, &pipeline);
+   if (result != VK_SUCCESS) {
+      vk_command_buffer_set_error(&cmd_buffer->vk, result);
       return;
    }
 
@@ -1468,14 +1513,6 @@ radv_meta_image_to_image_cs(struct radv_cmd_buffer *cmd_buffer, struct radv_meta
       create_iview(cmd_buffer, dst, &dst_view, depth_format, dst_aspect_mask);
 
       itoi_bind_descriptors(cmd_buffer, &src_view, &dst_view);
-
-      VkPipeline pipeline = device->meta_state.itoi.pipeline[samples_log2];
-      if (src->image->vk.image_type == VK_IMAGE_TYPE_3D && dst->image->vk.image_type == VK_IMAGE_TYPE_3D)
-         pipeline = device->meta_state.itoi.pipeline_3d_3d;
-      else if (src->image->vk.image_type == VK_IMAGE_TYPE_3D)
-         pipeline = device->meta_state.itoi.pipeline_3d_2d;
-      else if (dst->image->vk.image_type == VK_IMAGE_TYPE_3D)
-         pipeline = device->meta_state.itoi.pipeline_2d_3d;
 
       radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
 

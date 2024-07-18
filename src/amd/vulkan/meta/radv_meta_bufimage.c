@@ -920,7 +920,28 @@ create_cleari_r32g32b32_pipeline(struct radv_device *device, VkPipeline *pipelin
 }
 
 static VkResult
-radv_device_init_meta_cleari_r32g32b32_state(struct radv_device *device)
+get_cleari_r32g32b32_pipeline(struct radv_device *device, VkPipeline *pipeline_out)
+{
+   struct radv_meta_state *state = &device->meta_state;
+   VkResult result = VK_SUCCESS;
+
+   mtx_lock(&state->mtx);
+
+   if (!state->cleari_r32g32b32.pipeline) {
+      result = create_cleari_r32g32b32_pipeline(device, &state->cleari_r32g32b32.pipeline);
+      if (result != VK_SUCCESS)
+         goto fail;
+   }
+
+   *pipeline_out = state->cleari_r32g32b32.pipeline;
+
+fail:
+   mtx_unlock(&state->mtx);
+   return result;
+}
+
+static VkResult
+radv_device_init_meta_cleari_r32g32b32_state(struct radv_device *device, bool on_demand)
 {
    VkResult result;
 
@@ -945,6 +966,9 @@ radv_device_init_meta_cleari_r32g32b32_state(struct radv_device *device)
                                              &device->meta_state.cleari_r32g32b32.img_p_layout);
    if (result != VK_SUCCESS)
       return result;
+
+   if (on_demand)
+      return VK_SUCCESS;
 
    return create_cleari_r32g32b32_pipeline(device, &device->meta_state.cleari_r32g32b32.pipeline);
 }
@@ -1001,7 +1025,7 @@ radv_device_init_meta_bufimage_state(struct radv_device *device, bool on_demand)
    if (result != VK_SUCCESS)
       return result;
 
-   result = radv_device_init_meta_cleari_r32g32b32_state(device);
+   result = radv_device_init_meta_cleari_r32g32b32_state(device, on_demand);
    if (result != VK_SUCCESS)
       return result;
 
@@ -1619,10 +1643,17 @@ radv_meta_clear_image_cs_r32g32b32(struct radv_cmd_buffer *cmd_buffer, struct ra
                                    const VkClearColorValue *clear_color)
 {
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
-   VkPipeline pipeline = device->meta_state.cleari_r32g32b32.pipeline;
    struct radv_buffer_view dst_view;
+   VkPipeline pipeline;
    unsigned stride;
    VkBuffer buffer;
+   VkResult result;
+
+   result = get_cleari_r32g32b32_pipeline(device, &pipeline);
+   if (result != VK_SUCCESS) {
+      vk_command_buffer_set_error(&cmd_buffer->vk, result);
+      return;
+   }
 
    /* This special clear path for R32G32B32 formats will write the linear
     * image as a buffer with the same underlying memory. The compute

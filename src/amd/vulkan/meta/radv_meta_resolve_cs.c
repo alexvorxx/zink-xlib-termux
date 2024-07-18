@@ -223,24 +223,11 @@ create_depth_stencil_resolve_pipeline(struct radv_device *device, int samples, i
 {
    VkResult result;
 
-   mtx_lock(&device->meta_state.mtx);
-   if (*pipeline) {
-      mtx_unlock(&device->meta_state.mtx);
-      return VK_SUCCESS;
-   }
-
    nir_shader *cs = build_depth_stencil_resolve_compute_shader(device, samples, index, resolve_mode);
 
    result = radv_meta_create_compute_pipeline(device, cs, device->meta_state.resolve_compute.p_layout, pipeline);
-   if (result != VK_SUCCESS)
-      goto fail;
 
    ralloc_free(cs);
-   mtx_unlock(&device->meta_state.mtx);
-   return VK_SUCCESS;
-fail:
-   ralloc_free(cs);
-   mtx_unlock(&device->meta_state.mtx);
    return result;
 }
 
@@ -426,42 +413,18 @@ emit_resolve(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view *src_ivi
    radv_unaligned_dispatch(cmd_buffer, resolve_extent->width, resolve_extent->height, 1);
 }
 
-static void
-emit_depth_stencil_resolve(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view *src_iview,
-                           struct radv_image_view *dst_iview, const VkOffset2D *resolve_offset,
-                           const VkExtent3D *resolve_extent, VkImageAspectFlags aspects,
-                           VkResolveModeFlagBits resolve_mode)
+static VkResult
+get_depth_stencil_resolve_pipeline(struct radv_device *device, int samples, VkImageAspectFlags aspects,
+                                   VkResolveModeFlagBits resolve_mode, VkPipeline *pipeline_out)
+
 {
-   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
-   const uint32_t samples = src_iview->image->vk.samples;
+   const int index = aspects == VK_IMAGE_ASPECT_DEPTH_BIT ? DEPTH_RESOLVE : STENCIL_RESOLVE;
    const uint32_t samples_log2 = ffs(samples) - 1;
+   struct radv_meta_state *state = &device->meta_state;
+   VkResult result = VK_SUCCESS;
    VkPipeline *pipeline;
 
-   radv_meta_push_descriptor_set(cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                 device->meta_state.resolve_compute.p_layout, 0, 2,
-                                 (VkWriteDescriptorSet[]){{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                                                           .dstBinding = 0,
-                                                           .dstArrayElement = 0,
-                                                           .descriptorCount = 1,
-                                                           .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-                                                           .pImageInfo =
-                                                              (VkDescriptorImageInfo[]){
-                                                                 {.sampler = VK_NULL_HANDLE,
-                                                                  .imageView = radv_image_view_to_handle(src_iview),
-                                                                  .imageLayout = VK_IMAGE_LAYOUT_GENERAL},
-                                                              }},
-                                                          {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                                                           .dstBinding = 1,
-                                                           .dstArrayElement = 0,
-                                                           .descriptorCount = 1,
-                                                           .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-                                                           .pImageInfo = (VkDescriptorImageInfo[]){
-                                                              {
-                                                                 .sampler = VK_NULL_HANDLE,
-                                                                 .imageView = radv_image_view_to_handle(dst_iview),
-                                                                 .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
-                                                              },
-                                                           }}});
+   mtx_lock(&state->mtx);
 
    switch (resolve_mode) {
    case VK_RESOLVE_MODE_SAMPLE_ZERO_BIT:
@@ -491,17 +454,62 @@ emit_depth_stencil_resolve(struct radv_cmd_buffer *cmd_buffer, struct radv_image
    }
 
    if (!*pipeline) {
-      int index = aspects == VK_IMAGE_ASPECT_DEPTH_BIT ? DEPTH_RESOLVE : STENCIL_RESOLVE;
-      VkResult ret;
-
-      ret = create_depth_stencil_resolve_pipeline(device, samples, index, resolve_mode, pipeline);
-      if (ret != VK_SUCCESS) {
-         vk_command_buffer_set_error(&cmd_buffer->vk, ret);
-         return;
-      }
+      result = create_depth_stencil_resolve_pipeline(device, samples, index, resolve_mode, pipeline);
+      if (result != VK_SUCCESS)
+         goto fail;
    }
 
-   radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE, *pipeline);
+   *pipeline_out = *pipeline;
+
+fail:
+   mtx_unlock(&state->mtx);
+   return result;
+}
+
+static void
+emit_depth_stencil_resolve(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view *src_iview,
+                           struct radv_image_view *dst_iview, const VkOffset2D *resolve_offset,
+                           const VkExtent3D *resolve_extent, VkImageAspectFlags aspects,
+                           VkResolveModeFlagBits resolve_mode)
+{
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   const uint32_t samples = src_iview->image->vk.samples;
+   VkPipeline pipeline;
+   VkResult result;
+
+   radv_meta_push_descriptor_set(cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                 device->meta_state.resolve_compute.p_layout, 0, 2,
+                                 (VkWriteDescriptorSet[]){{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                                                           .dstBinding = 0,
+                                                           .dstArrayElement = 0,
+                                                           .descriptorCount = 1,
+                                                           .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                                                           .pImageInfo =
+                                                              (VkDescriptorImageInfo[]){
+                                                                 {.sampler = VK_NULL_HANDLE,
+                                                                  .imageView = radv_image_view_to_handle(src_iview),
+                                                                  .imageLayout = VK_IMAGE_LAYOUT_GENERAL},
+                                                              }},
+                                                          {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                                                           .dstBinding = 1,
+                                                           .dstArrayElement = 0,
+                                                           .descriptorCount = 1,
+                                                           .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                                                           .pImageInfo = (VkDescriptorImageInfo[]){
+                                                              {
+                                                                 .sampler = VK_NULL_HANDLE,
+                                                                 .imageView = radv_image_view_to_handle(dst_iview),
+                                                                 .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
+                                                              },
+                                                           }}});
+
+   result = get_depth_stencil_resolve_pipeline(device, samples, aspects, resolve_mode, &pipeline);
+   if (result != VK_SUCCESS) {
+      vk_command_buffer_set_error(&cmd_buffer->vk, result);
+      return;
+   }
+
+   radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
 
    uint32_t push_constants[2] = {resolve_offset->x, resolve_offset->y};
 

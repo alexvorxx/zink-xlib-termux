@@ -655,10 +655,21 @@ build_nir_itoi_r32g32b32_compute_shader(struct radv_device *dev)
 
 /* Image to image - special path for R32G32B32 */
 static VkResult
-radv_device_init_meta_itoi_r32g32b32_state(struct radv_device *device)
+create_itoi_r32g32b32_pipeline(struct radv_device *device, VkPipeline *pipeline)
 {
    VkResult result;
    nir_shader *cs = build_nir_itoi_r32g32b32_compute_shader(device);
+
+   result = radv_meta_create_compute_pipeline(device, cs, device->meta_state.itoi_r32g32b32.img_p_layout, pipeline);
+
+   ralloc_free(cs);
+   return result;
+}
+
+static VkResult
+radv_device_init_meta_itoi_r32g32b32_state(struct radv_device *device)
+{
+   VkResult result;
 
    const VkDescriptorSetLayoutBinding bindings[] = {
       {
@@ -678,7 +689,7 @@ radv_device_init_meta_itoi_r32g32b32_state(struct radv_device *device)
    result =
       radv_meta_create_descriptor_set_layout(device, 2, bindings, &device->meta_state.itoi_r32g32b32.img_ds_layout);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
    const VkPushConstantRange pc_range = {
       .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
@@ -688,14 +699,9 @@ radv_device_init_meta_itoi_r32g32b32_state(struct radv_device *device)
    result = radv_meta_create_pipeline_layout(device, &device->meta_state.itoi_r32g32b32.img_ds_layout, 1, &pc_range,
                                              &device->meta_state.itoi_r32g32b32.img_p_layout);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
-   result = radv_meta_create_compute_pipeline(device, cs, device->meta_state.itoi_r32g32b32.img_p_layout,
-                                              &device->meta_state.itoi_r32g32b32.pipeline);
-
-fail:
-   ralloc_free(cs);
-   return result;
+   return create_itoi_r32g32b32_pipeline(device, &device->meta_state.itoi_r32g32b32.pipeline);
 }
 
 static void

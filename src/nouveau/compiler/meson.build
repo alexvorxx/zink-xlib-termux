@@ -94,6 +94,7 @@ _nak_bindings_rs = rust.bindgen(
     '--raw-line', '#![allow(non_camel_case_types)]',
     '--raw-line', '#![allow(non_snake_case)]',
     '--raw-line', '#![allow(non_upper_case_globals)]',
+    '--allowlist-type', 'drm.*',
     '--allowlist-type', 'exec_list',
     '--allowlist-type', 'exec_node',
     '--allowlist-type', 'float_controls',
@@ -107,17 +108,26 @@ _nak_bindings_rs = rust.bindgen(
     '--allowlist-type', 'gl_vert_attrib',
     '--allowlist-type', 'nak_.*',
     '--allowlist-type', 'nir_.*',
+    '--allowlist-type', 'nouveau_ws_.*',
     '--allowlist-type', 'mesa_scope',
     '--allowlist-type', 'mesa_prim',
     '--allowlist-type', 'tess_primitive_mode',
+    '--allowlist-var', 'DRM_.*',
     '--allowlist-var', 'nir_.*_infos',
+    '--allowlist-var', 'NVIDIA_VENDOR_ID',
+    '--allowlist-function', 'drm.*',
+    '--allowlist-function', 'glsl_.*',
     '--allowlist-function', '_mesa_shader_stage_to_string',
     '--allowlist-function', 'nak_.*',
     '--allowlist-function', 'nir_.*',
-    '--allowlist-function', 'glsl_.*',
+    '--allowlist-function', 'nouveau_ws_.*',
     '--no-prepend-enum-name',
   ],
-  dependencies : libnak_deps,
+  dependencies : [
+    dep_libdrm,
+    idep_nouveau_ws,
+    libnak_deps,
+  ],
 )
 
 _libnak_bindings_rs = static_library(
@@ -164,6 +174,23 @@ _libnak_rs = static_library(
 )
 
 if with_tests
+  _libnak_runner = static_library(
+    'nak_runner',
+    files('nak_runner/lib.rs'),
+    gnu_symbol_visibility : 'hidden',
+    rust_abi : 'rust',
+    rust_args : nak_rust_args,
+    dependencies : [
+      dep_libdrm,
+      idep_nvidia_headers_rs,
+      idep_nv_push_rs,
+    ],
+    link_with: [
+      _libnak_bindings_rs,
+      _libnak_qmd_rs,
+    ],
+  )
+
   rust.test('nak', _libnak_rs, suite : ['nouveau'])
 endif
 

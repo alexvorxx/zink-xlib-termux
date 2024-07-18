@@ -48,7 +48,7 @@ impl LabelAllocator {
 
 /// Represents a register file
 #[repr(u8)]
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum RegFile {
     /// The general-purpose register file
     ///
@@ -2197,6 +2197,17 @@ impl MemType {
             8 => MemType::B64,
             16 => MemType::B128,
             _ => panic!("Invalid memory load/store size"),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn bits(&self) -> usize {
+        match self {
+            MemType::U8 | MemType::I8 => 8,
+            MemType::U16 | MemType::I16 => 16,
+            MemType::B32 => 32,
+            MemType::B64 => 64,
+            MemType::B128 => 128,
         }
     }
 }

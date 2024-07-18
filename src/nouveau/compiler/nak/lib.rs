@@ -30,3 +30,6 @@ mod sph;
 mod spill_values;
 mod to_cssa;
 mod union_find;
+
+#[cfg(test)]
+mod hw_tests;

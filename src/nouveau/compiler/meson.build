@@ -176,7 +176,11 @@ _libnak_rs = static_library(
   files('nak/lib.rs'),
   gnu_symbol_visibility : 'hidden',
   rust_abi : 'c',
-  rust_args : nak_rust_args,
+  rust_args : [
+    nak_rust_args,
+    # Otherwise, rustc trips up on -pthread
+    '-Clink-arg=-Wno-unused-command-line-argument',
+  ],
   link_with: [
     _libbitview_rs,
     _libnak_bindings_rs,
@@ -185,7 +189,10 @@ _libnak_rs = static_library(
   ],
 )
 
-if with_tests
+# TODO: Linking Rust executables (such as unit tests) doesn't play nicely
+# with the sanitizers because meson doesn't know to pass -fsanitize to the
+# Rust linker.  See also https://github.com/mesonbuild/meson/issues/11741
+if with_tests and get_option('b_sanitize') == 'none'
   _libnak_runner = static_library(
     'nak_runner',
     files('nak_runner/lib.rs'),
@@ -194,6 +201,7 @@ if with_tests
     rust_args : nak_rust_args,
     dependencies : [
       dep_libdrm,
+      idep_nouveau_ws,
       idep_nvidia_headers_rs,
       idep_nv_push_rs,
     ],
@@ -203,7 +211,23 @@ if with_tests
     ],
   )
 
-  rust.test('nak', _libnak_rs, suite : ['nouveau'])
+  rust.test(
+    'nak',
+    _libnak_rs,
+    args : [
+      # Don't run HW tests by default
+      '--skip', 'hw_tests::',
+    ],
+    suite : ['nouveau'],
+    dependencies : [
+      idep_mesautil.partial_dependency(link_args : true, links : true),
+      idep_compiler.partial_dependency(link_args : true, links : true),
+    ],
+    link_with: [
+      _libacorn_rs,
+      _libnak_runner,
+    ],
+  )
 endif
 
 nak_nir_algebraic_c = custom_target(

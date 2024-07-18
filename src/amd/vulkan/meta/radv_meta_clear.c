@@ -1011,16 +1011,16 @@ radv_device_init_meta_clear_state(struct radv_device *device, bool on_demand)
    if (res != VK_SUCCESS)
       return res;
 
-   res = create_clear_htile_mask_pipeline(device);
-   if (res != VK_SUCCESS)
-      return res;
-
    res = init_meta_clear_dcc_comp_to_single_state(device);
    if (res != VK_SUCCESS)
       return res;
 
    if (on_demand)
       return VK_SUCCESS;
+
+   res = create_clear_htile_mask_pipeline(device);
+   if (res != VK_SUCCESS)
+      return res;
 
    for (uint32_t i = 0; i < ARRAY_SIZE(state->color_clear); ++i) {
       uint32_t samples = 1 << i;

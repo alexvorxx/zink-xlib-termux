@@ -1517,7 +1517,6 @@ pub struct OpFoldData<'a> {
 }
 
 impl OpFoldData<'_> {
-    #[allow(dead_code)]
     pub fn get_pred_src(&self, op: &impl SrcsAsSlice, src: &Src) -> bool {
         let i = op.src_idx(src);
         match src.src_ref {
@@ -1573,7 +1572,6 @@ impl OpFoldData<'_> {
         }
     }
 
-    #[allow(dead_code)]
     pub fn set_pred_dst(&mut self, op: &impl DstsAsSlice, dst: &Dst, b: bool) {
         self.dsts[op.dst_idx(dst)] = FoldData::Pred(b);
     }
@@ -3268,7 +3266,7 @@ impl DisplayOp for OpIAdd2X {
 }
 
 #[repr(C)]
-#[derive(SrcsAsSlice, DstsAsSlice)]
+#[derive(Clone, SrcsAsSlice, DstsAsSlice)]
 pub struct OpIAdd3 {
     #[dst_type(GPR)]
     pub dst: Dst,
@@ -3278,6 +3276,31 @@ pub struct OpIAdd3 {
 
     #[src_type(I32)]
     pub srcs: [Src; 3],
+}
+
+impl Foldable for OpIAdd3 {
+    fn fold(&self, _sm: &dyn ShaderModel, f: &mut OpFoldData<'_>) {
+        let srcs = [
+            f.get_u32_src(self, &self.srcs[0]),
+            f.get_u32_src(self, &self.srcs[1]),
+            f.get_u32_src(self, &self.srcs[2]),
+        ];
+
+        let mut sum = 0_u64;
+        for i in 0..3 {
+            if self.srcs[i].src_mod.is_ineg() {
+                // This is a very literal interpretation of 2's compliment.
+                // This is not -u64::from(src) or u64::from(-src).
+                sum += u64::from(!srcs[i]) + 1;
+            } else {
+                sum += u64::from(srcs[i]);
+            }
+        }
+
+        f.set_u32_dst(self, &self.dst, sum as u32);
+        f.set_pred_dst(self, &self.overflow[0], sum >= 1_u64 << 32);
+        f.set_pred_dst(self, &self.overflow[1], sum >= 2_u64 << 32);
+    }
 }
 
 impl DisplayOp for OpIAdd3 {
@@ -3292,7 +3315,7 @@ impl DisplayOp for OpIAdd3 {
 impl_display_for_op!(OpIAdd3);
 
 #[repr(C)]
-#[derive(SrcsAsSlice, DstsAsSlice)]
+#[derive(Clone, SrcsAsSlice, DstsAsSlice)]
 pub struct OpIAdd3X {
     #[dst_type(GPR)]
     pub dst: Dst,
@@ -3305,6 +3328,37 @@ pub struct OpIAdd3X {
 
     #[src_type(Pred)]
     pub carry: [Src; 2],
+}
+
+impl Foldable for OpIAdd3X {
+    fn fold(&self, _sm: &dyn ShaderModel, f: &mut OpFoldData<'_>) {
+        let srcs = [
+            f.get_u32_src(self, &self.srcs[0]),
+            f.get_u32_src(self, &self.srcs[1]),
+            f.get_u32_src(self, &self.srcs[2]),
+        ];
+        let carry = [
+            f.get_pred_src(self, &self.carry[0]),
+            f.get_pred_src(self, &self.carry[1]),
+        ];
+
+        let mut sum = 0_u64;
+        for i in 0..3 {
+            if self.srcs[i].src_mod.is_bnot() {
+                sum += u64::from(!srcs[i]);
+            } else {
+                sum += u64::from(srcs[i]);
+            }
+        }
+
+        for i in 0..2 {
+            sum += u64::from(carry[i]);
+        }
+
+        f.set_u32_dst(self, &self.dst, sum as u32);
+        f.set_pred_dst(self, &self.overflow[0], sum >= 1_u64 << 32);
+        f.set_pred_dst(self, &self.overflow[1], sum >= 2_u64 << 32);
+    }
 }
 
 impl DisplayOp for OpIAdd3X {

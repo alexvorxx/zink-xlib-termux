@@ -54,7 +54,7 @@ def main():
 
         if os.path.lexists(abs_driver):
             os.unlink(abs_driver)
-        print('installing {} to {}'.format(args.megadriver, abs_driver))
+        print(f'Installing hardlink to {args.megadriver} to {abs_driver}')
         os.link(master, abs_driver)
 
         try:

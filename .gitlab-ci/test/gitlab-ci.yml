@@ -41,7 +41,6 @@ rustfmt:
     - shopt -s globstar
     - rustfmt --version
     - rustfmt --verbose src/**/lib.rs
-    - rustfmt --verbose src/**/main.rs
 
 python-test:
   # Cancel job if a newer commit is pushed to the same branch

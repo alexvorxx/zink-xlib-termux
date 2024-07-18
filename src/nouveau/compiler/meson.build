@@ -172,16 +172,6 @@ _libnak = static_library(
   gnu_symbol_visibility : 'hidden',
 )
 
-if with_tools.contains('nouveau')
-  executable(
-    'nvfuzz',
-    files('nvfuzz/main.rs'),
-    rust_crate_type : 'bin',
-    link_with: [_libbitview_rs],
-    install : true
-  )
-endif
-
 idep_nak = declare_dependency(
   include_directories : include_directories('.'),
   link_with : _libnak,

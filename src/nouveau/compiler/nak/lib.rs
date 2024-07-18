@@ -23,7 +23,6 @@ mod opt_lop;
 mod opt_out;
 mod opt_prmt;
 mod opt_uniform_instrs;
-mod qmd;
 mod repair_ssa;
 mod sm50;
 mod sm70;

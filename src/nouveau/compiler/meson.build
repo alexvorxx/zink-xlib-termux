@@ -133,9 +133,9 @@ _libnak_ir_proc_rs = rust.proc_macro(
   dependencies : [dep_syn],
 )
 
-_libnak_rs = static_library(
-  'nak_rs',
-  files('nak/lib.rs'),
+_libnak_qmd_rs = static_library(
+  'nak_qmd_rs',
+  files('nak_qmd/lib.rs'),
   gnu_symbol_visibility : 'hidden',
   rust_abi : 'c',
   rust_args : nak_rust_args,
@@ -143,7 +143,24 @@ _libnak_rs = static_library(
     dep_paste,
     idep_nvidia_headers_rs,
   ],
-  link_with: [_libbitview_rs, libnak_bindings_gen, _libnak_ir_proc_rs],
+  link_with: [
+    _libbitview_rs,
+    libnak_bindings_gen,
+  ],
+)
+
+_libnak_rs = static_library(
+  'nak_rs',
+  files('nak/lib.rs'),
+  gnu_symbol_visibility : 'hidden',
+  rust_abi : 'c',
+  rust_args : nak_rust_args,
+  link_with: [
+    _libbitview_rs,
+    libnak_bindings_gen,
+    _libnak_ir_proc_rs,
+    _libnak_qmd_rs,
+  ],
 )
 
 if with_tests

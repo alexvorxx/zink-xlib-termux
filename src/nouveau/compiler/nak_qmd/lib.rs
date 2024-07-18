@@ -152,7 +152,7 @@ macro_rules! qmd_impl_set_register_count {
 }
 
 mod qmd_0_6 {
-    use crate::qmd::*;
+    use crate::*;
     use nvidia_headers::classes::cla0c0::qmd as cla0c0;
 
     #[repr(transparent)]
@@ -196,7 +196,7 @@ mod qmd_0_6 {
 use qmd_0_6::Qmd0_6;
 
 mod qmd_2_1 {
-    use crate::qmd::*;
+    use crate::*;
     use nvidia_headers::classes::clc0c0::qmd as clc0c0;
 
     #[repr(transparent)]
@@ -263,7 +263,7 @@ macro_rules! qmd_impl_set_smem_size_bounded {
 }
 
 mod qmd_2_2 {
-    use crate::qmd::*;
+    use crate::*;
     use nvidia_headers::classes::clc3c0::qmd as clc3c0;
 
     #[repr(transparent)]
@@ -290,7 +290,7 @@ mod qmd_2_2 {
 use qmd_2_2::Qmd2_2;
 
 mod qmd_3_0 {
-    use crate::qmd::*;
+    use crate::*;
     use nvidia_headers::classes::clc6c0::qmd as clc6c0;
 
     #[repr(transparent)]

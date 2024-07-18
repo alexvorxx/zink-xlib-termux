@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 #include <mutex>
+#include <cstdlib>
 #include "lp_bld.h"
 #include "lp_bld_debug.h"
 #include "lp_bld_init.h"
@@ -101,6 +102,8 @@ public:
 };
 
 class LPJit;
+
+void lpjit_exit();
 
 class LLVMEnsureMultithreaded {
 public:
@@ -270,11 +273,14 @@ private:
    LPJit(const LPJit&) = delete;
    LPJit& operator=(const LPJit&) = delete;
 
+   friend void lpjit_exit();
+
    static void init_native_targets();
    llvm::orc::JITTargetMachineBuilder create_jtdb();
 
    static void init_lpjit() {
       jit = new LPJit;
+      std::atexit(lpjit_exit);
    }
    static LPJit* jit;
 
@@ -292,6 +298,11 @@ private:
 };
 
 LPJit* LPJit::jit = NULL;
+
+void lpjit_exit()
+{
+   delete LPJit::jit;
+}
 
 LLVMErrorRef module_transform(void *Ctx, LLVMModuleRef mod) {
    struct lp_passmgr *mgr;

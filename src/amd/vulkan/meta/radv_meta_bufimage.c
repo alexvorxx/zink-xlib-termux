@@ -787,7 +787,38 @@ create_cleari_pipeline(struct radv_device *device, bool is_3d, int samples, VkPi
 }
 
 static VkResult
-radv_device_init_meta_cleari_state(struct radv_device *device)
+get_cleari_pipeline(struct radv_device *device, const struct radv_image *image, VkPipeline *pipeline_out)
+{
+   struct radv_meta_state *state = &device->meta_state;
+   const bool is_3d = image->vk.image_type == VK_IMAGE_TYPE_3D;
+   const uint32_t samples = image->vk.samples;
+   const uint32_t samples_log2 = ffs(samples) - 1;
+   VkResult result = VK_SUCCESS;
+   VkPipeline *pipeline;
+
+   mtx_lock(&state->mtx);
+
+   if (is_3d) {
+      pipeline = &state->cleari.pipeline_3d;
+   } else {
+      pipeline = &state->cleari.pipeline[samples_log2];
+   }
+
+   if (!*pipeline) {
+      result = create_cleari_pipeline(device, is_3d, samples, pipeline);
+      if (result != VK_SUCCESS)
+         goto fail;
+   }
+
+   *pipeline_out = *pipeline;
+
+fail:
+   mtx_unlock(&state->mtx);
+   return result;
+}
+
+static VkResult
+radv_device_init_meta_cleari_state(struct radv_device *device, bool on_demand)
 {
    VkResult result;
 
@@ -811,6 +842,9 @@ radv_device_init_meta_cleari_state(struct radv_device *device)
                                              &device->meta_state.cleari.img_p_layout);
    if (result != VK_SUCCESS)
       return result;
+
+   if (on_demand)
+      return VK_SUCCESS;
 
    for (uint32_t i = 0; i < MAX_SAMPLES_LOG2; i++) {
       uint32_t samples = 1 << i;
@@ -957,7 +991,7 @@ radv_device_init_meta_bufimage_state(struct radv_device *device, bool on_demand)
    if (result != VK_SUCCESS)
       return result;
 
-   result = radv_device_init_meta_cleari_state(device);
+   result = radv_device_init_meta_cleari_state(device, on_demand);
    if (result != VK_SUCCESS)
       return result;
 
@@ -1643,8 +1677,8 @@ radv_meta_clear_image_cs(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_bl
 {
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_image_view dst_iview;
-   uint32_t samples = dst->image->vk.samples;
-   uint32_t samples_log2 = ffs(samples) - 1;
+   VkPipeline pipeline;
+   VkResult result;
 
    if (dst->format == VK_FORMAT_R32G32B32_UINT || dst->format == VK_FORMAT_R32G32B32_SINT ||
        dst->format == VK_FORMAT_R32G32B32_SFLOAT) {
@@ -1652,12 +1686,14 @@ radv_meta_clear_image_cs(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_bl
       return;
    }
 
+   result = get_cleari_pipeline(device, dst->image, &pipeline);
+   if (result != VK_SUCCESS) {
+      vk_command_buffer_set_error(&cmd_buffer->vk, result);
+      return;
+   }
+
    create_iview(cmd_buffer, dst, &dst_iview, VK_FORMAT_UNDEFINED, dst->aspect_mask);
    cleari_bind_descriptors(cmd_buffer, &dst_iview);
-
-   VkPipeline pipeline = device->meta_state.cleari.pipeline[samples_log2];
-   if (dst->image->vk.image_type == VK_IMAGE_TYPE_3D)
-      pipeline = device->meta_state.cleari.pipeline_3d;
 
    radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
 

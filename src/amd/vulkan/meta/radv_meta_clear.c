@@ -156,6 +156,18 @@ create_color_pipeline(struct radv_device *device, uint32_t samples, uint32_t fra
    struct nir_shader *fs_nir;
    VkResult result;
 
+   if (!device->meta_state.clear_color_p_layout) {
+      const VkPushConstantRange pc_range_color = {
+         .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+         .size = 16,
+      };
+
+      result =
+         radv_meta_create_pipeline_layout(device, NULL, 1, &pc_range_color, &device->meta_state.clear_color_p_layout);
+      if (result != VK_SUCCESS)
+         return result;
+   }
+
    build_color_shaders(device, &vs_nir, &fs_nir, frag_output);
 
    const VkPipelineVertexInputStateCreateInfo vi_state = {
@@ -994,15 +1006,6 @@ radv_device_init_meta_clear_state(struct radv_device *device, bool on_demand)
 {
    VkResult res;
    struct radv_meta_state *state = &device->meta_state;
-
-   const VkPushConstantRange pc_range_color = {
-      .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-      .size = 16,
-   };
-
-   res = radv_meta_create_pipeline_layout(device, NULL, 1, &pc_range_color, &device->meta_state.clear_color_p_layout);
-   if (res != VK_SUCCESS)
-      return res;
 
    const VkPushConstantRange pc_range_depth = {
       .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,

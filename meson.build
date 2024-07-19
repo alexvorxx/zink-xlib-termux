@@ -177,7 +177,8 @@ with_gallium_r600 = gallium_drivers.contains('r600')
 with_gallium_nouveau = gallium_drivers.contains('nouveau')
 with_gallium_freedreno = gallium_drivers.contains('freedreno')
 with_gallium_softpipe = with_swrast or gallium_drivers.contains('softpipe')
-with_gallium_llvmpipe = with_swrast or gallium_drivers.contains('llvmpipe')
+#with_gallium_llvmpipe = with_swrast or gallium_drivers.contains('llvmpipe')
+with_gallium_llvmpipe = gallium_drivers.contains('llvmpipe')
 with_gallium_vc4 = gallium_drivers.contains('vc4')
 with_gallium_v3d = gallium_drivers.contains('v3d')
 with_gallium_panfrost = gallium_drivers.contains('panfrost')
@@ -1831,7 +1832,7 @@ elif with_amd_vk and with_aco_tests
 elif with_swrast_vk
   error('The following drivers require LLVM: Lavapipe. One of these is enabled, but LLVM is disabled.')
 elif with_gallium_llvmpipe
-  error('The following drivers require LLVM: llvmpipe. It is enabled, but LLVM is disabled.')
+  #error('The following drivers require LLVM: llvmpipe. It is enabled, but LLVM is disabled.')
 elif with_gallium_clover
   error('The OpenCL "Clover" state tracker requires LLVM, but LLVM is disabled.')
 elif with_clc

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::from_nir::*;
-use crate::ir::{ShaderIoInfo, ShaderModel, ShaderStageInfo};
+use crate::ir::{ShaderInfo, ShaderIoInfo, ShaderModel, ShaderStageInfo};
 use crate::sm50::ShaderModel50;
 use crate::sm70::ShaderModel70;
 use crate::sph;
@@ -211,11 +211,116 @@ struct ShaderBin {
 }
 
 impl ShaderBin {
-    pub fn new(info: nak_shader_info, code: Vec<u32>, asm: &str) -> ShaderBin {
+    pub fn new(
+        sm: &dyn ShaderModel,
+        info: &ShaderInfo,
+        fs_key: Option<&nak_fs_key>,
+        code: Vec<u32>,
+        asm: &str,
+    ) -> ShaderBin {
         let asm = CString::new(asm)
             .expect("NAK assembly has unexpected null characters");
+
+        let c_info = nak_shader_info {
+            stage: match info.stage {
+                ShaderStageInfo::Compute(_) => MESA_SHADER_COMPUTE,
+                ShaderStageInfo::Vertex => MESA_SHADER_VERTEX,
+                ShaderStageInfo::Fragment(_) => MESA_SHADER_FRAGMENT,
+                ShaderStageInfo::Geometry(_) => MESA_SHADER_GEOMETRY,
+                ShaderStageInfo::TessellationInit(_) => MESA_SHADER_TESS_CTRL,
+                ShaderStageInfo::Tessellation(_) => MESA_SHADER_TESS_EVAL,
+            },
+            sm: sm.sm(),
+            num_gprs: if sm.sm() >= 70 {
+                max(4, info.num_gprs + 2)
+            } else {
+                max(4, info.num_gprs)
+            },
+            num_control_barriers: info.num_control_barriers,
+            _pad0: Default::default(),
+            num_instrs: info.num_instrs,
+            slm_size: info.slm_size,
+            __bindgen_anon_1: match &info.stage {
+                ShaderStageInfo::Compute(cs_info) => {
+                    nak_shader_info__bindgen_ty_1 {
+                        cs: nak_shader_info__bindgen_ty_1__bindgen_ty_1 {
+                            local_size: [
+                                cs_info.local_size[0],
+                                cs_info.local_size[1],
+                                cs_info.local_size[2],
+                            ],
+                            smem_size: cs_info.smem_size,
+                            _pad: Default::default(),
+                        },
+                    }
+                }
+                ShaderStageInfo::Fragment(fs_info) => {
+                    let fs_io_info = match &info.io {
+                        ShaderIoInfo::Fragment(io) => io,
+                        _ => unreachable!(),
+                    };
+                    nak_shader_info__bindgen_ty_1 {
+                        fs: nak_shader_info__bindgen_ty_1__bindgen_ty_2 {
+                            writes_depth: fs_io_info.writes_depth,
+                            reads_sample_mask: fs_io_info.reads_sample_mask,
+                            post_depth_coverage: fs_info.post_depth_coverage,
+                            uses_sample_shading: fs_info.uses_sample_shading,
+                            early_fragment_tests: fs_info.early_fragment_tests,
+                            _pad: Default::default(),
+                        },
+                    }
+                }
+                ShaderStageInfo::Tessellation(ts_info) => {
+                    nak_shader_info__bindgen_ty_1 {
+                        ts: nak_shader_info__bindgen_ty_1__bindgen_ty_3 {
+                            domain: ts_info.domain as u8,
+                            spacing: ts_info.spacing as u8,
+                            prims: ts_info.primitives as u8,
+                            _pad: Default::default(),
+                        },
+                    }
+                }
+                _ => nak_shader_info__bindgen_ty_1 {
+                    _pad: Default::default(),
+                },
+            },
+            vtg: match &info.io {
+                ShaderIoInfo::Vtg(io) => nak_shader_info__bindgen_ty_2 {
+                    writes_layer: io.attr_written(NAK_ATTR_RT_ARRAY_INDEX),
+                    writes_point_size: io.attr_written(NAK_ATTR_POINT_SIZE),
+                    clip_enable: io.clip_enable.try_into().unwrap(),
+                    cull_enable: io.cull_enable.try_into().unwrap(),
+                    xfb: if let Some(xfb) = &io.xfb {
+                        **xfb
+                    } else {
+                        unsafe { std::mem::zeroed() }
+                    },
+                },
+                _ => unsafe { std::mem::zeroed() },
+            },
+            hdr: sph::encode_header(sm, &info, fs_key),
+        };
+
+        if DEBUG.print() {
+            let stage_name = unsafe {
+                let c_name = _mesa_shader_stage_to_string(c_info.stage as u32);
+                CStr::from_ptr(c_name).to_str().expect("Invalid UTF-8")
+            };
+
+            eprintln!("Stage: {}", stage_name);
+            eprintln!("Instruction count: {}", c_info.num_instrs);
+            eprintln!("Num GPRs: {}", c_info.num_gprs);
+            eprintln!("SLM size: {}", c_info.slm_size);
+
+            if c_info.stage != MESA_SHADER_COMPUTE {
+                eprint_hex("Header", &c_info.hdr);
+            }
+
+            eprint_hex("Encoded shader", &code);
+        }
+
         let bin = nak_shader_bin {
-            info: info,
+            info: c_info,
             code_size: (code.len() * 4).try_into().unwrap(),
             code: code.as_ptr() as *const c_void,
             asm_str: if asm.is_empty() {
@@ -308,79 +413,6 @@ pub extern "C" fn nak_compile_shader(
 
     s.gather_info();
 
-    let info = nak_shader_info {
-        stage: nir.info.stage(),
-        sm: s.sm.sm(),
-        num_gprs: if s.sm.sm() >= 70 {
-            max(4, s.info.num_gprs + 2)
-        } else {
-            max(4, s.info.num_gprs)
-        },
-        num_control_barriers: s.info.num_control_barriers,
-        _pad0: Default::default(),
-        num_instrs: s.info.num_instrs,
-        slm_size: s.info.slm_size,
-        __bindgen_anon_1: match &s.info.stage {
-            ShaderStageInfo::Compute(cs_info) => {
-                nak_shader_info__bindgen_ty_1 {
-                    cs: nak_shader_info__bindgen_ty_1__bindgen_ty_1 {
-                        local_size: [
-                            cs_info.local_size[0],
-                            cs_info.local_size[1],
-                            cs_info.local_size[2],
-                        ],
-                        smem_size: cs_info.smem_size,
-                        _pad: Default::default(),
-                    },
-                }
-            }
-            ShaderStageInfo::Fragment(fs_info) => {
-                let fs_io_info = match &s.info.io {
-                    ShaderIoInfo::Fragment(io) => io,
-                    _ => unreachable!(),
-                };
-                nak_shader_info__bindgen_ty_1 {
-                    fs: nak_shader_info__bindgen_ty_1__bindgen_ty_2 {
-                        writes_depth: fs_io_info.writes_depth,
-                        reads_sample_mask: fs_io_info.reads_sample_mask,
-                        post_depth_coverage: fs_info.post_depth_coverage,
-                        uses_sample_shading: fs_info.uses_sample_shading,
-                        early_fragment_tests: fs_info.early_fragment_tests,
-                        _pad: Default::default(),
-                    },
-                }
-            }
-            ShaderStageInfo::Tessellation(ts_info) => {
-                nak_shader_info__bindgen_ty_1 {
-                    ts: nak_shader_info__bindgen_ty_1__bindgen_ty_3 {
-                        domain: ts_info.domain as u8,
-                        spacing: ts_info.spacing as u8,
-                        prims: ts_info.primitives as u8,
-                        _pad: Default::default(),
-                    },
-                }
-            }
-            _ => nak_shader_info__bindgen_ty_1 {
-                _pad: Default::default(),
-            },
-        },
-        vtg: match &s.info.io {
-            ShaderIoInfo::Vtg(io) => nak_shader_info__bindgen_ty_2 {
-                writes_layer: io.attr_written(NAK_ATTR_RT_ARRAY_INDEX),
-                writes_point_size: io.attr_written(NAK_ATTR_POINT_SIZE),
-                clip_enable: io.clip_enable.try_into().unwrap(),
-                cull_enable: io.cull_enable.try_into().unwrap(),
-                xfb: if let Some(xfb) = &io.xfb {
-                    **xfb
-                } else {
-                    unsafe { std::mem::zeroed() }
-                },
-            },
-            _ => unsafe { std::mem::zeroed() },
-        },
-        hdr: sph::encode_header(sm.as_ref(), &s.info, fs_key),
-    };
-
     let mut asm = String::new();
     if dump_asm {
         write!(asm, "{}", s).expect("Failed to dump assembly");
@@ -389,25 +421,7 @@ pub extern "C" fn nak_compile_shader(
     s.remove_annotations();
 
     let code = sm.encode_shader(&s);
-
-    if DEBUG.print() {
-        let stage_name = unsafe {
-            let c_name = _mesa_shader_stage_to_string(info.stage as u32);
-            CStr::from_ptr(c_name).to_str().expect("Invalid UTF-8")
-        };
-
-        eprintln!("Stage: {}", stage_name);
-        eprintln!("Instruction count: {}", info.num_instrs);
-        eprintln!("Num GPRs: {}", info.num_gprs);
-        eprintln!("SLM size: {}", info.slm_size);
-
-        if info.stage != MESA_SHADER_COMPUTE {
-            eprint_hex("Header", &info.hdr);
-        }
-
-        eprint_hex("Encoded shader", &code);
-    }
-
-    let bin = Box::new(ShaderBin::new(info, code, &asm));
+    let bin =
+        Box::new(ShaderBin::new(sm.as_ref(), &s.info, fs_key, code, &asm));
     Box::into_raw(bin) as *mut nak_shader_bin
 }

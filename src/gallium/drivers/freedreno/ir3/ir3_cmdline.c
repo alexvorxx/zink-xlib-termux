@@ -143,7 +143,8 @@ load_glsl(unsigned num_files, char *const *files, gl_shader_stage stage)
        nir->info.stage == MESA_SHADER_GEOMETRY) {
       NIR_PASS_V(nir, nir_lower_io_to_temporaries,
                  nir_shader_get_entrypoint(nir), true, true);
-   } else if (nir->info.stage == MESA_SHADER_FRAGMENT) {
+   } else if (nir->info.stage == MESA_SHADER_TESS_EVAL ||
+              nir->info.stage == MESA_SHADER_FRAGMENT) {
       NIR_PASS_V(nir, nir_lower_io_to_temporaries,
                  nir_shader_get_entrypoint(nir), true, false);
    }

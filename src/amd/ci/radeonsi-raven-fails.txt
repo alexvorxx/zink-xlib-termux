@@ -68,7 +68,3 @@ spec@!opengl 1.1@line-smooth-stipple,Fail
 spec@arb_viewport_array@display-list,Fail
 # since transition XORG -> WESTON
 glx@glx_arb_sync_control@waitformsc,Fail
-
-# uprev Piglit in Mesa
-spec@arb_tessellation_shader@execution@tesslevels-indirect,Crash
-

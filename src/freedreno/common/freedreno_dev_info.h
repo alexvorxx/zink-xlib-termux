@@ -56,6 +56,10 @@ struct fd_dev_info {
    /* Information for private memory calculations */
    uint32_t fibers_per_sp;
 
+   uint32_t threadsize_base;
+
+   uint32_t max_waves;
+
    /* number of CCU is always equal to the number of SP */
    union {
       uint32_t num_sp_cores;
@@ -87,9 +91,7 @@ struct fd_dev_info {
       /* Does the hw support GL_QCOM_shading_rate? */
       bool has_shading_rate;
 
-      /* newer a6xx allows using 16-bit descriptor for both 16-bit
-       * and 32-bit access
-       */
+      /* Whether a 16-bit descriptor can be used */
       bool storage_16bit;
 
       /* The latest known a630_sqe.fw fails to wait for WFI before
@@ -267,12 +269,20 @@ struct fd_dev_info {
        */
       bool fs_must_have_non_zero_constlen_quirk;
 
+      /* On a750 there is a hardware bug where certain VPC sizes in a GS with
+       * an input primitive type that is a triangle with adjacency can hang
+       * with a high enough vertex count.
+       */
+      bool gs_vpc_adjacency_quirk;
+
       /* On a740 TPL1_DBG_ECO_CNTL1.TP_UBWC_FLAG_HINT must be the same between
        * all drivers in the system, somehow having different values affects
        * BLIT_OP_SCALE. We cannot automatically match blob's value, so the
        * best thing we could do is a toggle.
        */
       bool enable_tp_ubwc_flag_hint;
+
+      bool storage_8bit;
    } a7xx;
 };
 

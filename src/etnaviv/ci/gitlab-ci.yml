@@ -22,7 +22,7 @@
 
 .etnaviv-manual-rules:
   stage: etnaviv
-  retry: !reference [.scheduled_pipeline-rules, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
     - !reference [.austriancoder-farm-manual-rules, rules]

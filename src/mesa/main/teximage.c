@@ -3554,8 +3554,7 @@ egl_image_target_texture(struct gl_context *ctx,
    if (!texObj)
       return;
 
-   if (!image || (ctx->Driver.ValidateEGLImage &&
-                  !ctx->Driver.ValidateEGLImage(ctx, image))) {
+   if (!image || !st_validate_egl_image(ctx, image)) {
       _mesa_error(ctx, GL_INVALID_VALUE, "%s(image=%p)", caller, image);
       return;
    }

@@ -1120,7 +1120,7 @@ static int upload_binary_raw(struct si_screen *sscreen, struct si_shader *shader
 int si_shader_binary_upload_at(struct si_screen *sscreen, struct si_shader *shader,
                                uint64_t scratch_va, int64_t bo_offset)
 {
-   bool dma_upload = !(sscreen->debug_flags & DBG(NO_DMA_SHADERS)) &&
+   bool dma_upload = !(sscreen->debug_flags & DBG(NO_DMA_SHADERS)) && sscreen->info.has_cp_dma &&
                      sscreen->info.has_dedicated_vram && !sscreen->info.all_vram_visible &&
                      bo_offset < 0;
 
@@ -3014,8 +3014,7 @@ bool si_compile_shader(struct si_screen *sscreen, struct ac_llvm_compiler *compi
    }
 
    /* Add/remove the scratch offset to/from input SGPRs. */
-   if (sel->screen->info.gfx_level < GFX11 &&
-       (sel->screen->info.family < CHIP_GFX940 || sel->screen->info.has_graphics) &&
+   if (!sel->screen->info.has_scratch_base_registers &&
        !si_is_merged_shader(shader)) {
       if (sel->info.base.use_aco_amd) {
          /* When aco scratch_offset arg is added explicitly at the beginning.
@@ -3423,7 +3422,7 @@ bool si_create_shader_variant(struct si_screen *sscreen, struct ac_llvm_compiler
             assert(sel->main_shader_part->gs_copy_shader);
             assert(sel->main_shader_part->gs_copy_shader->bo);
             assert(!sel->main_shader_part->gs_copy_shader->previous_stage_sel);
-            assert(!sel->main_shader_part->gs_copy_shader->scratch_bo);
+            assert(!sel->main_shader_part->gs_copy_shader->scratch_va);
 
             shader->gs_copy_shader = CALLOC_STRUCT(si_shader);
             memcpy(shader->gs_copy_shader, sel->main_shader_part->gs_copy_shader,
@@ -3559,9 +3558,6 @@ void si_shader_binary_clean(struct si_shader_binary *binary)
 
 void si_shader_destroy(struct si_shader *shader)
 {
-   if (shader->scratch_bo)
-      si_resource_reference(&shader->scratch_bo, NULL);
-
    si_resource_reference(&shader->bo, NULL);
 
    if (!shader->is_binary_shared)

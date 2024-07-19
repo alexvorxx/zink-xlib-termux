@@ -357,7 +357,7 @@ translate_superblock_size(uint64_t modifier)
 }
 
 static void
-panfrost_emit_plane(const struct pan_image_layout *layout,
+panfrost_emit_plane(int index, const struct pan_image_layout *layout,
                     enum pipe_format format, mali_ptr pointer, unsigned level,
                     int32_t row_stride, int32_t surface_stride,
                     mali_ptr plane2_ptr, void **payload)
@@ -368,6 +368,7 @@ panfrost_emit_plane(const struct pan_image_layout *layout,
    assert(row_stride >= 0 && surface_stride >= 0 && "negative stride");
 
    bool afbc = drm_is_afbc(layout->modifier);
+   bool afrc = drm_is_afrc(layout->modifier);
    // TODO: this isn't technically guaranteed to be YUV, but it is in practice.
    bool is_3_planar_yuv = desc->layout == UTIL_FORMAT_LAYOUT_PLANAR3;
 
@@ -386,6 +387,7 @@ panfrost_emit_plane(const struct pan_image_layout *layout,
 
       if (desc->layout == UTIL_FORMAT_LAYOUT_ASTC) {
          assert(!afbc);
+         assert(!afrc);
 
          if (desc->block.depth > 1) {
             cfg.plane_type = MALI_PLANE_TYPE_ASTC_3D;
@@ -421,17 +423,29 @@ panfrost_emit_plane(const struct pan_image_layout *layout,
          cfg.afbc.prefetch = true;
          cfg.afbc.compression_mode = GENX(pan_afbc_compression_mode)(format);
          cfg.afbc.header_stride = layout->slices[level].afbc.header_size;
+      } else if (afrc) {
+#if PAN_ARCH >= 10
+         struct pan_afrc_format_info finfo =
+            panfrost_afrc_get_format_info(format);
+
+         cfg.plane_type = MALI_PLANE_TYPE_AFRC;
+         cfg.afrc.block_size =
+            GENX(pan_afrc_block_size)(layout->modifier, index);
+         cfg.afrc.format =
+            GENX(pan_afrc_format)(finfo, layout->modifier, index);
+#endif
       } else {
          cfg.plane_type = is_3_planar_yuv ? MALI_PLANE_TYPE_CHROMA_2P
                                           : MALI_PLANE_TYPE_GENERIC;
          cfg.clump_format = panfrost_clump_format(format);
       }
 
-      if (!afbc &&
-          layout->modifier == DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED)
-         cfg.clump_ordering = MALI_CLUMP_ORDERING_TILED_U_INTERLEAVED;
-      else if (!afbc)
-         cfg.clump_ordering = MALI_CLUMP_ORDERING_LINEAR;
+      if (!afbc && !afrc) {
+         if (layout->modifier == DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED)
+            cfg.clump_ordering = MALI_CLUMP_ORDERING_TILED_U_INTERLEAVED;
+         else
+            cfg.clump_ordering = MALI_CLUMP_ORDERING_LINEAR;
+      }
    }
    *payload += pan_size(PLANE);
 }
@@ -498,12 +512,12 @@ panfrost_emit_surface(const struct pan_image_view *iview, unsigned level,
          /* 3-plane YUV requires equal stride for both chroma planes */
          assert(row_strides[2] == 0 || row_strides[1] == row_strides[2]);
 
-         panfrost_emit_plane(layouts[i], format, plane_ptrs[i], level,
+         panfrost_emit_plane(i, layouts[i], format, plane_ptrs[i], level,
                              row_strides[i], surface_strides[i], plane_ptrs[2],
                              payload);
       }
    } else {
-      panfrost_emit_plane(layouts[0], format, plane_ptrs[0], level,
+      panfrost_emit_plane(0, layouts[0], format, plane_ptrs[0], level,
                           row_strides[0], surface_strides[0], 0, payload);
    }
    return;
@@ -619,11 +633,13 @@ GENX(panfrost_new_texture)(const struct pan_image_view *iview, void *out,
       };
 
       util_format_compose_swizzles(replicate_x, iview->swizzle, swizzle);
-   } else if (PAN_ARCH == 7 && !panfrost_format_is_yuv(format)) {
-#if PAN_ARCH == 7
+   } else if ((PAN_ARCH == 7 || PAN_ARCH == 10) &&
+              !panfrost_format_is_yuv(format)) {
+#if PAN_ARCH == 7 || PAN_ARCH >= 10
       /* v7 (only) restricts component orders when AFBC is in use.
        * Rather than restrict AFBC, we use an allowed component order
        * with an invertible swizzle composed.
+       * v10 has the same restriction, but on AFRC formats.
        */
       enum mali_rgb_component_order orig = mali_format & BITFIELD_MASK(12);
       struct pan_decomposed_swizzle decomposed =
@@ -733,5 +749,98 @@ GENX(pan_afbc_compression_mode)(enum pipe_format format)
    /* clang-format on */
 
    unreachable("all AFBC formats handled");
+}
+#endif
+
+#if PAN_ARCH >= 10
+enum mali_afrc_format
+GENX(pan_afrc_format)(struct pan_afrc_format_info info, uint64_t modifier,
+                      unsigned plane)
+{
+   bool scan = panfrost_afrc_is_scan(modifier);
+
+   assert(info.bpc == 8 || info.bpc == 10);
+   assert(info.num_comps > 0 && info.num_comps <= 4);
+
+   switch (info.ichange_fmt) {
+   case PAN_AFRC_ICHANGE_FORMAT_RAW:
+      assert(plane == 0);
+
+      if (info.bpc == 8)
+         return (scan ? MALI_AFRC_FORMAT_R8_SCAN : MALI_AFRC_FORMAT_R8_ROT) +
+                (info.num_comps - 1);
+
+      assert(info.num_comps == 4);
+      return (scan ? MALI_AFRC_FORMAT_R10G10B10A10_SCAN
+                   : MALI_AFRC_FORMAT_R10G10B10A10_ROT);
+
+   case PAN_AFRC_ICHANGE_FORMAT_YUV444:
+      if (info.bpc == 8) {
+         if (plane == 0 || info.num_planes == 3)
+            return (scan ? MALI_AFRC_FORMAT_R8_444_SCAN
+                         : MALI_AFRC_FORMAT_R8_444_ROT);
+
+         return (scan ? MALI_AFRC_FORMAT_R8G8_444_SCAN
+                      : MALI_AFRC_FORMAT_R8G8_444_ROT);
+      }
+
+      assert(info.num_planes == 3);
+      return (scan ? MALI_AFRC_FORMAT_R10_444_SCAN
+                   : MALI_AFRC_FORMAT_R10_444_ROT);
+
+   case PAN_AFRC_ICHANGE_FORMAT_YUV422:
+      if (info.bpc == 8) {
+         if (plane == 0 || info.num_planes == 3)
+            return (scan ? MALI_AFRC_FORMAT_R8_422_SCAN
+                         : MALI_AFRC_FORMAT_R8_422_ROT);
+
+         return (scan ? MALI_AFRC_FORMAT_R8G8_422_SCAN
+                      : MALI_AFRC_FORMAT_R8G8_422_ROT);
+      }
+
+      if (plane == 0 || info.num_planes == 3)
+         return (scan ? MALI_AFRC_FORMAT_R10_422_SCAN
+                      : MALI_AFRC_FORMAT_R10_422_ROT);
+
+      return (scan ? MALI_AFRC_FORMAT_R10G10_422_SCAN
+                   : MALI_AFRC_FORMAT_R10G10_422_ROT);
+
+   case PAN_AFRC_ICHANGE_FORMAT_YUV420:
+      if (info.bpc == 8) {
+         if (plane == 0 || info.num_planes == 3)
+            return (scan ? MALI_AFRC_FORMAT_R8_420_SCAN
+                         : MALI_AFRC_FORMAT_R8_420_ROT);
+
+         return (scan ? MALI_AFRC_FORMAT_R8G8_420_SCAN
+                      : MALI_AFRC_FORMAT_R8G8_420_ROT);
+      }
+
+      if (plane == 0 || info.num_planes == 3)
+         return (scan ? MALI_AFRC_FORMAT_R10_420_SCAN
+                      : MALI_AFRC_FORMAT_R10_420_ROT);
+
+      return (scan ? MALI_AFRC_FORMAT_R10G10_420_SCAN
+                   : MALI_AFRC_FORMAT_R10G10_420_ROT);
+
+   default:
+      return MALI_AFRC_FORMAT_INVALID;
+   }
+}
+
+enum mali_afrc_block_size
+GENX(pan_afrc_block_size)(uint64_t modifier, unsigned index)
+{
+   /* Clump size flag for planes 1 and 2 is shifted by 4 bits */
+   unsigned shift = index == 0 ? 0 : 4;
+   uint64_t flag = (modifier >> shift) & AFRC_FORMAT_MOD_CU_SIZE_MASK;
+
+   /* clang-format off */
+   switch (flag) {
+   case AFRC_FORMAT_MOD_CU_SIZE_16: return MALI_AFRC_BLOCK_SIZE_16;
+   case AFRC_FORMAT_MOD_CU_SIZE_24: return MALI_AFRC_BLOCK_SIZE_24;
+   case AFRC_FORMAT_MOD_CU_SIZE_32: return MALI_AFRC_BLOCK_SIZE_32;
+   default:                         unreachable("invalid code unit size");
+   }
+   /* clang-format on */
 }
 #endif

@@ -11,6 +11,7 @@
 #include "nvk_event.h"
 #include "nvk_mme.h"
 #include "nvk_physical_device.h"
+#include "nvkmd/nvkmd.h"
 
 #include "vk_common_entrypoints.h"
 #include "vk_meta.h"
@@ -18,9 +19,6 @@
 
 #include "compiler/nir/nir.h"
 #include "compiler/nir/nir_builder.h"
-
-#include "nouveau_bo.h"
-#include "nouveau_context.h"
 
 #include "util/os_time.h"
 
@@ -41,7 +39,9 @@ nvk_CreateQueryPool(VkDevice device,
                     VkQueryPool *pQueryPool)
 {
    VK_FROM_HANDLE(nvk_device, dev, device);
+   struct nvk_physical_device *pdev = nvk_device_physical(dev);
    struct nvk_query_pool *pool;
+   VkResult result;
 
    pool = vk_query_pool_create(&dev->vk, pCreateInfo,
                                pAllocator, sizeof(*pool));
@@ -74,20 +74,20 @@ nvk_CreateQueryPool(VkDevice device,
    pool->query_stride = reports_per_query * sizeof(struct nvk_query_report);
 
    if (pool->vk.query_count > 0) {
-      uint32_t bo_size = pool->query_start +
-                         pool->query_stride * pool->vk.query_count;
-      pool->bo = nouveau_ws_bo_new_mapped(dev->ws_dev, bo_size, 0,
-                                          NOUVEAU_WS_BO_GART |
-                                          NOUVEAU_WS_BO_NO_SHARE,
-                                          NOUVEAU_WS_BO_RDWR,
-                                          &pool->bo_map);
-      if (!pool->bo) {
+      uint32_t mem_size = pool->query_start +
+                          pool->query_stride * pool->vk.query_count;
+      result = nvkmd_dev_alloc_mapped_mem(dev->nvkmd, &dev->vk.base,
+                                          mem_size, 0 /* align_B */,
+                                          NVKMD_MEM_GART,
+                                          NVKMD_MEM_MAP_RDWR,
+                                          &pool->mem);
+      if (result != VK_SUCCESS) {
          vk_query_pool_destroy(&dev->vk, pAllocator, &pool->vk);
-         return vk_error(dev, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+         return result;
       }
 
-      if (dev->ws_dev->debug_flags & NVK_DEBUG_ZERO_MEMORY)
-         memset(pool->bo_map, 0, bo_size);
+      if (pdev->debug_flags & NVK_DEBUG_ZERO_MEMORY)
+         memset(pool->mem->map, 0, mem_size);
    }
 
    *pQueryPool = nvk_query_pool_to_handle(pool);
@@ -106,10 +106,8 @@ nvk_DestroyQueryPool(VkDevice device,
    if (!pool)
       return;
 
-   if (pool->bo) {
-      nouveau_ws_bo_unmap(pool->bo, pool->bo_map);
-      nouveau_ws_bo_destroy(pool->bo);
-   }
+   if (pool->mem)
+      nvkmd_mem_unref(pool->mem);
    vk_query_pool_destroy(&dev->vk, pAllocator, &pool->vk);
 }
 
@@ -117,7 +115,7 @@ static uint64_t
 nvk_query_available_addr(struct nvk_query_pool *pool, uint32_t query)
 {
    assert(query < pool->vk.query_count);
-   return pool->bo->offset + query * sizeof(uint32_t);
+   return pool->mem->va->addr + query * sizeof(uint32_t);
 }
 
 static nir_def *
@@ -132,7 +130,7 @@ static uint32_t *
 nvk_query_available_map(struct nvk_query_pool *pool, uint32_t query)
 {
    assert(query < pool->vk.query_count);
-   return (uint32_t *)pool->bo_map + query;
+   return (uint32_t *)pool->mem->map + query;
 }
 
 static uint64_t
@@ -145,7 +143,7 @@ nvk_query_offset(struct nvk_query_pool *pool, uint32_t query)
 static uint64_t
 nvk_query_report_addr(struct nvk_query_pool *pool, uint32_t query)
 {
-   return pool->bo->offset + nvk_query_offset(pool, query);
+   return pool->mem->va->addr + nvk_query_offset(pool, query);
 }
 
 static nir_def *
@@ -161,7 +159,7 @@ nvk_nir_query_report_addr(nir_builder *b, nir_def *pool_addr,
 static struct nvk_query_report *
 nvk_query_report_map(struct nvk_query_pool *pool, uint32_t query)
 {
-   return (void *)((char *)pool->bo_map + nvk_query_offset(pool, query));
+   return (void *)((char *)pool->mem->map + nvk_query_offset(pool, query));
 }
 
 /**
@@ -930,7 +928,7 @@ nvk_meta_copy_query_pool_results(struct nvk_cmd_buffer *cmd,
    VkResult result;
 
    const struct nvk_copy_query_push push = {
-      .pool_addr = pool->bo->offset,
+      .pool_addr = pool->mem->va->addr,
       .query_start = pool->query_start,
       .query_stride = pool->query_stride,
       .first_query = first_query,

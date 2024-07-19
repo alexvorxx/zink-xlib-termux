@@ -45,7 +45,7 @@ using namespace brw;
  * data.  It will get adjusted to be a real location before
  * generate_code() time.
  */
-fs_reg
+brw_reg
 fs_visitor::interp_reg(const fs_builder &bld, unsigned location,
                        unsigned channel, unsigned comp)
 {
@@ -71,12 +71,12 @@ fs_visitor::interp_reg(const fs_builder &bld, unsigned location,
        * assign_urb_setup()), so we need to use offset() instead of
        * component() to select the specified parameter.
        */
-      const fs_reg tmp = bld.vgrf(BRW_TYPE_UD);
-      bld.MOV(tmp, offset(fs_reg(ATTR, regnr, BRW_TYPE_UD),
+      const brw_reg tmp = bld.vgrf(BRW_TYPE_UD);
+      bld.MOV(tmp, offset(brw_attr_reg(regnr, BRW_TYPE_UD),
                           dispatch_width, comp));
       return retype(tmp, BRW_TYPE_F);
    } else {
-      return component(fs_reg(ATTR, regnr, BRW_TYPE_F), comp);
+      return component(brw_attr_reg(regnr, BRW_TYPE_F), comp);
    }
 }
 
@@ -84,7 +84,7 @@ fs_visitor::interp_reg(const fs_builder &bld, unsigned location,
  * data.  It will get adjusted to be a real location before
  * generate_code() time.
  */
-fs_reg
+brw_reg
 fs_visitor::per_primitive_reg(const fs_builder &bld, int location, unsigned comp)
 {
    assert(stage == MESA_SHADER_FRAGMENT);
@@ -106,12 +106,12 @@ fs_visitor::per_primitive_reg(const fs_builder &bld, int location, unsigned comp
        * assign_urb_setup()), so we need to use offset() instead of
        * component() to select the specified parameter.
        */
-      const fs_reg tmp = bld.vgrf(BRW_TYPE_UD);
-      bld.MOV(tmp, offset(fs_reg(ATTR, regnr, BRW_TYPE_UD),
+      const brw_reg tmp = bld.vgrf(BRW_TYPE_UD);
+      bld.MOV(tmp, offset(brw_attr_reg(regnr, BRW_TYPE_UD),
                           dispatch_width, comp % 4));
       return retype(tmp, BRW_TYPE_F);
    } else {
-      return component(fs_reg(ATTR, regnr, BRW_TYPE_F), comp % 4);
+      return component(brw_attr_reg(regnr, BRW_TYPE_F), comp % 4);
    }
 }
 
@@ -128,9 +128,9 @@ fs_visitor::emit_interpolation_setup()
    const struct brw_wm_prog_key *wm_key = (brw_wm_prog_key*) this->key;
    struct brw_wm_prog_data *wm_prog_data = brw_wm_prog_data(prog_data);
 
-   fs_reg int_sample_offset_x, int_sample_offset_y; /* Used on Gen12HP+ */
-   fs_reg int_sample_offset_xy; /* Used on Gen8+ */
-   fs_reg half_int_sample_offset_x, half_int_sample_offset_y;
+   brw_reg int_sample_offset_x, int_sample_offset_y; /* Used on Gen12HP+ */
+   brw_reg int_sample_offset_xy; /* Used on Gen8+ */
+   brw_reg half_int_sample_offset_x, half_int_sample_offset_y;
    if (wm_prog_data->coarse_pixel_dispatch != BRW_ALWAYS) {
       /* The thread payload only delivers subspan locations (ss0, ss1,
        * ss2, ...). Since subspans covers 2x2 pixels blocks, we need to
@@ -161,9 +161,9 @@ fs_visitor::emit_interpolation_setup()
        * coordinates out of 2 subspans coordinates in a single ADD instruction
        * (twice the operation above).
        */
-      int_sample_offset_xy = fs_reg(brw_imm_v(0x11001010));
-      half_int_sample_offset_x = fs_reg(brw_imm_uw(0));
-      half_int_sample_offset_y = fs_reg(brw_imm_uw(0));
+      int_sample_offset_xy = brw_reg(brw_imm_v(0x11001010));
+      half_int_sample_offset_x = brw_reg(brw_imm_uw(0));
+      half_int_sample_offset_y = brw_reg(brw_imm_uw(0));
       /* On Gfx12.5, because of regioning restrictions, the interpolation code
        * is slightly different and works off X & Y only inputs. The ordering
        * of the half bytes here is a bit odd, with each subspan replicated
@@ -173,13 +173,13 @@ fs_visitor::emit_interpolation_setup()
        *  X offset:    0      0      1      0      0      0      1      0
        *  Y offset:    0      0      0      0      1      0      1      0
        */
-      int_sample_offset_x = fs_reg(brw_imm_v(0x01000100));
-      int_sample_offset_y = fs_reg(brw_imm_v(0x01010000));
+      int_sample_offset_x = brw_reg(brw_imm_v(0x01000100));
+      int_sample_offset_y = brw_reg(brw_imm_v(0x01010000));
    }
 
-   fs_reg int_coarse_offset_x, int_coarse_offset_y; /* Used on Gen12HP+ */
-   fs_reg int_coarse_offset_xy; /* Used on Gen8+ */
-   fs_reg half_int_coarse_offset_x, half_int_coarse_offset_y;
+   brw_reg int_coarse_offset_x, int_coarse_offset_y; /* Used on Gen12HP+ */
+   brw_reg int_coarse_offset_xy; /* Used on Gen8+ */
+   brw_reg half_int_coarse_offset_x, half_int_coarse_offset_y;
    if (wm_prog_data->coarse_pixel_dispatch != BRW_NEVER) {
       /* In coarse pixel dispatch we have to do the same ADD instruction that
        * we do in normal per pixel dispatch, except this time we're not adding
@@ -226,9 +226,9 @@ fs_visitor::emit_interpolation_setup()
       bld.SHR(half_int_coarse_offset_y, suboffset(r1_0, 1), brw_imm_ud(1));
    }
 
-   fs_reg int_pixel_offset_x, int_pixel_offset_y; /* Used on Gen12HP+ */
-   fs_reg int_pixel_offset_xy; /* Used on Gen8+ */
-   fs_reg half_int_pixel_offset_x, half_int_pixel_offset_y;
+   brw_reg int_pixel_offset_x, int_pixel_offset_y; /* Used on Gen12HP+ */
+   brw_reg int_pixel_offset_xy; /* Used on Gen8+ */
+   brw_reg half_int_pixel_offset_x, half_int_pixel_offset_y;
    switch (wm_prog_data->coarse_pixel_dispatch) {
    case BRW_NEVER:
       int_pixel_offset_x = int_sample_offset_x;
@@ -301,14 +301,14 @@ fs_visitor::emit_interpolation_setup()
       if (devinfo->verx10 >= 125) {
          const fs_builder dbld =
             abld.exec_all().group(hbld.dispatch_width() * 2, 0);
-         const fs_reg int_pixel_x = dbld.vgrf(BRW_TYPE_UW);
-         const fs_reg int_pixel_y = dbld.vgrf(BRW_TYPE_UW);
+         const brw_reg int_pixel_x = dbld.vgrf(BRW_TYPE_UW);
+         const brw_reg int_pixel_y = dbld.vgrf(BRW_TYPE_UW);
 
          dbld.ADD(int_pixel_x,
-                  fs_reg(stride(suboffset(gi_uw, 4), 2, 8, 0)),
+                  brw_reg(stride(suboffset(gi_uw, 4), 2, 8, 0)),
                   int_pixel_offset_x);
          dbld.ADD(int_pixel_y,
-                  fs_reg(stride(suboffset(gi_uw, 5), 2, 8, 0)),
+                  brw_reg(stride(suboffset(gi_uw, 5), 2, 8, 0)),
                   int_pixel_offset_y);
 
          if (wm_prog_data->coarse_pixel_dispatch != BRW_NEVER) {
@@ -338,10 +338,10 @@ fs_visitor::emit_interpolation_setup()
           */
          const fs_builder dbld =
             abld.exec_all().group(hbld.dispatch_width() * 2, 0);
-         fs_reg int_pixel_xy = dbld.vgrf(BRW_TYPE_UW);
+         brw_reg int_pixel_xy = dbld.vgrf(BRW_TYPE_UW);
 
          dbld.ADD(int_pixel_xy,
-                  fs_reg(stride(suboffset(gi_uw, 4), 1, 4, 0)),
+                  brw_reg(stride(suboffset(gi_uw, 4), 1, 4, 0)),
                   int_pixel_offset_xy);
 
          hbld.emit(FS_OPCODE_PIXEL_X, offset(pixel_x, hbld, i), int_pixel_xy,
@@ -352,7 +352,7 @@ fs_visitor::emit_interpolation_setup()
    }
 
    abld = bld.annotate("compute pos.z");
-   fs_reg coarse_z;
+   brw_reg coarse_z;
    if (wm_prog_data->coarse_pixel_dispatch != BRW_NEVER &&
        wm_prog_data->uses_depth_w_coefficients) {
       /* In coarse pixel mode, the HW doesn't interpolate Z coordinate
@@ -360,30 +360,30 @@ fs_visitor::emit_interpolation_setup()
        * pixels locations, here we recompute the Z value with 2 coefficients
        * in X & Y axis.
        */
-      fs_reg coef_payload = brw_vec8_grf(fs_payload().depth_w_coef_reg, 0);
-      const fs_reg x_start = brw_vec1_grf(coef_payload.nr, 2);
-      const fs_reg y_start = brw_vec1_grf(coef_payload.nr, 6);
-      const fs_reg z_cx    = brw_vec1_grf(coef_payload.nr, 1);
-      const fs_reg z_cy    = brw_vec1_grf(coef_payload.nr, 0);
-      const fs_reg z_c0    = brw_vec1_grf(coef_payload.nr, 3);
+      brw_reg coef_payload = brw_vec8_grf(fs_payload().depth_w_coef_reg, 0);
+      const brw_reg x_start = brw_vec1_grf(coef_payload.nr, 2);
+      const brw_reg y_start = brw_vec1_grf(coef_payload.nr, 6);
+      const brw_reg z_cx    = brw_vec1_grf(coef_payload.nr, 1);
+      const brw_reg z_cy    = brw_vec1_grf(coef_payload.nr, 0);
+      const brw_reg z_c0    = brw_vec1_grf(coef_payload.nr, 3);
 
-      const fs_reg float_pixel_x = abld.vgrf(BRW_TYPE_F);
-      const fs_reg float_pixel_y = abld.vgrf(BRW_TYPE_F);
+      const brw_reg float_pixel_x = abld.vgrf(BRW_TYPE_F);
+      const brw_reg float_pixel_y = abld.vgrf(BRW_TYPE_F);
 
       abld.ADD(float_pixel_x, this->pixel_x, negate(x_start));
       abld.ADD(float_pixel_y, this->pixel_y, negate(y_start));
 
       /* r1.0 - 0:7 ActualCoarsePixelShadingSize.X */
-      const fs_reg u8_cps_width = fs_reg(retype(brw_vec1_grf(1, 0), BRW_TYPE_UB));
+      const brw_reg u8_cps_width = brw_reg(retype(brw_vec1_grf(1, 0), BRW_TYPE_UB));
       /* r1.0 - 15:8 ActualCoarsePixelShadingSize.Y */
-      const fs_reg u8_cps_height = byte_offset(u8_cps_width, 1);
-      const fs_reg u32_cps_width = abld.vgrf(BRW_TYPE_UD);
-      const fs_reg u32_cps_height = abld.vgrf(BRW_TYPE_UD);
+      const brw_reg u8_cps_height = byte_offset(u8_cps_width, 1);
+      const brw_reg u32_cps_width = abld.vgrf(BRW_TYPE_UD);
+      const brw_reg u32_cps_height = abld.vgrf(BRW_TYPE_UD);
       abld.MOV(u32_cps_width, u8_cps_width);
       abld.MOV(u32_cps_height, u8_cps_height);
 
-      const fs_reg f_cps_width = abld.vgrf(BRW_TYPE_F);
-      const fs_reg f_cps_height = abld.vgrf(BRW_TYPE_F);
+      const brw_reg f_cps_width = abld.vgrf(BRW_TYPE_F);
+      const brw_reg f_cps_height = abld.vgrf(BRW_TYPE_F);
       abld.MOV(f_cps_width, u32_cps_width);
       abld.MOV(f_cps_height, u32_cps_height);
 
@@ -401,7 +401,7 @@ fs_visitor::emit_interpolation_setup()
 
    if (wm_prog_data->uses_depth_w_coefficients ||
        wm_prog_data->uses_src_depth) {
-      fs_reg sample_z = this->pixel_z;
+      brw_reg sample_z = this->pixel_z;
 
       switch (wm_prog_data->coarse_pixel_dispatch) {
       case BRW_NEVER:
@@ -505,8 +505,8 @@ fs_visitor::emit_interpolation_setup()
          if (!(centroid_modes & (1 << i)))
             continue;
 
-         const fs_reg centroid_delta_xy = delta_xy[i];
-         const fs_reg &pixel_delta_xy = delta_xy[i - 1];
+         const brw_reg centroid_delta_xy = delta_xy[i];
+         const brw_reg &pixel_delta_xy = delta_xy[i - 1];
 
          delta_xy[i] = bld.vgrf(BRW_TYPE_F, 2);
 
@@ -525,15 +525,15 @@ fs_visitor::emit_interpolation_setup()
 
 fs_inst *
 fs_visitor::emit_single_fb_write(const fs_builder &bld,
-                                 fs_reg color0, fs_reg color1,
-                                 fs_reg src0_alpha, unsigned components)
+                                 brw_reg color0, brw_reg color1,
+                                 brw_reg src0_alpha, unsigned components)
 {
    assert(stage == MESA_SHADER_FRAGMENT);
    struct brw_wm_prog_data *prog_data = brw_wm_prog_data(this->prog_data);
 
    /* Hand over gl_FragDepth or the payload depth. */
-   const fs_reg dst_depth = fetch_payload_reg(bld, fs_payload().dest_depth_reg);
-   fs_reg src_depth, src_stencil;
+   const brw_reg dst_depth = fetch_payload_reg(bld, fs_payload().dest_depth_reg);
+   brw_reg src_depth, src_stencil;
 
    if (nir->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_DEPTH))
       src_depth = frag_depth;
@@ -541,13 +541,13 @@ fs_visitor::emit_single_fb_write(const fs_builder &bld,
    if (nir->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_STENCIL))
       src_stencil = frag_stencil;
 
-   const fs_reg sources[] = {
+   const brw_reg sources[] = {
       color0, color1, src0_alpha, src_depth, dst_depth, src_stencil,
-      (prog_data->uses_omask ? sample_mask : fs_reg()),
+      (prog_data->uses_omask ? sample_mask : brw_reg()),
       brw_imm_ud(components)
    };
    assert(ARRAY_SIZE(sources) - 1 == FB_WRITE_LOGICAL_SRC_COMPONENTS);
-   fs_inst *write = bld.emit(FS_OPCODE_FB_WRITE_LOGICAL, fs_reg(),
+   fs_inst *write = bld.emit(FS_OPCODE_FB_WRITE_LOGICAL, brw_reg(),
                              sources, ARRAY_SIZE(sources));
 
    if (prog_data->uses_kill) {
@@ -572,7 +572,7 @@ fs_visitor::do_emit_fb_writes(int nr_color_regions, bool replicate_alpha)
       const fs_builder abld = bld.annotate(
          ralloc_asprintf(this->mem_ctx, "FB write target %d", target));
 
-      fs_reg src0_alpha;
+      brw_reg src0_alpha;
       if (replicate_alpha && target != 0)
          src0_alpha = offset(outputs[0], bld, 3);
 
@@ -589,9 +589,9 @@ fs_visitor::do_emit_fb_writes(int nr_color_regions, bool replicate_alpha)
       /* FINISHME: Factor out this frequently recurring pattern into a
        * helper function.
        */
-      const fs_reg srcs[] = { reg_undef, reg_undef,
+      const brw_reg srcs[] = { reg_undef, reg_undef,
                               reg_undef, offset(this->outputs[0], bld, 3) };
-      const fs_reg tmp = bld.vgrf(BRW_TYPE_UD, 4);
+      const brw_reg tmp = bld.vgrf(BRW_TYPE_UD, 4);
       bld.LOAD_PAYLOAD(tmp, srcs, 4, 0);
 
       inst = emit_single_fb_write(bld, tmp, reg_undef, reg_undef, 4);
@@ -665,7 +665,7 @@ fs_visitor::emit_fb_writes()
 }
 
 void
-fs_visitor::emit_urb_writes(const fs_reg &gs_vertex_count)
+fs_visitor::emit_urb_writes(const brw_reg &gs_vertex_count)
 {
    int slot, urb_offset, length;
    int starting_urb_offset = 0;
@@ -675,8 +675,8 @@ fs_visitor::emit_urb_writes(const fs_reg &gs_vertex_count)
       VARYING_BIT_LAYER | VARYING_BIT_VIEWPORT | VARYING_BIT_PSIZ | VARYING_BIT_PRIMITIVE_SHADING_RATE;
    const struct intel_vue_map *vue_map = &vue_prog_data->vue_map;
    bool flush;
-   fs_reg sources[8];
-   fs_reg urb_handle;
+   brw_reg sources[8];
+   brw_reg urb_handle;
 
    switch (stage) {
    case MESA_SHADER_VERTEX:
@@ -694,7 +694,7 @@ fs_visitor::emit_urb_writes(const fs_reg &gs_vertex_count)
 
    const fs_builder bld = fs_builder(this).at_end();
 
-   fs_reg per_slot_offsets;
+   brw_reg per_slot_offsets;
 
    if (stage == MESA_SHADER_GEOMETRY) {
       const struct brw_gs_prog_data *gs_prog_data =
@@ -760,8 +760,8 @@ fs_visitor::emit_urb_writes(const fs_reg &gs_vertex_count)
             break;
          }
 
-         fs_reg zero(VGRF, alloc.allocate(dispatch_width / 8),
-                     BRW_TYPE_UD);
+         brw_reg zero = brw_vgrf(alloc.allocate(dispatch_width / 8),
+                                BRW_TYPE_UD);
          bld.MOV(zero, brw_imm_ud(0u));
 
          if (vue_map->slots_valid & VARYING_BIT_PRIMITIVE_SHADING_RATE &&
@@ -769,8 +769,8 @@ fs_visitor::emit_urb_writes(const fs_reg &gs_vertex_count)
             sources[length++] = this->outputs[VARYING_SLOT_PRIMITIVE_SHADING_RATE];
          } else if (devinfo->has_coarse_pixel_primitive_and_cb) {
             uint32_t one_fp16 = 0x3C00;
-            fs_reg one_by_one_fp16(VGRF, alloc.allocate(dispatch_width / 8),
-                                   BRW_TYPE_UD);
+            brw_reg one_by_one_fp16 = brw_vgrf(alloc.allocate(dispatch_width / 8),
+                                              BRW_TYPE_UD);
             bld.MOV(one_by_one_fp16, brw_imm_ud((one_fp16 << 16) | one_fp16));
             sources[length++] = one_by_one_fp16;
          } else {
@@ -839,13 +839,12 @@ fs_visitor::emit_urb_writes(const fs_reg &gs_vertex_count)
       if (length == 8 || (length > 0 && slot == last_slot))
          flush = true;
       if (flush) {
-         fs_reg srcs[URB_LOGICAL_NUM_SRCS];
+         brw_reg srcs[URB_LOGICAL_NUM_SRCS];
 
          srcs[URB_LOGICAL_SRC_HANDLE] = urb_handle;
          srcs[URB_LOGICAL_SRC_PER_SLOT_OFFSETS] = per_slot_offsets;
-         srcs[URB_LOGICAL_SRC_DATA] = fs_reg(VGRF,
-                                             alloc.allocate((dispatch_width / 8) * length),
-                                             BRW_TYPE_F);
+         srcs[URB_LOGICAL_SRC_DATA] = brw_vgrf(alloc.allocate((dispatch_width / 8) * length),
+                                               BRW_TYPE_F);
          srcs[URB_LOGICAL_SRC_COMPONENTS] = brw_imm_ud(length);
          abld.LOAD_PAYLOAD(srcs[URB_LOGICAL_SRC_DATA], sources, length, 0);
 
@@ -884,14 +883,14 @@ fs_visitor::emit_urb_writes(const fs_reg &gs_vertex_count)
       if (stage == MESA_SHADER_GEOMETRY)
          return;
 
-      fs_reg uniform_urb_handle = fs_reg(VGRF, alloc.allocate(dispatch_width / 8),
-                                         BRW_TYPE_UD);
-      fs_reg payload = fs_reg(VGRF, alloc.allocate(dispatch_width / 8),
-                              BRW_TYPE_UD);
+      brw_reg uniform_urb_handle = brw_vgrf(alloc.allocate(dispatch_width / 8),
+                                           BRW_TYPE_UD);
+      brw_reg payload = brw_vgrf(alloc.allocate(dispatch_width / 8),
+                                BRW_TYPE_UD);
 
       bld.exec_all().MOV(uniform_urb_handle, urb_handle);
 
-      fs_reg srcs[URB_LOGICAL_NUM_SRCS];
+      brw_reg srcs[URB_LOGICAL_NUM_SRCS];
       srcs[URB_LOGICAL_SRC_HANDLE] = uniform_urb_handle;
       srcs[URB_LOGICAL_SRC_DATA] = payload;
       srcs[URB_LOGICAL_SRC_COMPONENTS] = brw_imm_ud(1);
@@ -911,9 +910,9 @@ fs_visitor::emit_urb_writes(const fs_reg &gs_vertex_count)
     */
    if (intel_needs_workaround(devinfo, 1805992985) && stage == MESA_SHADER_TESS_EVAL) {
       assert(dispatch_width == 8);
-      fs_reg uniform_urb_handle = fs_reg(VGRF, alloc.allocate(1), BRW_TYPE_UD);
-      fs_reg uniform_mask = fs_reg(VGRF, alloc.allocate(1), BRW_TYPE_UD);
-      fs_reg payload = fs_reg(VGRF, alloc.allocate(4), BRW_TYPE_UD);
+      brw_reg uniform_urb_handle = brw_vgrf(alloc.allocate(1), BRW_TYPE_UD);
+      brw_reg uniform_mask = brw_vgrf(alloc.allocate(1), BRW_TYPE_UD);
+      brw_reg payload = brw_vgrf(alloc.allocate(4), BRW_TYPE_UD);
 
       /* Workaround requires all 8 channels (lanes) to be valid. This is
        * understood to mean they all need to be alive. First trick is to find
@@ -942,7 +941,7 @@ fs_visitor::emit_urb_writes(const fs_reg &gs_vertex_count)
       bld.exec_all().MOV(offset(payload, bld, 2), brw_imm_ud(0u));
       bld.exec_all().MOV(offset(payload, bld, 3), brw_imm_ud(0u));
 
-      fs_reg srcs[URB_LOGICAL_NUM_SRCS];
+      brw_reg srcs[URB_LOGICAL_NUM_SRCS];
       srcs[URB_LOGICAL_SRC_HANDLE] = uniform_urb_handle;
       srcs[URB_LOGICAL_SRC_CHANNEL_MASK] = uniform_mask;
       srcs[URB_LOGICAL_SRC_DATA] = payload;
@@ -959,7 +958,7 @@ void
 fs_visitor::emit_urb_fence()
 {
    const fs_builder bld = fs_builder(this).at_end();
-   fs_reg dst = bld.vgrf(BRW_TYPE_UD);
+   brw_reg dst = bld.vgrf(BRW_TYPE_UD);
    fs_inst *fence = bld.emit(SHADER_OPCODE_MEMORY_FENCE, dst,
                              brw_vec8_grf(0, 0),
                              brw_imm_ud(true),
@@ -984,8 +983,8 @@ fs_visitor::emit_cs_terminate()
     * make sure it uses the appropriate register range.
     */
    struct brw_reg g0 = retype(brw_vec8_grf(0, 0), BRW_TYPE_UD);
-   fs_reg payload = fs_reg(VGRF, alloc.allocate(reg_unit(devinfo)),
-                           BRW_TYPE_UD);
+   brw_reg payload = brw_vgrf(alloc.allocate(reg_unit(devinfo)),
+                             BRW_TYPE_UD);
    ubld.group(8 * reg_unit(devinfo), 0).MOV(payload, g0);
 
    /* Set the descriptor to "Dereference Resource" and "Root Thread" */
@@ -1000,11 +999,11 @@ fs_visitor::emit_cs_terminate()
    if (devinfo->ver < 11)
       desc |= (1 << 4); /* Do not dereference URB */
 
-   fs_reg srcs[4] = {
+   brw_reg srcs[4] = {
       brw_imm_ud(desc), /* desc */
       brw_imm_ud(0), /* ex_desc */
       payload,       /* payload */
-      fs_reg(),      /* payload2 */
+      brw_reg(),      /* payload2 */
    };
 
    fs_inst *send = ubld.emit(SHADER_OPCODE_SEND, reg_undef, srcs, 4);

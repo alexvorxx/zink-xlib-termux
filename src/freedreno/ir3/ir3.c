@@ -1175,12 +1175,14 @@ ir3_valid_flags(struct ir3_instruction *instr, unsigned n, unsigned flags)
          /* floating-point conversions when moving from non-shared to shared
           * seem not to work. We only use floating-point types in ir3 for
           * conversions, so don't bother specially handling the case where the
-          * types are equal.
+          * types are equal. Same goes for 8-bit sign extension.
           */
          if ((instr->dsts[0]->flags & IR3_REG_SHARED) &&
              !(flags & (IR3_REG_SHARED | IR3_REG_IMMED | IR3_REG_CONST)) &&
-             (full_type(instr->cat1.src_type) == TYPE_F32 ||
-              full_type(instr->cat1.dst_type) == TYPE_F32))
+             ((full_type(instr->cat1.src_type) == TYPE_F32 ||
+               full_type(instr->cat1.dst_type) == TYPE_F32) ||
+              (instr->cat1.src_type == TYPE_U8 &&
+               full_type(instr->cat1.dst_type) == TYPE_S32)))
             return false;
 
          /* Conversions seem not to work in shared->shared copies before scalar

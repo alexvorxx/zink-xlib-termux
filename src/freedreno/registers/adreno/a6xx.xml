@@ -3130,7 +3130,7 @@ to upconvert to 32b float internally?
 	<reg32 offset="0x050e" name="RBBM_PERFCTR_SRAM_INIT_CMD"/>
 	<reg32 offset="0x050f" name="RBBM_PERFCTR_SRAM_INIT_STATUS"/>
 	<reg32 offset="0x0533" name="RBBM_ISDB_CNT"/>
-	<reg32 offset="0x0534" name="RBBM_NC_MODE_CNTL" variants="A7XX-"/>
+	<reg32 offset="0x0534" name="RBBM_NC_MODE_CNTL"/>
 	<reg32 offset="0x0535" name="RBBM_SNAPSHOT_STATUS" variants="A7XX-"/>
 
 	<!---

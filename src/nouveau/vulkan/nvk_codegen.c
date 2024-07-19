@@ -13,6 +13,7 @@
 #include "nv50_ir_driver.h"
 #include "pipe/p_defines.h"
 #include "pipe/p_shader_tokens.h"
+#include "util/u_memory.h"
 
 #include "nv_push_cl9097.h"
 

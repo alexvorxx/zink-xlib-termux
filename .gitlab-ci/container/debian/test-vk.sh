@@ -14,6 +14,7 @@ apt-get install -y libelogind0  # this interfere with systemd deps, install sepa
 EPHEMERAL=(
     ccache
     cmake
+    dpkg-dev
     g++
     glslang-tools
     libexpat1-dev

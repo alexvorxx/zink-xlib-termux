@@ -66,6 +66,7 @@ struct driOptionCache;
 struct u_transfer_helper;
 struct pipe_screen;
 struct util_queue_fence;
+struct pipe_video_buffer;
 
 typedef struct pipe_vertex_state *
    (*pipe_create_vertex_state_func)(struct pipe_screen *screen,
@@ -843,6 +844,24 @@ struct pipe_screen {
    bool (*is_compression_modifier)(struct pipe_screen *screen,
                                    enum pipe_format format, uint64_t modifier,
                                    uint32_t *rate);
+
+   /**
+    * Check if the given \p target buffer is supported as output (or input for
+    * encode) for this \p profile and \p entrypoint.
+    *
+    * If \p format is different from target->buffer_format this function
+    * checks if the \p target buffer can be converted to \p format as part
+    * of the given operation (eg. encoder accepts RGB input and converts
+    * it to YUV).
+    *
+    * \return true if the buffer is supported for given operation, false
+    *         otherwise.
+    */
+   bool (*is_video_target_buffer_supported)(struct pipe_screen *screen,
+                                            enum pipe_format format,
+                                            struct pipe_video_buffer *target,
+                                            enum pipe_video_profile profile,
+                                            enum pipe_video_entrypoint entrypoint);
 };
 
 

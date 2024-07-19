@@ -425,8 +425,8 @@ enum anv_bo_alloc_flags {
    /** Specifies that the BO should be cached and incoherent. */
    ANV_BO_ALLOC_HOST_CACHED =             (1 << 16),
 
-   /** For sampler pools */
-   ANV_BO_ALLOC_SAMPLER_POOL =            (1 << 17),
+   /** For buffer addressable from the dynamic state heap */
+   ANV_BO_ALLOC_DYNAMIC_VISIBLE_POOL =    (1 << 17),
 
    /** Specifies that the BO is imported.
     *
@@ -444,11 +444,8 @@ enum anv_bo_alloc_flags {
     */
    ANV_BO_ALLOC_AUX_CCS =                 (1 << 20),
 
-   /** For descriptor buffer pools */
-   ANV_BO_ALLOC_DESCRIPTOR_BUFFER_POOL =  (1 << 21),
-
    /** Compressed buffer, only supported in Xe2+ */
-   ANV_BO_ALLOC_COMPRESSED =              (1 << 22),
+   ANV_BO_ALLOC_COMPRESSED =              (1 << 21),
 };
 
 /** Specifies that the BO should be cached and coherent. */
@@ -902,6 +899,7 @@ VkResult anv_bo_pool_alloc(struct anv_bo_pool *pool, uint32_t size,
 void anv_bo_pool_free(struct anv_bo_pool *pool, struct anv_bo *bo);
 
 struct anv_scratch_pool {
+   enum anv_bo_alloc_flags alloc_flags;
    /* Indexed by Per-Thread Scratch Space number (the hardware value) and stage */
    struct anv_bo *bos[16][MESA_SHADER_STAGES];
    uint32_t surfs[16];
@@ -909,7 +907,8 @@ struct anv_scratch_pool {
 };
 
 void anv_scratch_pool_init(struct anv_device *device,
-                           struct anv_scratch_pool *pool);
+                           struct anv_scratch_pool *pool,
+                           bool protected);
 void anv_scratch_pool_finish(struct anv_device *device,
                              struct anv_scratch_pool *pool);
 struct anv_bo *anv_scratch_pool_alloc(struct anv_device *device,
@@ -956,8 +955,8 @@ struct anv_memory_type {
    /* Standard bits passed on to the client */
    VkMemoryPropertyFlags   propertyFlags;
    uint32_t                heapIndex;
-   /* Whether this is the descriptor buffer memory type */
-   bool                    descriptor_buffer;
+   /* Whether this is the dynamic visible memory type */
+   bool                    dynamic_visible;
    bool                    compressed;
 };
 
@@ -1114,8 +1113,8 @@ struct anv_physical_device {
 #endif
       /** Mask of memory types of normal allocations */
       uint32_t                                  default_buffer_mem_types;
-      /** Mask of memory types of descriptor buffers */
-      uint32_t                                  desc_buffer_mem_types;
+      /** Mask of memory types of data indexable from the dynamic heap */
+      uint32_t                                  dynamic_visible_mem_types;
       /** Mask of memory types of protected buffers/images */
       uint32_t                                  protected_mem_types;
       /** Mask of memory types of compressed buffers/images */
@@ -1153,9 +1152,9 @@ struct anv_physical_device {
         */
        struct anv_va_range                      dynamic_state_pool;
        /**
-        * Sampler state pool
+        * Buffer pool that can be index from the dynamic state heap
         */
-       struct anv_va_range                      sampler_state_pool;
+       struct anv_va_range                      dynamic_visible_pool;
        /**
         * Indirect descriptor pool
         */
@@ -1168,14 +1167,6 @@ struct anv_physical_device {
         * Instruction state pool
         */
        struct anv_va_range                      instruction_state_pool;
-       /**
-        * Dynamic state pool when using descriptor buffers
-        */
-       struct anv_va_range                      dynamic_state_db_pool;
-       /**
-        * Descriptor buffers
-        */
-       struct anv_va_range                      descriptor_buffer_pool;
        /**
         * Push descriptor with descriptor buffers
         */
@@ -1245,7 +1236,7 @@ anv_physical_device_bindless_heap_size(const struct anv_physical_device *device,
     */
    return device->uses_ex_bso ?
       (descriptor_buffer ?
-       device->va.descriptor_buffer_pool.size :
+       device->va.dynamic_visible_pool.size :
        device->va.bindless_surface_state_pool.size) :
       64 * 1024 * 1024 /* 64 MiB */;
 }
@@ -1265,6 +1256,7 @@ struct anv_instance {
     int                                         mesh_conv_prim_attrs_to_vert_attrs;
     bool                                        enable_tbimr;
     bool                                        external_memory_implicit_sync;
+    bool                                        force_guc_low_latency;
 
     /**
      * Workarounds for game bugs.
@@ -1803,8 +1795,7 @@ struct anv_device {
     struct util_vma_heap                        vma_lo;
     struct util_vma_heap                        vma_hi;
     struct util_vma_heap                        vma_desc;
-    struct util_vma_heap                        vma_desc_buf;
-    struct util_vma_heap                        vma_samplers;
+    struct util_vma_heap                        vma_dynamic_visible;
     struct util_vma_heap                        vma_trtt;
 
     /** List of all anv_device_memory objects */
@@ -1829,7 +1820,6 @@ struct anv_device {
     struct anv_state_pool                       general_state_pool;
     struct anv_state_pool                       aux_tt_pool;
     struct anv_state_pool                       dynamic_state_pool;
-    struct anv_state_pool                       dynamic_state_db_pool;
     struct anv_state_pool                       instruction_state_pool;
     struct anv_state_pool                       binding_table_pool;
     struct anv_state_pool                       scratch_surface_state_pool;
@@ -1839,7 +1829,6 @@ struct anv_device {
     struct anv_state_pool                       push_descriptor_buffer_pool;
 
     struct anv_state_reserved_array_pool        custom_border_colors;
-    struct anv_state_reserved_array_pool        custom_border_colors_db;
 
     /** BO used for various workarounds
      *
@@ -1875,17 +1864,12 @@ struct anv_device {
 
     struct {
        struct blorp_context                     context;
-       struct {
-          struct anv_state                      state;
-          struct anv_state                      db_state;
-       }                                        dynamic_states[BLORP_DYNAMIC_STATE_COUNT];
+       struct anv_state                         dynamic_states[BLORP_DYNAMIC_STATE_COUNT];
     }                                           blorp;
 
     struct anv_state                            border_colors;
-    struct anv_state                            border_colors_db;
 
     struct anv_state                            slice_hash;
-    struct anv_state                            slice_hash_db;
 
     /** An array of CPS_STATE structures grouped by MAX_VIEWPORTS elements
      *
@@ -1896,12 +1880,12 @@ struct anv_device {
      * array.
      */
     struct anv_state                            cps_states;
-    struct anv_state                            cps_states_db;
 
     uint32_t                                    queue_count;
     struct anv_queue  *                         queues;
 
     struct anv_scratch_pool                     scratch_pool;
+    struct anv_scratch_pool                     protected_scratch_pool;
     struct anv_bo                              *rt_scratch_bos[16];
     struct anv_bo                              *btd_fifo_bo;
     struct anv_address                          rt_uuid_addr;
@@ -2421,6 +2405,25 @@ _anv_combine_address(struct anv_batch *batch, void *location,
            for (uint32_t i = 0; i < __anv_cmd_length(cmd); i++) {       \
               ((uint32_t *)_dst)[i] = _partial[i] |                     \
                  (pipeline)->batch_data[(pipeline)->state.offset + i];  \
+           }                                                            \
+           VG(VALGRIND_CHECK_MEM_IS_DEFINED(_dst, __anv_cmd_length(cmd) * 4)); \
+           _dst = NULL;                                                 \
+         }))
+
+#define anv_batch_emit_merge_protected(batch, cmd, pipeline, state,     \
+                                       name, protected)                 \
+   for (struct cmd name = { 0 },                                        \
+        *_dst = anv_batch_emit_dwords(batch, __anv_cmd_length(cmd));    \
+        __builtin_expect(_dst != NULL, 1);                              \
+        ({ struct anv_gfx_state_ptr *_cmd_state = protected ?           \
+              &(pipeline)->state##_protected :                          \
+              &(pipeline)->state;                                       \
+           uint32_t _partial[__anv_cmd_length(cmd)];                    \
+           assert(_cmd_state->len == __anv_cmd_length(cmd));            \
+           __anv_cmd_pack(cmd)(batch, _partial, &name);                 \
+           for (uint32_t i = 0; i < __anv_cmd_length(cmd); i++) {       \
+              ((uint32_t *)_dst)[i] = _partial[i] |                     \
+                 (pipeline)->batch_data[_cmd_state->offset + i];        \
            }                                                            \
            VG(VALGRIND_CHECK_MEM_IS_DEFINED(_dst, __anv_cmd_length(cmd) * 4)); \
            _dst = NULL;                                                 \
@@ -4042,7 +4045,6 @@ struct anv_cmd_buffer {
    /* Stream objects for storing temporary data */
    struct anv_state_stream                      surface_state_stream;
    struct anv_state_stream                      dynamic_state_stream;
-   struct anv_state_stream                      dynamic_state_db_stream;
    struct anv_state_stream                      general_state_stream;
    struct anv_state_stream                      indirect_push_descriptor_stream;
    struct anv_state_stream                      push_descriptor_buffer_stream;
@@ -4207,11 +4209,6 @@ static inline struct anv_address
 anv_cmd_buffer_dynamic_state_address(struct anv_cmd_buffer *cmd_buffer,
                                      struct anv_state state)
 {
-   if (cmd_buffer->state.current_db_mode ==
-       ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER) {
-      return anv_state_pool_state_address(
-         &cmd_buffer->device->dynamic_state_db_pool, state);
-   }
    return anv_state_pool_state_address(
       &cmd_buffer->device->dynamic_state_pool, state);
 }
@@ -4709,7 +4706,7 @@ struct anv_graphics_pipeline {
    /* Pre computed CS instructions that can directly be copied into
     * anv_cmd_buffer.
     */
-   uint32_t                                     batch_data[416];
+   uint32_t                                     batch_data[480];
 
    /* Urb setup utilized by this pipeline. */
    struct intel_urb_config urb_cfg;
@@ -4729,12 +4726,17 @@ struct anv_graphics_pipeline {
       struct anv_gfx_state_ptr                  vs;
       struct anv_gfx_state_ptr                  hs;
       struct anv_gfx_state_ptr                  ds;
+      struct anv_gfx_state_ptr                  vs_protected;
+      struct anv_gfx_state_ptr                  hs_protected;
+      struct anv_gfx_state_ptr                  ds_protected;
 
       struct anv_gfx_state_ptr                  task_control;
+      struct anv_gfx_state_ptr                  task_control_protected;
       struct anv_gfx_state_ptr                  task_shader;
       struct anv_gfx_state_ptr                  task_redistrib;
       struct anv_gfx_state_ptr                  clip_mesh;
       struct anv_gfx_state_ptr                  mesh_control;
+      struct anv_gfx_state_ptr                  mesh_control_protected;
       struct anv_gfx_state_ptr                  mesh_shader;
       struct anv_gfx_state_ptr                  mesh_distrib;
       struct anv_gfx_state_ptr                  sbe_mesh;
@@ -4752,8 +4754,10 @@ struct anv_graphics_pipeline {
       struct anv_gfx_state_ptr                  wm;
       struct anv_gfx_state_ptr                  so;
       struct anv_gfx_state_ptr                  gs;
+      struct anv_gfx_state_ptr                  gs_protected;
       struct anv_gfx_state_ptr                  te;
       struct anv_gfx_state_ptr                  ps;
+      struct anv_gfx_state_ptr                  ps_protected;
       struct anv_gfx_state_ptr                  vfg;
    } partial;
 };
@@ -4782,6 +4786,21 @@ struct anv_graphics_pipeline {
          break;                                                         \
       memcpy(dw, &(pipeline)->batch_data[(pipeline)->state.offset],     \
              4 * (pipeline)->state.len);                                \
+   } while (0)
+
+#define anv_batch_emit_pipeline_state_protected(batch, pipeline,        \
+                                                state, protected)       \
+   do {                                                                 \
+      struct anv_gfx_state_ptr *_cmd_state = protected ?                \
+         &(pipeline)->state##_protected : &(pipeline)->state;           \
+      if (_cmd_state->len == 0)                                         \
+         break;                                                         \
+      uint32_t *dw;                                                     \
+      dw = anv_batch_emit_dwords((batch), _cmd_state->len);             \
+      if (!dw)                                                          \
+         break;                                                         \
+      memcpy(dw, &(pipeline)->batch_data[_cmd_state->offset],           \
+             4 * _cmd_state->len);                                      \
    } while (0)
 
 
@@ -5418,6 +5437,8 @@ anv_image_get_fast_clear_type_addr(const struct anv_device *device,
                                    const struct anv_image *image,
                                    VkImageAspectFlagBits aspect)
 {
+   /* Xe2+ platforms don't need fast clear type. We shouldn't get here. */
+   assert(device->info->ver < 20);
    struct anv_address addr =
       anv_image_get_clear_color_addr(device, image, aspect);
 
@@ -5440,6 +5461,8 @@ anv_image_get_compression_state_addr(const struct anv_device *device,
                                      VkImageAspectFlagBits aspect,
                                      uint32_t level, uint32_t array_layer)
 {
+   /* Xe2+ platforms don't use compression state. We shouldn't get here. */
+   assert(device->info->ver < 20);
    assert(level < anv_image_aux_levels(image, aspect));
    assert(array_layer < anv_image_aux_layers(image, aspect, level));
    UNUSED uint32_t plane = anv_image_aspect_to_plane(image, aspect);
@@ -5945,7 +5968,6 @@ struct anv_sampler {
    unsigned char                sha1[20];
 
    uint32_t                     state[3][4];
-   uint32_t                     db_state[3][4];
    /* Packed SAMPLER_STATE without the border color pointer. */
    uint32_t                     state_no_bc[3][4];
    uint32_t                     n_planes;
@@ -5956,7 +5978,6 @@ struct anv_sampler {
    struct anv_state             bindless_state;
 
    struct anv_state             custom_border_color;
-   struct anv_state             custom_border_color_db;
 };
 
 

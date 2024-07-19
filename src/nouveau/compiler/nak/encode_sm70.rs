@@ -2570,37 +2570,30 @@ impl SM70Instr {
     }
 }
 
-impl Shader {
-    pub fn encode_sm70(&self) -> Vec<u32> {
-        assert!(self.functions.len() == 1);
-        let func = &self.functions[0];
+pub fn encode_sm70_shader(sm: &dyn ShaderModel, s: &Shader<'_>) -> Vec<u32> {
+    assert!(s.functions.len() == 1);
+    let func = &s.functions[0];
 
-        let mut ip = 0_usize;
-        let mut labels = HashMap::new();
-        for b in &func.blocks {
-            labels.insert(b.label, ip);
-            for instr in &b.instrs {
-                if let Op::Nop(op) = &instr.op {
-                    if let Some(label) = op.label {
-                        labels.insert(label, ip);
-                    }
+    let mut ip = 0_usize;
+    let mut labels = HashMap::new();
+    for b in &func.blocks {
+        labels.insert(b.label, ip);
+        for instr in &b.instrs {
+            if let Op::Nop(op) = &instr.op {
+                if let Some(label) = op.label {
+                    labels.insert(label, ip);
                 }
-                ip += 4;
             }
+            ip += 4;
         }
-
-        let mut encoded = Vec::new();
-        for b in &func.blocks {
-            for instr in &b.instrs {
-                let e = SM70Instr::encode(
-                    instr,
-                    self.info.sm,
-                    encoded.len(),
-                    &labels,
-                );
-                encoded.extend_from_slice(&e[..]);
-            }
-        }
-        encoded
     }
+
+    let mut encoded = Vec::new();
+    for b in &func.blocks {
+        for instr in &b.instrs {
+            let e = SM70Instr::encode(instr, sm.sm(), encoded.len(), &labels);
+            encoded.extend_from_slice(&e[..]);
+        }
+    }
+    encoded
 }

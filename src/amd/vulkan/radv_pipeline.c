@@ -37,11 +37,14 @@
 #include "vk_format.h"
 #include "vk_nir_convert_ycbcr.h"
 #include "vk_ycbcr_conversion.h"
+#if AMD_LLVM_AVAILABLE
+#include "ac_llvm_util.h"
+#endif
 
 bool
 radv_shader_need_indirect_descriptor_sets(const struct radv_shader *shader)
 {
-   const struct radv_userdata_info *loc = radv_get_user_sgpr(shader, AC_UD_INDIRECT_DESCRIPTOR_SETS);
+   const struct radv_userdata_info *loc = radv_get_user_sgpr_info(shader, AC_UD_INDIRECT_DESCRIPTOR_SETS);
    return loc->sgpr_idx != -1;
 }
 
@@ -144,6 +147,9 @@ radv_pipeline_get_shader_key(const struct radv_device *device, const VkPipelineS
 
    if (flags & VK_PIPELINE_CREATE_2_DISABLE_OPTIMIZATION_BIT_KHR)
       key.optimisations_disabled = 1;
+
+   if (flags & VK_PIPELINE_CREATE_INDIRECT_BINDABLE_BIT_NV)
+      key.indirect_bindable = 1;
 
    if (stage->stage & RADV_GRAPHICS_STAGE_BITS) {
       key.version = instance->drirc.override_graphics_shader_version;
@@ -384,6 +390,22 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
       NIR_PASS(_, stage->nir, radv_nir_lower_fs_intrinsics, stage, gfx_state);
    }
 
+   /* LLVM could support more of these in theory. */
+   bool use_llvm = radv_use_llvm_for_stage(pdev, stage->stage);
+   bool has_inverse_ballot = true;
+#if AMD_LLVM_AVAILABLE
+   has_inverse_ballot = !use_llvm || LLVM_VERSION_MAJOR >= 17;
+#endif
+   radv_nir_opt_tid_function_options tid_options = {
+      .use_masked_swizzle_amd = true,
+      .use_dpp16_shift_amd = !use_llvm && gfx_level >= GFX8,
+      .use_clustered_rotate = !use_llvm,
+      .hw_subgroup_size = stage->info.wave_size,
+      .hw_ballot_bit_size = has_inverse_ballot ? stage->info.wave_size : 0,
+      .hw_ballot_num_comp = has_inverse_ballot ? 1 : 0,
+   };
+   NIR_PASS(_, stage->nir, radv_nir_opt_tid_function, &tid_options);
+
    enum nir_lower_non_uniform_access_type lower_non_uniform_access_types =
       nir_lower_non_uniform_ubo_access | nir_lower_non_uniform_ssbo_access | nir_lower_non_uniform_texture_access |
       nir_lower_non_uniform_image_access;
@@ -485,6 +507,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
    nir_move_options sink_opts = nir_move_const_undef | nir_move_copies;
 
    if (!stage->key.optimisations_disabled) {
+      NIR_PASS(_, stage->nir, nir_opt_licm);
       if (stage->stage != MESA_SHADER_FRAGMENT || !pdev->cache_key.disable_sinking_load_input_fs)
          sink_opts |= nir_move_load_input;
 
@@ -1280,7 +1303,7 @@ radv_pipeline_hash(const struct radv_device *device, const struct radv_pipeline_
 {
    _mesa_sha1_update(ctx, device->cache_hash, sizeof(device->cache_hash));
    if (pipeline_layout)
-      _mesa_sha1_update(ctx, pipeline_layout->sha1, sizeof(pipeline_layout->sha1));
+      _mesa_sha1_update(ctx, pipeline_layout->hash, sizeof(pipeline_layout->hash));
 }
 
 void

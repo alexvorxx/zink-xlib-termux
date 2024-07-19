@@ -50,6 +50,10 @@
 
 #include <llvm-c/Core.h>
 
+#if GALLIVM_USE_ORCJIT
+#include <llvm-c/Orc.h>
+#endif
+
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -132,7 +136,11 @@ LLVMBuildCall2(LLVMBuilderRef B, LLVMTypeRef Ty, LLVMValueRef Fn,
 #endif /* LLVM_VERSION_MAJOR < 8 */
 
 typedef struct lp_context_ref {
+#if GALLIVM_USE_ORCJIT
+   LLVMOrcThreadSafeContextRef ref;
+#else
    LLVMContextRef ref;
+#endif
    bool owned;
 } lp_context_ref;
 
@@ -140,11 +148,19 @@ static inline void
 lp_context_create(lp_context_ref *context)
 {
    assert(context != NULL);
+#if GALLIVM_USE_ORCJIT
+   context->ref = LLVMOrcCreateNewThreadSafeContext();
+#else
    context->ref = LLVMContextCreate();
+#endif
    context->owned = true;
 #if LLVM_VERSION_MAJOR == 15
    if (context->ref) {
+#if GALLIVM_USE_ORCJIT
+      LLVMContextSetOpaquePointers(LLVMOrcThreadSafeContextGetContext(context->ref), false);
+#else
       LLVMContextSetOpaquePointers(context->ref, false);
+#endif
    }
 #endif
 }
@@ -154,7 +170,11 @@ lp_context_destroy(lp_context_ref *context)
 {
    assert(context != NULL);
    if (context->owned) {
+#if GALLIVM_USE_ORCJIT
+      LLVMOrcDisposeThreadSafeContext(context->ref);
+#else
       LLVMContextDispose(context->ref);
+#endif
       context->ref = NULL;
    }
 }

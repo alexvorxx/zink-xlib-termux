@@ -1,3 +1,22 @@
+# Versions / Extensions not supported
+spec@!opengl 3.2@.*
+spec@!opengl 3.3@.*
+spec@!opengl 4.2@.*
+spec@!opengl 4.3@.*
+spec@!opengl 4.4@.*
+spec@!opengl 4.5@.*
+spec@arb_gpu_shader5.*
+spec@arb_gpu_shader_fp64.*
+spec@arb_gpu_shader_int64.*
+spec@arb_tessellation_shader.*
+spec@glsl-1.50.*
+spec@glsl-3.*
+spec@glsl-4.*
+spec@glsl-es-3.20.*
+
+# Slow CL tests (> 5 minute to run)
+program@execute@builtin@builtin-float-sincos-1.0.generated
+
 # Slow tests (> 1 minute to run)
 dEQP-VK.binding_model.buffer_device_address.set3.depth3.basessbo.convertcheckuv2.nostore.multi.std140.vert
 dEQP-VK.binding_model.buffer_device_address.set3.depth3.basessbo.convertcheckuv2.nostore.single.std140.vert

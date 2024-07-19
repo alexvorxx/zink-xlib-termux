@@ -35,8 +35,6 @@
 #include "perf/intel_perf_query.h"
 #include "perf/intel_perf_regs.h"
 
-#include "drm-uapi/i915_drm.h"
-
 #include "util/compiler.h"
 #include "util/u_math.h"
 
@@ -165,9 +163,11 @@ struct oa_sample_buf {
    struct exec_node link;
    int refcount;
    int len;
-   uint8_t buf[INTEL_PERF_OA_HEADER_SAMPLE_SIZE * 10];
    uint32_t last_timestamp;
+   uint8_t buf[];
 };
+
+#define oa_sample_buf_buf_length(perf) (perf->oa_sample_size * 10)
 
 /**
  * gen representation of a performance query object.
@@ -308,7 +308,7 @@ static bool
 inc_n_users(struct intel_perf_context *perf_ctx)
 {
    if (perf_ctx->n_oa_users == 0 &&
-       intel_ioctl(perf_ctx->oa_stream_fd, I915_PERF_IOCTL_ENABLE, 0) < 0)
+       intel_perf_stream_set_state(perf_ctx->perf, perf_ctx->oa_stream_fd, true) < 0)
    {
       return false;
    }
@@ -327,7 +327,7 @@ dec_n_users(struct intel_perf_context *perf_ctx)
     */
    --perf_ctx->n_oa_users;
    if (perf_ctx->n_oa_users == 0 &&
-       intel_ioctl(perf_ctx->oa_stream_fd, I915_PERF_IOCTL_DISABLE, 0) < 0)
+       intel_perf_stream_set_state(perf_ctx->perf, perf_ctx->oa_stream_fd, false) < 0)
    {
       DBG("WARNING: Error disabling gen perf stream: %m\n");
    }
@@ -420,7 +420,7 @@ get_free_sample_buf(struct intel_perf_context *perf_ctx)
    if (node)
       buf = exec_node_data(struct oa_sample_buf, node, link);
    else {
-      buf = ralloc_size(perf_ctx->perf, sizeof(*buf));
+      buf = ralloc_size(perf_ctx->perf, sizeof(*buf) + oa_sample_buf_buf_length(perf_ctx->perf));
 
       exec_node_init(&buf->link);
       buf->refcount = 0;
@@ -975,7 +975,8 @@ read_oa_samples_until(struct intel_perf_context *perf_ctx,
 
       len = intel_perf_stream_read_samples(perf_ctx->perf,
                                            perf_ctx->oa_stream_fd,
-                                           buf->buf, sizeof(buf->buf));
+                                           buf->buf,
+                                           oa_sample_buf_buf_length(perf_ctx->perf));
 
       if (len <= 0) {
          exec_list_push_tail(&perf_ctx->free_sample_buffers, &buf->link);

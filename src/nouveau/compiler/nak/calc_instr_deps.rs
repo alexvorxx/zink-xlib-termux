@@ -361,7 +361,7 @@ impl BarAlloc {
     }
 }
 
-fn assign_barriers(f: &mut Function, sm: u8) {
+fn assign_barriers(f: &mut Function, sm: &dyn ShaderModel) {
     let mut uses = RegTracker::new_with(&|| RegUse::None);
     let mut deps = DepGraph::new();
 
@@ -379,7 +379,7 @@ fn assign_barriers(f: &mut Function, sm: u8) {
                     waits.extend_from_slice(u.deps());
                 });
 
-                if instr.has_fixed_latency(sm) {
+                if instr.has_fixed_latency(sm.sm()) {
                     // Delays will cover us here.  We just need to make sure
                     // that we wait on any uses that we consume.
                     uses.for_each_instr_src_mut(instr, |_, u| {
@@ -436,7 +436,7 @@ fn assign_barriers(f: &mut Function, sm: u8) {
                 instr.deps.set_yield(true);
             }
 
-            if instr.has_fixed_latency(sm) {
+            if instr.has_fixed_latency(sm.sm()) {
                 continue;
             }
 
@@ -542,7 +542,7 @@ fn paw_latency(_sm: u8, _write: &Op, _dst_idx: usize) -> u32 {
     13
 }
 
-fn calc_delays(f: &mut Function, sm: u8) {
+fn calc_delays(f: &mut Function, sm: &dyn ShaderModel) {
     for b in f.blocks.iter_mut().rev() {
         let mut cycle = 0_u32;
 
@@ -560,7 +560,7 @@ fn calc_delays(f: &mut Function, sm: u8) {
 
         for ip in (0..b.instrs.len()).rev() {
             let instr = &b.instrs[ip];
-            let mut min_start = cycle + exec_latency(sm, &instr.op);
+            let mut min_start = cycle + exec_latency(sm.sm(), &instr.op);
             if let Some(bar) = instr.deps.rd_bar() {
                 min_start = max(min_start, bars[usize::from(bar)] + 2);
             }
@@ -578,7 +578,7 @@ fn calc_delays(f: &mut Function, sm: u8) {
                 RegUse::Write((w_ip, w_dst_idx)) => {
                     let s = instr_cycle[*w_ip]
                         + waw_latency(
-                            sm,
+                            sm.sm(),
                             &instr.op,
                             i,
                             &b.instrs[*w_ip].op,
@@ -590,10 +590,10 @@ fn calc_delays(f: &mut Function, sm: u8) {
                     for (r_ip, r_src_idx) in reads {
                         let c = instr_cycle[*r_ip];
                         let s = if *r_src_idx == usize::MAX {
-                            c + paw_latency(sm, &instr.op, i)
+                            c + paw_latency(sm.sm(), &instr.op, i)
                         } else {
                             c + raw_latency(
-                                sm,
+                                sm.sm(),
                                 &instr.op,
                                 i,
                                 &b.instrs[*r_ip].op,
@@ -609,7 +609,7 @@ fn calc_delays(f: &mut Function, sm: u8) {
                 RegUse::Write((w_ip, w_dst_idx)) => {
                     let s = instr_cycle[*w_ip]
                         + war_latency(
-                            sm,
+                            sm.sm(),
                             &instr.op,
                             i,
                             &b.instrs[*w_ip].op,
@@ -657,7 +657,7 @@ fn calc_delays(f: &mut Function, sm: u8) {
         if matches!(instr.op, Op::SrcBar(_)) {
             instr.op = Op::Nop(OpNop { label: None });
             MappedInstrs::One(instr)
-        } else if exec_latency(sm, &instr.op) > 1 {
+        } else if exec_latency(sm.sm(), &instr.op) > 1 {
             let mut nop = Instr::new_boxed(OpNop { label: None });
             nop.deps.set_delay(2);
             MappedInstrs::Many(vec![instr, nop])
@@ -667,7 +667,7 @@ fn calc_delays(f: &mut Function, sm: u8) {
     });
 }
 
-impl Shader {
+impl Shader<'_> {
     pub fn assign_deps_serial(&mut self) {
         for f in &mut self.functions {
             for b in &mut f.blocks.iter_mut().rev() {
@@ -704,8 +704,8 @@ impl Shader {
             self.assign_deps_serial();
         } else {
             for f in &mut self.functions {
-                assign_barriers(f, self.info.sm);
-                calc_delays(f, self.info.sm);
+                assign_barriers(f, self.sm);
+                calc_delays(f, self.sm);
             }
         }
     }

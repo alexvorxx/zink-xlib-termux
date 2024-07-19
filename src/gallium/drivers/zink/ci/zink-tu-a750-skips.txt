@@ -26,3 +26,4 @@ spec@!opengl 1.0@gl-1.0-drawbuffer-modes
 spec@arb_texture_cube_map@cubemap npot
 spec@arb_texture_cube_map_array@arb_texture_cube_map_array-sampler-cube-array-shadow
 spec@egl_nok_texture_from_pixmap@basic
+KHR-GL46.gpu_shader_fp64.builtin.inverse_dmat4

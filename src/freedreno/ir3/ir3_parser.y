@@ -145,9 +145,9 @@ static type_t parse_type(const char **type)
 	} else if (!strncmp("u8", *type, 2)) {
 		*type += 2;
 		return TYPE_U8;
-	} else if (!strncmp("s8", *type, 2)) {
-		*type += 2;
-		return TYPE_S8;
+	} else if (!strncmp("u8_32", *type, 5)) {
+		*type += 5;
+		return TYPE_U8_32;
 	} else {
 		assert(0);  /* shouldn't get here */
 		return ~0;
@@ -671,7 +671,7 @@ static void print_token(FILE *file, int type, YYSTYPE value)
 %token <tok> T_TYPE_S16
 %token <tok> T_TYPE_S32
 %token <tok> T_TYPE_U8
-%token <tok> T_TYPE_S8
+%token <tok> T_TYPE_U8_32
 
 %token <tok> T_UNTYPED
 %token <tok> T_TYPED
@@ -1577,11 +1577,11 @@ integer:           T_INT       { $$ = $1; }
 float:             T_FLOAT     { $$ = $1; }
 |                  '-' T_FLOAT { $$ = -$2; }
 
-type:              T_TYPE_F16  { $$ = TYPE_F16; }
-|                  T_TYPE_F32  { $$ = TYPE_F32; }
-|                  T_TYPE_U16  { $$ = TYPE_U16; }
-|                  T_TYPE_U32  { $$ = TYPE_U32; }
-|                  T_TYPE_S16  { $$ = TYPE_S16; }
-|                  T_TYPE_S32  { $$ = TYPE_S32; }
-|                  T_TYPE_U8   { $$ = TYPE_U8;  }
-|                  T_TYPE_S8   { $$ = TYPE_S8;  }
+type:              T_TYPE_F16   { $$ = TYPE_F16;   }
+|                  T_TYPE_F32   { $$ = TYPE_F32;   }
+|                  T_TYPE_U16   { $$ = TYPE_U16;   }
+|                  T_TYPE_U32   { $$ = TYPE_U32;   }
+|                  T_TYPE_S16   { $$ = TYPE_S16;   }
+|                  T_TYPE_S32   { $$ = TYPE_S32;   }
+|                  T_TYPE_U8    { $$ = TYPE_U8;    }
+|                  T_TYPE_U8_32 { $$ = TYPE_U8_32; }

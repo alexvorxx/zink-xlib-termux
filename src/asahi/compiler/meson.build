@@ -92,7 +92,7 @@ idep_agx_builder_h = declare_dependency(
 libasahi_compiler = static_library(
   'asahi_compiler',
   [libasahi_agx_files, agx_opcodes_c, agx_nir_algebraic_c],
-  dependencies: [idep_nir, idep_agx_opcodes_h, idep_agx_builder_h],
+  dependencies: [idep_nir, idep_agx_opcodes_h, idep_agx_builder_h, idep_mesautil],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',
   build_by_default : false,
@@ -114,7 +114,7 @@ if with_tests
       ),
       c_args : [c_msvc_compat_args, no_override_init_args],
       gnu_symbol_visibility : 'hidden',
-      dependencies: [idep_gtest, idep_nir, idep_agx_opcodes_h, idep_agx_builder_h],
+      dependencies: [idep_gtest, idep_nir, idep_agx_opcodes_h, idep_agx_builder_h, idep_mesautil],
       link_with : [libasahi_compiler],
     ),
     suite : ['asahi'],

@@ -136,6 +136,7 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
    .KHR_maintenance4                      = true,
    .KHR_maintenance5                      = true,
    .KHR_maintenance6                      = true,
+   .KHR_maintenance7                      = true,
    .KHR_map_memory2                       = true,
    .KHR_multiview                         = true,
    .KHR_push_descriptor                   = true,
@@ -690,6 +691,8 @@ lvp_get_features(const struct lvp_physical_device *pdevice,
 
       /* maintenance6 */
       .maintenance6 = true,
+      /* maintenance7 */
+      .maintenance7 = true,
 
       /* VK_KHR_shader_expect_assume */
       .shaderExpectAssume = true,
@@ -1195,6 +1198,16 @@ lvp_get_properties(const struct lvp_physical_device *device, struct vk_propertie
    /* maintenance6 */
    p->blockTexelViewCompatibleMultipleLayers = true,
 
+   /* maintenance7 */
+   p->robustFragmentShadingRateAttachmentAccess = false;
+   p->separateDepthStencilAttachmentAccess = true;
+   p->maxDescriptorSetTotalUniformBuffersDynamic = MAX_DESCRIPTORS;
+   p->maxDescriptorSetTotalStorageBuffersDynamic = MAX_DESCRIPTORS;
+   p->maxDescriptorSetTotalBuffersDynamic = MAX_DESCRIPTORS;
+   p->maxDescriptorSetUpdateAfterBindTotalUniformBuffersDynamic = MAX_DESCRIPTORS;
+   p->maxDescriptorSetUpdateAfterBindTotalStorageBuffersDynamic = MAX_DESCRIPTORS;
+   p->maxDescriptorSetUpdateAfterBindTotalBuffersDynamic = MAX_DESCRIPTORS;
+
    /* VK_EXT_shader_object */
    /* this is basically unsupported */
    lvp_device_get_cache_uuid(p->shaderBinaryUUID);
@@ -1472,8 +1485,11 @@ VKAPI_ATTR void VKAPI_CALL lvp_GetPhysicalDeviceMemoryProperties2(
    VkPhysicalDeviceMemoryBudgetPropertiesEXT *props = vk_find_struct(pMemoryProperties, PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT);
    if (props) {
       props->heapBudget[0] = pMemoryProperties->memoryProperties.memoryHeaps[0].size;
-      os_get_available_system_memory(&props->heapUsage[0]);
-      props->heapUsage[0] = props->heapBudget[0] - props->heapUsage[0];
+      if (os_get_available_system_memory(&props->heapUsage[0])) {
+         props->heapUsage[0] = props->heapBudget[0] - props->heapUsage[0];
+      } else {
+         props->heapUsage[0] = 0;
+      }
       memset(&props->heapBudget[1], 0, sizeof(props->heapBudget[0]) * (VK_MAX_MEMORY_HEAPS - 1));
       memset(&props->heapUsage[1], 0, sizeof(props->heapUsage[0]) * (VK_MAX_MEMORY_HEAPS - 1));
    }

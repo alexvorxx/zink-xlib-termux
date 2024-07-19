@@ -11,8 +11,6 @@
 #include "nvk_physical_device.h"
 #include "nvk_shader.h"
 
-#include "nouveau_context.h"
-
 #include "cla0b5.h"
 #include "cla1c0.h"
 #include "clc0c0.h"

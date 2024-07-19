@@ -1151,10 +1151,11 @@ is_load(struct ir3_instruction *instr)
    case OPC_LDP:
    case OPC_L2G:
    case OPC_LDLW:
-   case OPC_LDC:
    case OPC_LDLV:
       /* probably some others too.. */
       return true;
+   case OPC_LDC:
+      return instr->dsts_count > 0;
    default:
       return false;
    }
@@ -1185,7 +1186,6 @@ uses_helpers(struct ir3_instruction *instr)
 {
    switch (instr->opc) {
    /* These require helper invocations to be present */
-   case OPC_SAM:
    case OPC_SAMB:
    case OPC_GETLOD:
    case OPC_DSX:
@@ -1200,6 +1200,10 @@ uses_helpers(struct ir3_instruction *instr)
    case OPC_QUAD_SHUFFLE_DIAG:
    case OPC_META_TEX_PREFETCH:
       return true;
+
+   /* sam requires helper invocations except for dummy prefetch instructions */
+   case OPC_SAM:
+      return instr->dsts_count != 0;
 
    /* Subgroup operations don't require helper invocations to be present, but
     * will use helper invocations if they are present.
@@ -1369,6 +1373,9 @@ is_reg_gpr(const struct ir3_register *reg)
 {
    if ((reg_num(reg) == REG_A0) || (reg->flags & IR3_REG_PREDICATE))
       return false;
+   if (!(reg->flags & (IR3_REG_SSA | IR3_REG_RELATIV)) &&
+       reg->num == INVALID_REG)
+      return false;
    return true;
 }
 
@@ -1506,6 +1513,7 @@ half_type(type_t type)
    case TYPE_F32:
       return TYPE_F16;
    case TYPE_U32:
+   case TYPE_U8_32:
       return TYPE_U16;
    case TYPE_S32:
       return TYPE_S16;
@@ -1514,7 +1522,6 @@ half_type(type_t type)
    case TYPE_S16:
       return type;
    case TYPE_U8:
-   case TYPE_S8:
       return type;
    default:
       assert(0);
@@ -1529,9 +1536,9 @@ full_type(type_t type)
    case TYPE_F16:
       return TYPE_F32;
    case TYPE_U8:
+   case TYPE_U8_32:
    case TYPE_U16:
       return TYPE_U32;
-   case TYPE_S8:
    case TYPE_S16:
       return TYPE_S32;
    case TYPE_F32:
@@ -2738,7 +2745,7 @@ ir3_SAM(struct ir3_block *block, opc_t opc, type_t type, unsigned wrmask,
    if (flags & IR3_INSTR_S2EN) {
       nreg++;
    }
-   if (src0) {
+   if (src0 || opc == OPC_SAM) {
       nreg++;
    }
    if (src1) {
@@ -2753,6 +2760,12 @@ ir3_SAM(struct ir3_block *block, opc_t opc, type_t type, unsigned wrmask,
    }
    if (src0) {
       __ssa_src(sam, src0, 0);
+   } else if (opc == OPC_SAM) {
+      /* Create a dummy shared source for the coordinate, for the prefetch
+       * case. It needs to be shared so that we don't accidentally disable early
+       * preamble, and this is what the blob does.
+       */
+      ir3_src_create(sam, regid(48, 0), IR3_REG_SHARED);
    }
    if (src1) {
       __ssa_src(sam, src1, 0);

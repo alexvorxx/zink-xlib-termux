@@ -38,7 +38,7 @@
 #include "tu_dynamic_rendering.h"
 #include "tu_image.h"
 #include "tu_pass.h"
-#include "tu_query.h"
+#include "tu_query_pool.h"
 #include "tu_rmv.h"
 #include "tu_tracepoints.h"
 #include "tu_wsi.h"
@@ -142,6 +142,7 @@ get_device_extensions(const struct tu_physical_device *device,
                       struct vk_device_extension_table *ext)
 {
    *ext = (struct vk_device_extension_table) { .table = {
+      .KHR_8bit_storage = device->info->a7xx.storage_8bit,
       .KHR_16bit_storage = device->info->a6xx.storage_16bit,
       .KHR_bind_memory2 = true,
       .KHR_buffer_device_address = true,
@@ -206,6 +207,7 @@ get_device_extensions(const struct tu_physical_device *device,
       .KHR_shader_integer_dot_product = true,
       .KHR_shader_non_semantic_info = true,
       .KHR_shader_subgroup_extended_types = true,
+      .KHR_shader_subgroup_uniform_control_flow = true,
       .KHR_shader_terminate_invocation = true,
       .KHR_spirv_1_4 = true,
       .KHR_storage_buffer_storage_class = true,
@@ -241,7 +243,7 @@ get_device_extensions(const struct tu_physical_device *device,
       .EXT_extended_dynamic_state3 = true,
       .EXT_external_memory_dma_buf = true,
       .EXT_filter_cubic = device->info->a6xx.has_tex_filter_cubic,
-      .EXT_fragment_density_map = !device->info->a7xx.load_shader_consts_via_preamble,
+      .EXT_fragment_density_map = true,
       .EXT_global_priority = true,
       .EXT_global_priority_query = true,
       .EXT_graphics_pipeline_library = true,
@@ -379,7 +381,7 @@ tu_get_features(struct tu_physical_device *pdevice,
    /* Vulkan 1.2 */
    features->samplerMirrorClampToEdge            = true;
    features->drawIndirectCount                   = true;
-   features->storageBuffer8BitAccess             = false;
+   features->storageBuffer8BitAccess             = pdevice->info->a7xx.storage_8bit;
    features->uniformAndStorageBuffer8BitAccess   = false;
    features->storagePushConstant8                = false;
    features->shaderBufferInt64Atomics            = false;
@@ -480,6 +482,9 @@ tu_get_features(struct tu_physical_device *pdevice,
 
    /* VK_KHR_shader_float_controls2 */
    features->shaderFloatControls2 = true;
+
+   /* VK_KHR_shader_subgroup_uniform_control_flow */
+   features->shaderSubgroupUniformControlFlow = true;
 
    /* VK_KHR_vertex_attribute_divisor */
    features->vertexAttributeInstanceRateDivisor = true;
@@ -660,7 +665,8 @@ tu_get_physical_device_properties_1_1(struct tu_physical_device *pdevice,
    p->deviceNodeMask = 0;
    p->deviceLUIDValid = false;
 
-   p->subgroupSize = pdevice->info->a6xx.supports_double_threadsize ? 128 : 64;
+   p->subgroupSize = pdevice->info->a6xx.supports_double_threadsize ?
+      pdevice->info->threadsize_base * 2 : pdevice->info->threadsize_base;
    p->subgroupSupportedStages = VK_SHADER_STAGE_COMPUTE_BIT;
    p->subgroupSupportedOperations = VK_SUBGROUP_FEATURE_BASIC_BIT |
                                     VK_SUBGROUP_FEATURE_VOTE_BIT |
@@ -777,11 +783,10 @@ static void
 tu_get_physical_device_properties_1_3(struct tu_physical_device *pdevice,
                                       struct vk_properties *p)
 {
-   /* TODO move threadsize_base and max_waves to fd_dev_info and use them here */
-   p->minSubgroupSize = 64; /* threadsize_base */
-   p->maxSubgroupSize =
-      pdevice->info->a6xx.supports_double_threadsize ? 128 : 64;
-   p->maxComputeWorkgroupSubgroups = 16; /* max_waves */
+   p->minSubgroupSize = pdevice->info->threadsize_base;
+   p->maxSubgroupSize = pdevice->info->a6xx.supports_double_threadsize ?
+      pdevice->info->threadsize_base * 2 : pdevice->info->threadsize_base;
+   p->maxComputeWorkgroupSubgroups = pdevice->info->max_waves;
    p->requiredSubgroupSizeStages = VK_SHADER_STAGE_ALL;
 
    p->maxInlineUniformBlockSize = MAX_INLINE_UBO_RANGE;
@@ -901,7 +906,9 @@ tu_get_properties(struct tu_physical_device *pdevice,
    props->maxComputeWorkGroupCount[0] =
       props->maxComputeWorkGroupCount[1] =
       props->maxComputeWorkGroupCount[2] = 65535;
-   props->maxComputeWorkGroupInvocations = pdevice->info->a6xx.supports_double_threadsize ? 2048 : 1024;
+   props->maxComputeWorkGroupInvocations = pdevice->info->a6xx.supports_double_threadsize ?
+      pdevice->info->threadsize_base * 2 * pdevice->info->max_waves :
+      pdevice->info->threadsize_base * pdevice->info->max_waves;
    props->maxComputeWorkGroupSize[0] =
       props->maxComputeWorkGroupSize[1] =
       props->maxComputeWorkGroupSize[2] = 1024;
@@ -1095,10 +1102,9 @@ tu_get_properties(struct tu_physical_device *pdevice,
    props->robustStorageTexelBufferDescriptorSize = A6XX_TEX_CONST_DWORDS * 4;
    props->uniformBufferDescriptorSize = A6XX_TEX_CONST_DWORDS * 4;
    props->robustUniformBufferDescriptorSize = A6XX_TEX_CONST_DWORDS * 4;
-   props->storageBufferDescriptorSize =
-      pdevice->info->a6xx.storage_16bit ?
-      2 * A6XX_TEX_CONST_DWORDS * 4 :
-      A6XX_TEX_CONST_DWORDS * 4;
+   props->storageBufferDescriptorSize = A6XX_TEX_CONST_DWORDS * 4 * (1 +
+      COND(pdevice->info->a6xx.storage_16bit && !pdevice->info->a6xx.has_isam_v, 1) +
+      COND(pdevice->info->a7xx.storage_8bit, 1));
    props->robustStorageBufferDescriptorSize =
       props->storageBufferDescriptorSize;
    props->inputAttachmentDescriptorSize = TU_DEBUG(DYNAMIC) ?
@@ -1230,6 +1236,10 @@ tu_physical_device_init(struct tu_physical_device *device,
       goto fail_free_name;
    }
 
+   device->level1_dcache_size = tu_get_l1_dcache_size();
+   device->has_cached_non_coherent_memory =
+      device->level1_dcache_size > 0 && !DETECT_ARCH_ARM;
+
    device->memory.type_count = 1;
    device->memory.types[0] =
       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
@@ -1309,6 +1319,9 @@ tu_physical_device_finish(struct tu_physical_device *device)
    close(device->local_fd);
    if (device->master_fd != -1)
       close(device->master_fd);
+
+   if (device->kgsl_dma_fd != -1)
+      close(device->kgsl_dma_fd);
 
    disk_cache_destroy(device->vk.disk_cache);
    vk_free(&device->instance->vk.alloc, (void *)device->name);
@@ -2303,6 +2316,7 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
          .bindless_fb_read_descriptor = -1,
          .bindless_fb_read_slot = -1,
          .storage_16bit = physical_device->info->a6xx.storage_16bit,
+         .storage_8bit = physical_device->info->a7xx.storage_8bit,
          .shared_push_consts = !TU_DEBUG(PUSH_CONSTS_PER_STAGE),
       };
       device->compiler = ir3_compiler_create(
@@ -2835,6 +2849,14 @@ tu_AllocateMemory(VkDevice _device,
          alloc_flags |= TU_BO_ALLOC_REPLAYABLE;
       }
 
+      const VkExportMemoryAllocateInfo *export_info =
+         vk_find_struct_const(pAllocateInfo->pNext, EXPORT_MEMORY_ALLOCATE_INFO);
+      if (export_info && (export_info->handleTypes &
+                          (VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT |
+                           VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT)))
+         alloc_flags |= TU_BO_ALLOC_SHAREABLE;
+
+
       char name[64] = "vkAllocateMemory()";
       if (device->bo_sizes)
          snprintf(name, ARRAY_SIZE(name), "vkAllocateMemory(%ldkb)",
@@ -2946,6 +2968,45 @@ tu_UnmapMemory2KHR(VkDevice _device, const VkMemoryUnmapInfoKHR *pMemoryUnmapInf
       return VK_SUCCESS;
 
    return tu_bo_unmap(device, mem->bo, pMemoryUnmapInfo->flags & VK_MEMORY_UNMAP_RESERVE_BIT_EXT);
+}
+static VkResult
+sync_cache(VkDevice _device,
+           enum tu_mem_sync_op op,
+           uint32_t count,
+           const VkMappedMemoryRange *ranges)
+{
+   VK_FROM_HANDLE(tu_device, device, _device);
+
+   if (!device->physical_device->has_cached_non_coherent_memory) {
+      tu_finishme(
+         "data cache clean and invalidation are unsupported on this arch!");
+      return VK_SUCCESS;
+   }
+
+   for (uint32_t i = 0; i < count; i++) {
+      VK_FROM_HANDLE(tu_device_memory, mem, ranges[i].memory);
+      tu_bo_sync_cache(device, mem->bo, ranges[i].offset, ranges[i].size, op);
+   }
+
+   return VK_SUCCESS;
+}
+
+VkResult
+tu_FlushMappedMemoryRanges(VkDevice _device,
+                           uint32_t memoryRangeCount,
+                           const VkMappedMemoryRange *pMemoryRanges)
+{
+   return sync_cache(_device, TU_MEM_SYNC_CACHE_TO_GPU, memoryRangeCount,
+                     pMemoryRanges);
+}
+
+VkResult
+tu_InvalidateMappedMemoryRanges(VkDevice _device,
+                                uint32_t memoryRangeCount,
+                                const VkMappedMemoryRange *pMemoryRanges)
+{
+   return sync_cache(_device, TU_MEM_SYNC_CACHE_FROM_GPU, memoryRangeCount,
+                     pMemoryRanges);
 }
 
 VKAPI_ATTR void VKAPI_CALL

@@ -21,7 +21,7 @@
 
 struct nvk_buffer;
 struct nvk_cbuf;
-struct nvk_cmd_bo;
+struct nvk_cmd_mem;
 struct nvk_cmd_buffer;
 struct nvk_cmd_pool;
 struct nvk_image_view;
@@ -195,23 +195,23 @@ struct nvk_cmd_buffer {
       struct nvk_compute_state cs;
    } state;
 
-   /** List of nvk_cmd_bo
+   /** List of nvk_cmd_mem
     *
     * This list exists entirely for ownership tracking.  Everything in here
     * must also be in pushes or bo_refs if it is to be referenced by this
     * command buffer.
     */
-   struct list_head bos;
-   struct list_head gart_bos;
+   struct list_head owned_mem;
+   struct list_head owned_gart_mem;
 
-   struct nvk_cmd_bo *upload_bo;
+   struct nvk_cmd_mem *upload_mem;
    uint32_t upload_offset;
 
-   struct nvk_cmd_bo *cond_render_gart_bo;
+   struct nvk_cmd_mem *cond_render_gart_mem;
    uint32_t cond_render_gart_offset;
 
-   struct nvk_cmd_bo *push_bo;
-   uint32_t *push_bo_limit;
+   struct nvk_cmd_mem *push_mem;
+   uint32_t *push_mem_limit;
    struct nv_push push;
 
    /** Array of struct nvk_cmd_push
@@ -251,7 +251,7 @@ nvk_cmd_buffer_push(struct nvk_cmd_buffer *cmd, uint32_t dw_count)
    assert(dw_count <= NVK_CMD_BUFFER_MAX_PUSH);
 
    /* Compare to the actual limit on our push bo */
-   if (unlikely(cmd->push.end + dw_count > cmd->push_bo_limit))
+   if (unlikely(cmd->push.end + dw_count > cmd->push_mem_limit))
       nvk_cmd_buffer_new_push(cmd);
 
    cmd->push.limit = cmd->push.end + dw_count;

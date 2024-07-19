@@ -470,7 +470,7 @@ gallivm_compile_module(struct gallivm_state *gallivm)
 
 func_pointer
 gallivm_jit_function(struct gallivm_state *gallivm,
-                     LLVMValueRef func)
+                     LLVMValueRef func, const char *func_name)
 {
    void *code;
    func_pointer jit_func;
@@ -494,4 +494,15 @@ gallivm_jit_function(struct gallivm_state *gallivm,
    }
 
    return jit_func;
+}
+
+void
+gallivm_stub_func(struct gallivm_state *gallivm, LLVMValueRef func)
+{
+   /*
+    * MCJIT can accept an empty function, nothing is needed here.
+    * The only code is to silence unused var warning.
+    */
+   (void) gallivm;
+   (void) func;
 }

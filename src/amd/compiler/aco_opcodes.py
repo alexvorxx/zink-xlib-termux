@@ -639,6 +639,7 @@ SOP1 = {
    ("s_cvt_i32_f32",            dst(1), src(1), op(gfx11=0x66), InstrClass.SFPU),
    ("s_cvt_u32_f32",            dst(1), src(1), op(gfx11=0x67), InstrClass.SFPU),
    ("s_cvt_f16_f32",            dst(1), src(1), op(gfx11=0x68), InstrClass.SFPU),
+   ("p_s_cvt_f16_f32_rtne",     dst(1), src(1), op(-1), InstrClass.SFPU),
    ("s_cvt_f32_f16",            dst(1), src(1), op(gfx11=0x69), InstrClass.SFPU),
    ("s_cvt_hi_f32_f16",         dst(1), src(1), op(gfx11=0x6a), InstrClass.SFPU),
    ("s_ceil_f16",               dst(1), src(1), op(gfx11=0x6b), InstrClass.SFPU),
@@ -986,7 +987,7 @@ VOP1 = {
    ("v_cvt_u32_f32",              True, False, dst(1), src(1), op(0x07)),
    ("v_cvt_i32_f32",              True, False, dst(1), src(1), op(0x08)),
    ("v_cvt_f16_f32",              True, True, dst(1), src(1), op(0x0a)),
-   ("p_cvt_f16_f32_rtne",         True, True, dst(1), src(1), op(-1)),
+   ("p_v_cvt_f16_f32_rtne",       True, True, dst(1), src(1), op(-1)),
    ("v_cvt_f32_f16",              True, True, dst(1), src(1), op(0x0b)),
    ("v_cvt_rpi_i32_f32",          True, False, dst(1), src(1), op(0x0c)), #v_cvt_nearest_i32_f32 in GFX11
    ("v_cvt_flr_i32_f32",          True, False, dst(1), src(1), op(0x0d)),#v_cvt_floor_i32_f32 in GFX11

@@ -21,6 +21,7 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 # IN THE SOFTWARE.
 
+import argparse
 from collections import OrderedDict
 import nir_algebraic
 from nir_opcodes import type_sizes
@@ -3142,7 +3143,10 @@ late_optimizations = [
 
    # nir_lower_to_source_mods will collapse this, but its existence during the
    # optimization loop can prevent other optimizations.
-   (('fneg', ('fneg', a)), a)
+   (('fneg', ('fneg', a)), a),
+
+   # combine imul and iadd to imad
+   (('iadd@32', ('imul(is_only_used_by_iadd)', a, b), c), ('imad', a, b, c), 'options->has_imad32'),
 ]
 
 # re-combine inexact mul+add to ffma. Do this before fsub so that a * b - c
@@ -3588,12 +3592,17 @@ before_lower_int64_optimizations = [
     (('iadd', ('u2u64', a), ('u2u64', a)), ('ishl', ('u2u64', a), 1)),
 ]
 
-print(nir_algebraic.AlgebraicPass("nir_opt_algebraic", optimizations).render())
-print(nir_algebraic.AlgebraicPass("nir_opt_algebraic_before_ffma",
-                                  before_ffma_optimizations).render())
-print(nir_algebraic.AlgebraicPass("nir_opt_algebraic_before_lower_int64",
-                                  before_lower_int64_optimizations).render())
-print(nir_algebraic.AlgebraicPass("nir_opt_algebraic_late",
-                                  late_optimizations).render())
-print(nir_algebraic.AlgebraicPass("nir_opt_algebraic_distribute_src_mods",
-                                  distribute_src_mods).render())
+parser = argparse.ArgumentParser()
+parser.add_argument('--out', required=True)
+args = parser.parse_args()
+
+with open(args.out, "w", encoding='utf-8') as f:
+    f.write(nir_algebraic.AlgebraicPass("nir_opt_algebraic", optimizations).render())
+    f.write(nir_algebraic.AlgebraicPass("nir_opt_algebraic_before_ffma",
+                                        before_ffma_optimizations).render())
+    f.write(nir_algebraic.AlgebraicPass("nir_opt_algebraic_before_lower_int64",
+                                        before_lower_int64_optimizations).render())
+    f.write(nir_algebraic.AlgebraicPass("nir_opt_algebraic_late",
+                                        late_optimizations).render())
+    f.write(nir_algebraic.AlgebraicPass("nir_opt_algebraic_distribute_src_mods",
+                                        distribute_src_mods).render())

@@ -5,11 +5,11 @@ use crate::ir::*;
 use std::collections::HashMap;
 
 fn should_lower_to_warp(
-    sm: u8,
+    sm: &dyn ShaderModel,
     instr: &Instr,
     r2ur: &HashMap<SSAValue, SSAValue>,
 ) -> bool {
-    if !instr.can_be_uniform(sm) {
+    if !sm.op_can_be_uniform(&instr.op) {
         return true;
     }
 
@@ -49,9 +49,9 @@ fn propagate_r2ur(
     progress
 }
 
-impl Shader {
+impl Shader<'_> {
     pub fn opt_uniform_instrs(&mut self) {
-        let sm = self.info.sm;
+        let sm = self.sm;
         let mut r2ur = HashMap::new();
         let mut propagated_r2ur = false;
         self.map_instrs(|mut instr, alloc| {

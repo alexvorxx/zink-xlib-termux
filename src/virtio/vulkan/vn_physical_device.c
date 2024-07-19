@@ -720,45 +720,31 @@ vn_physical_device_init_memory_properties(
    /* Kernel makes every mapping coherent. If a memory type is truly
     * incoherent, it's better to remove the host-visible flag than silently
     * making it coherent. However, for app compatibility purpose, when
-    * coherent-cached memory type is unavailable, we emulate the first cached
-    * memory type with the first coherent memory type.
+    * coherent-cached memory type is unavailable, we append the cached bit to
+    * the first coherent memory type.
     */
-   uint32_t coherent_uncached = VK_MAX_MEMORY_TYPES;
-   uint32_t incoherent_cached = VK_MAX_MEMORY_TYPES;
+   bool has_coherent_cached = false;
+   uint32_t first_coherent = VK_MAX_MEMORY_TYPES;
    VkPhysicalDeviceMemoryProperties *props = &physical_dev->memory_properties;
    for (uint32_t i = 0; i < props->memoryTypeCount; i++) {
-      const VkMemoryPropertyFlags flags = props->memoryTypes[i].propertyFlags;
-      const bool coherent = flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-      const bool cached = flags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
-      if (coherent && cached) {
-         coherent_uncached = VK_MAX_MEMORY_TYPES;
-         incoherent_cached = VK_MAX_MEMORY_TYPES;
-         break;
-      } else if (coherent && coherent_uncached == VK_MAX_MEMORY_TYPES) {
-         coherent_uncached = i;
-      } else if (cached && incoherent_cached == VK_MAX_MEMORY_TYPES) {
-         incoherent_cached = i;
+      VkMemoryPropertyFlags *flags = &props->memoryTypes[i].propertyFlags;
+      const bool coherent = *flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+      const bool cached = *flags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+      if (coherent) {
+         if (first_coherent == VK_MAX_MEMORY_TYPES)
+            first_coherent = i;
+         if (cached)
+            has_coherent_cached = true;
+      } else if (cached) {
+         *flags &= ~(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                     VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
       }
    }
 
-   for (uint32_t i = 0; i < props->memoryTypeCount; i++) {
-      VkMemoryType *type = &props->memoryTypes[i];
-      if (i == incoherent_cached) {
-         /* Only get here if no coherent+cached type is available, and the
-          * spec guarantees that there is at least one coherent type, so it
-          * must be coherent+uncached, hence the index is always valid.
-          */
-         assert(coherent_uncached < props->memoryTypeCount);
-         type->heapIndex = props->memoryTypes[coherent_uncached].heapIndex;
-      } else if (!(type->propertyFlags &
-                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
-         type->propertyFlags &= ~(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                  VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
-      }
+   if (!has_coherent_cached) {
+      props->memoryTypes[first_coherent].propertyFlags |=
+         VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
    }
-
-   physical_dev->coherent_uncached = coherent_uncached;
-   physical_dev->incoherent_cached = incoherent_cached;
 }
 
 static void
@@ -1085,6 +1071,7 @@ vn_physical_device_get_passthrough_extensions(
       .EXT_depth_clip_enable = true,
       .EXT_extended_dynamic_state3 = true,
       .EXT_dynamic_rendering_unused_attachments = true,
+      .EXT_external_memory_acquire_unmodified = true,
       .EXT_fragment_shader_interlock = true,
       .EXT_graphics_pipeline_library = !VN_DEBUG(NO_GPL),
       .EXT_image_2d_view_of_3d = true,

@@ -203,7 +203,9 @@
 #define RENCODE_COLOR_PACKING_FORMAT_NV12                                           0
 #define RENCODE_COLOR_PACKING_FORMAT_P010                                           1
 #define RENCODE_COLOR_PACKING_FORMAT_A8R8G8B8                                       4
+#define RENCODE_COLOR_PACKING_FORMAT_A2R10G10B10                                    5
 #define RENCODE_COLOR_PACKING_FORMAT_A8B8G8R8                                       7
+#define RENCODE_COLOR_PACKING_FORMAT_A2B10G10R10                                    8
 
 #define RENCODE_COLOR_SPACE_YUV                                                     0
 #define RENCODE_COLOR_SPACE_RGB                                                     1
@@ -655,6 +657,7 @@ typedef struct rvcn_enc_cmd_s {
    uint32_t enc_qp_map;
    uint32_t metadata;
    uint32_t ctx_override;
+   uint32_t enc_latency;
 } rvcn_enc_cmd_t;
 
 typedef struct rvcn_enc_quality_modes_s
@@ -783,5 +786,10 @@ typedef struct rvcn_enc_qp_map_s
    uint32_t height_in_block;
    struct rvcn_enc_qp_map_region map[RENCODE_QP_MAP_MAX_REGIONS];
 }rvcn_enc_qp_map_t;
+
+typedef struct rvcn_enc_latency_s
+{
+   uint32_t encode_latency;
+} rvcn_enc_latency_t;
 
 #endif

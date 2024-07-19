@@ -2937,18 +2937,7 @@ util_blitter_stencil_fallback(struct blitter_context *blitter,
    blitter_set_dst_dimensions(ctx, dst_view->width, dst_view->height);
 
    if (scissor) {
-      pipe->clear_depth_stencil(pipe, dst_view, PIPE_CLEAR_STENCIL, 0.0, 0,
-                                MAX2(dstbox->x, scissor->minx),
-                                MAX2(dstbox->y, scissor->miny),
-                                MIN2(dstbox->x + dstbox->width, scissor->maxx) - dstbox->x,
-                                MIN2(dstbox->y + dstbox->height, scissor->maxy) - dstbox->y,
-                                true);
       pipe->set_scissor_states(pipe, 0, 1, scissor);
-   } else {
-      pipe->clear_depth_stencil(pipe, dst_view, PIPE_CLEAR_STENCIL, 0.0, 0,
-                                dstbox->x, dstbox->y,
-                                dstbox->width, dstbox->height,
-                                true);
    }
 
    pipe->set_sampler_views(pipe, PIPE_SHADER_FRAGMENT, 0, 1, 0, false, &src_view);

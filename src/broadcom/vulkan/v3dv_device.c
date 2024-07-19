@@ -201,6 +201,7 @@ get_device_extensions(const struct v3dv_physical_device *device,
       .EXT_border_color_swizzle             = true,
       .EXT_color_write_enable               = true,
       .EXT_custom_border_color              = true,
+      .EXT_depth_clamp_zero_one             = device->devinfo.ver >= 71,
       .EXT_depth_clip_control               = true,
       .EXT_depth_clip_enable                = device->devinfo.ver >= 71,
       .EXT_load_store_op_none               = true,
@@ -260,6 +261,7 @@ get_features(const struct v3dv_physical_device *physical_device,
       .multiDrawIndirect = false,
       .drawIndirectFirstInstance = true,
       .depthClamp = physical_device->devinfo.ver >= 71,
+      .depthClampZeroOne = physical_device->devinfo.ver >= 71,
       .depthBiasClamp = true,
       .fillModeNonSolid = true,
       .depthBounds = physical_device->devinfo.ver >= 71,
@@ -1655,7 +1657,7 @@ v3dv_GetInstanceProcAddr(VkInstance _instance,
                          const char *pName)
 {
    V3DV_FROM_HANDLE(v3dv_instance, instance, _instance);
-   return vk_instance_get_proc_addr(&instance->vk,
+   return vk_instance_get_proc_addr(instance ? &instance->vk : NULL,
                                     &v3dv_instance_entrypoints,
                                     pName);
 }

@@ -99,14 +99,8 @@ get_cps_state_offset(struct anv_cmd_buffer *cmd_buffer, bool cps_enabled,
 {
    struct anv_device *device = cmd_buffer->device;
 
-   if (!cps_enabled) {
-      assert(cmd_buffer->state.current_db_mode !=
-             ANV_CMD_DESCRIPTOR_BUFFER_MODE_UNKNOWN);
-      return cmd_buffer->state.current_db_mode ==
-             ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER ?
-             device->cps_states_db.offset :
-             device->cps_states.offset;
-   }
+   if (!cps_enabled)
+      return device->cps_states.offset;
 
    uint32_t offset;
    static const uint32_t size_index[] = {
@@ -131,12 +125,7 @@ get_cps_state_offset(struct anv_cmd_buffer *cmd_buffer, bool cps_enabled,
 
    offset *= MAX_VIEWPORTS * GENX(CPS_STATE_length) * 4;
 
-   assert(cmd_buffer->state.current_db_mode !=
-          ANV_CMD_DESCRIPTOR_BUFFER_MODE_UNKNOWN);
-   return (cmd_buffer->state.current_db_mode ==
-           ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER ?
-           device->cps_states_db.offset :
-           device->cps_states.offset) + offset;
+   return device->cps_states.offset + offset;
 }
 #endif /* GFX_VER >= 12 */
 
@@ -1616,6 +1605,8 @@ cmd_buffer_gfx_state_emission(struct anv_cmd_buffer *cmd_buffer)
    const struct vk_dynamic_graphics_state *dyn =
       &cmd_buffer->vk.dynamic_graphics_state;
    struct anv_gfx_dynamic_state *hw_state = &gfx->dyn_state;
+   const bool protected = cmd_buffer->vk.pool->flags &
+                          VK_COMMAND_POOL_CREATE_PROTECTED_BIT;
 
    if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_URB)) {
       genX(urb_workaround)(cmd_buffer, &pipeline->urb_cfg);
@@ -1640,14 +1631,20 @@ cmd_buffer_gfx_state_emission(struct anv_cmd_buffer *cmd_buffer)
       anv_batch_emit_pipeline_state(&cmd_buffer->batch, pipeline, final.vf_sgvs_2);
 #endif
 
-   if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_VS))
-      anv_batch_emit_pipeline_state(&cmd_buffer->batch, pipeline, final.vs);
+   if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_VS)) {
+      anv_batch_emit_pipeline_state_protected(&cmd_buffer->batch, pipeline,
+                                              final.vs, protected);
+   }
 
-   if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_HS))
-      anv_batch_emit_pipeline_state(&cmd_buffer->batch, pipeline, final.hs);
+   if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_HS)) {
+      anv_batch_emit_pipeline_state_protected(&cmd_buffer->batch, pipeline,
+                                              final.hs, protected);
+   }
 
-   if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_DS))
-      anv_batch_emit_pipeline_state(&cmd_buffer->batch, pipeline, final.ds);
+   if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_DS)) {
+      anv_batch_emit_pipeline_state_protected(&cmd_buffer->batch, pipeline,
+                                              final.ds, protected);
+   }
 
    if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_VF_STATISTICS))
       anv_batch_emit_pipeline_state(&cmd_buffer->batch, pipeline, final.vf_statistics);
@@ -1688,8 +1685,10 @@ cmd_buffer_gfx_state_emission(struct anv_cmd_buffer *cmd_buffer)
    }
 
    if (device->vk.enabled_extensions.EXT_mesh_shader) {
-      if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_MESH_CONTROL))
-         anv_batch_emit_pipeline_state(&cmd_buffer->batch, pipeline, final.mesh_control);
+      if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_MESH_CONTROL)) {
+         anv_batch_emit_pipeline_state_protected(&cmd_buffer->batch, pipeline,
+                                                 final.mesh_control, protected);
+      }
 
       if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_MESH_SHADER))
          anv_batch_emit_pipeline_state(&cmd_buffer->batch, pipeline, final.mesh_shader);
@@ -1697,8 +1696,10 @@ cmd_buffer_gfx_state_emission(struct anv_cmd_buffer *cmd_buffer)
       if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_MESH_DISTRIB))
          anv_batch_emit_pipeline_state(&cmd_buffer->batch, pipeline, final.mesh_distrib);
 
-      if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_TASK_CONTROL))
-         anv_batch_emit_pipeline_state(&cmd_buffer->batch, pipeline, final.task_control);
+      if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_TASK_CONTROL)) {
+         anv_batch_emit_pipeline_state_protected(&cmd_buffer->batch, pipeline,
+                                                 final.task_control, protected);
+      }
 
       if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_TASK_SHADER))
          anv_batch_emit_pipeline_state(&cmd_buffer->batch, pipeline, final.task_shader);
@@ -1730,8 +1731,8 @@ cmd_buffer_gfx_state_emission(struct anv_cmd_buffer *cmd_buffer)
    /* Now the potentially dynamic instructions */
 
    if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_PS)) {
-      anv_batch_emit_merge(&cmd_buffer->batch, GENX(3DSTATE_PS),
-                           pipeline, partial.ps, ps) {
+      anv_batch_emit_merge_protected(&cmd_buffer->batch, GENX(3DSTATE_PS),
+                                     pipeline, partial.ps, ps, protected) {
          SET(ps, ps, KernelStartPointer0);
          SET(ps, ps, KernelStartPointer1);
          SET(ps, ps, DispatchGRFStartRegisterForConstantSetupData0);
@@ -1925,8 +1926,8 @@ cmd_buffer_gfx_state_emission(struct anv_cmd_buffer *cmd_buffer)
    }
 
    if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_GS)) {
-      anv_batch_emit_merge(&cmd_buffer->batch, GENX(3DSTATE_GS),
-                           pipeline, partial.gs, gs) {
+      anv_batch_emit_merge_protected(&cmd_buffer->batch, GENX(3DSTATE_GS),
+                                     pipeline, partial.gs, gs, protected) {
          SET(gs, gs, ReorderMode);
       }
    }

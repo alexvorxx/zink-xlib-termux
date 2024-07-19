@@ -530,10 +530,17 @@ surface_dmabuf_feedback_tranche_formats(
 {
    struct dri2_egl_surface *dri2_surf = data;
    struct dmabuf_feedback *feedback = &dri2_surf->pending_dmabuf_feedback;
+   uint32_t present_format = dri2_surf->format;
    uint64_t *modifier_ptr, modifier;
    uint32_t format;
    uint16_t *index;
    int visual_idx;
+
+   if (dri2_surf->base.PresentOpaque) {
+      visual_idx = dri2_wl_visual_idx_from_fourcc(present_format);
+      if (visual_idx != -1)
+         present_format = dri2_wl_visuals[visual_idx].opaque_wl_drm_format;
+   }
 
    /* Compositor may advertise or not a format table. If it does, we use it.
     * Otherwise, we steal the most recent advertised format table. If we don't
@@ -564,7 +571,7 @@ surface_dmabuf_feedback_tranche_formats(
 
       /* Skip formats that are not the one the surface is already using. We
        * can't switch to another format. */
-      if (format != dri2_surf->format)
+      if (format != present_format)
          continue;
 
       /* We are sure that the format is supported because of the check above. */
@@ -622,6 +629,29 @@ static const struct zwp_linux_dmabuf_feedback_v1_listener
       .done = surface_dmabuf_feedback_done,
 };
 
+static bool
+dri2_wl_modifiers_have_common(struct u_vector *modifiers1,
+                              struct u_vector *modifiers2)
+{
+   uint64_t *mod1, *mod2;
+
+   /* If both modifier vectors are empty, assume there is a compatible
+    * implicit modifier. */
+   if (u_vector_length(modifiers1) == 0 && u_vector_length(modifiers2) == 0)
+       return true;
+
+   u_vector_foreach(mod1, modifiers1)
+   {
+      u_vector_foreach(mod2, modifiers2)
+      {
+         if (*mod1 == *mod2)
+            return true;
+      }
+   }
+
+   return false;
+}
+
 /**
  * Called via eglCreateWindowSurface(), drv->CreateWindowSurface().
  */
@@ -678,6 +708,20 @@ dri2_wl_create_window_surface(_EGLDisplay *disp, _EGLConfig *conf,
    } else {
       assert(dri2_dpy->wl_shm);
       dri2_surf->format = dri2_wl_shm_format_from_visual_idx(visual_idx);
+   }
+
+   if (dri2_surf->base.PresentOpaque) {
+      uint32_t opaque_fourcc =
+         dri2_wl_visuals[visual_idx].opaque_wl_drm_format;
+      int opaque_visual_idx = dri2_wl_visual_idx_from_fourcc(opaque_fourcc);
+
+      if (!server_supports_format(&dri2_dpy->formats, opaque_visual_idx) ||
+          !dri2_wl_modifiers_have_common(
+               &dri2_dpy->formats.modifiers[visual_idx],
+               &dri2_dpy->formats.modifiers[opaque_visual_idx])) {
+         _eglError(EGL_BAD_MATCH, "Unsupported opaque format");
+         goto cleanup_surf;
+      }
    }
 
    dri2_surf->wl_queue = wl_display_create_queue_with_name(dri2_dpy->wl_dpy,
@@ -967,23 +1011,53 @@ static void
 create_dri_image(struct dri2_egl_surface *dri2_surf,
                  enum pipe_format pipe_format, uint32_t use_flags,
                  uint64_t *surf_modifiers, int surf_modifiers_count,
-                 struct u_vector *modifiers_set)
+                 struct dri2_wl_formats *formats)
 {
    struct dri2_egl_display *dri2_dpy =
       dri2_egl_display(dri2_surf->base.Resource.Display);
+   int visual_idx = dri2_wl_visual_idx_from_fourcc(dri2_surf->format);
    struct u_vector modifiers_subset;
+   struct u_vector modifiers_subset_opaque;
    uint64_t *modifiers;
    unsigned int num_modifiers;
+   struct u_vector *modifiers_present;
+
+   assert(visual_idx != -1);
+
+   if (dri2_surf->base.PresentOpaque) {
+      uint32_t opaque_fourcc =
+            dri2_wl_visuals[visual_idx].opaque_wl_drm_format;
+      int opaque_visual_idx = dri2_wl_visual_idx_from_fourcc(opaque_fourcc);
+      struct u_vector *modifiers_dpy = &dri2_dpy->formats.modifiers[visual_idx];
+      /* Surface creation would have failed if we didn't support the matching
+       * opaque format. */
+      assert(opaque_visual_idx != -1);
+
+      if (!BITSET_TEST(formats->formats_bitmap, opaque_visual_idx))
+         return;
+
+      if (!intersect_modifiers(&modifiers_subset_opaque,
+                               &formats->modifiers[opaque_visual_idx],
+                               u_vector_tail(modifiers_dpy),
+                               u_vector_length(modifiers_dpy)))
+         return;
+
+      modifiers_present = &modifiers_subset_opaque;
+   } else {
+      if (!BITSET_TEST(formats->formats_bitmap, visual_idx))
+         return;
+      modifiers_present = &formats->modifiers[visual_idx];
+   }
 
    if (surf_modifiers_count > 0) {
-      if (!intersect_modifiers(&modifiers_subset, modifiers_set, surf_modifiers,
-                               surf_modifiers_count))
-         return;
+      if (!intersect_modifiers(&modifiers_subset, modifiers_present,
+                               surf_modifiers, surf_modifiers_count))
+         goto cleanup_present;
       modifiers = u_vector_tail(&modifiers_subset);
       num_modifiers = u_vector_length(&modifiers_subset);
    } else {
-      modifiers = u_vector_tail(modifiers_set);
-      num_modifiers = u_vector_length(modifiers_set);
+      modifiers = u_vector_tail(modifiers_present);
+      num_modifiers = u_vector_length(modifiers_present);
    }
 
    /* For the purposes of this function, an INVALID modifier on
@@ -1004,6 +1078,10 @@ create_dri_image(struct dri2_egl_surface *dri2_surf,
       u_vector_finish(&modifiers_subset);
       update_surface(dri2_surf, dri2_surf->back->dri_image);
    }
+
+cleanup_present:
+   if (modifiers_present == &modifiers_subset_opaque)
+      u_vector_finish(&modifiers_subset_opaque);
 }
 
 static void
@@ -1013,15 +1091,11 @@ create_dri_image_from_dmabuf_feedback(struct dri2_egl_surface *dri2_surf,
                                       uint64_t *surf_modifiers,
                                       int surf_modifiers_count)
 {
-   int visual_idx;
    uint32_t flags;
 
    /* We don't have valid dma-buf feedback, so return */
    if (dri2_surf->dmabuf_feedback.main_device == 0)
       return;
-
-   visual_idx = dri2_wl_visual_idx_from_fourcc(dri2_surf->format);
-   assert(visual_idx != -1);
 
    /* Iterates through the dma-buf feedback to pick a new set of modifiers. The
     * tranches are sent in descending order of preference by the compositor, so
@@ -1035,17 +1109,12 @@ create_dri_image_from_dmabuf_feedback(struct dri2_egl_surface *dri2_surf,
     * incompatible with the main device. */
    util_dynarray_foreach (&dri2_surf->dmabuf_feedback.tranches,
                           struct dmabuf_feedback_tranche, tranche) {
-      /* Ignore tranches that do not contain dri2_surf->format */
-      if (!BITSET_TEST(tranche->formats.formats_bitmap, visual_idx))
-         continue;
-
       flags = use_flags;
       if (tranche->flags & ZWP_LINUX_DMABUF_FEEDBACK_V1_TRANCHE_FLAGS_SCANOUT)
          flags |= __DRI_IMAGE_USE_SCANOUT;
 
       create_dri_image(dri2_surf, pipe_format, flags, surf_modifiers,
-                       surf_modifiers_count,
-                       &tranche->formats.modifiers[visual_idx]);
+                       surf_modifiers_count, &tranche->formats);
 
       if (dri2_surf->back->dri_image)
          return;
@@ -1060,12 +1129,8 @@ create_dri_image_from_formats(struct dri2_egl_surface *dri2_surf,
 {
    struct dri2_egl_display *dri2_dpy =
       dri2_egl_display(dri2_surf->base.Resource.Display);
-   int visual_idx;
-
-   visual_idx = dri2_wl_visual_idx_from_fourcc(dri2_surf->format);
    create_dri_image(dri2_surf, pipe_format, use_flags, surf_modifiers,
-                    surf_modifiers_count,
-                    &dri2_dpy->formats.modifiers[visual_idx]);
+                    surf_modifiers_count, &dri2_dpy->formats);
 }
 
 static int
@@ -1210,7 +1275,7 @@ get_back_bo(struct dri2_egl_surface *dri2_surf)
              * need to make it visible to render GPU
              */
             dri2_surf->back->linear_copy =
-               dri2_dpy->image->createImageFromDmaBufs3(
+               dri2_dpy->image->createImageFromDmaBufs(
                   dri2_dpy->dri_screen_render_gpu,
                   dri2_surf->base.Width, dri2_surf->base.Height,
                   fourcc, linear_mod,
@@ -2251,12 +2316,12 @@ dri2_initialize_wayland_drm(_EGLDisplay *disp)
    dri2_wl_setup_swap_interval(disp);
 
    if (dri2_dpy->wl_drm) {
-      /* To use Prime, we must have _DRI_IMAGE v7 at least. createImageFromFds
-       * support indicates that Prime export/import is supported by the driver.
-       * We deprecated the support to GEM names API, so we bail out if the
-       * driver does not support Prime. */
+      /* To use Prime, we must have _DRI_IMAGE v7 at least.
+       * createImageFromDmaBufs support indicates that Prime export/import is
+       * supported by the driver. We deprecated the support to GEM names API, so
+       * we bail out if the driver does not support Prime. */
       if (!(dri2_dpy->capabilities & WL_DRM_CAPABILITY_PRIME) ||
-          (dri2_dpy->image->createImageFromFds == NULL)) {
+          (dri2_dpy->image->createImageFromDmaBufs == NULL)) {
          _eglLog(_EGL_WARNING, "wayland-egl: display does not support prime");
          goto cleanup;
       }
@@ -2845,6 +2910,7 @@ kopperSetSurfaceCreateInfo(void *_draw, struct kopper_loader_info *out)
    wlsci->flags = 0;
    wlsci->display = dri2_dpy->wl_dpy;
    wlsci->surface = dri2_surf->wl_surface_wrapper;
+   out->present_opaque = dri2_surf->base.PresentOpaque;
 }
 
 static const __DRIkopperLoaderExtension kopper_loader_extension = {

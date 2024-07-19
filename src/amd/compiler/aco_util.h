@@ -443,9 +443,11 @@ struct IDSet {
       bool inserted = false;
 
       for (auto it = other.words.begin(); it != other.words.end(); ++it) {
-         block_t& dst = words[it->first];
          const block_t& src = it->second;
+         if (src == block_t{0})
+            continue;
 
+         block_t& dst = words[it->first];
          for (unsigned j = 0; j < src.size(); j++) {
             uint64_t new_bits = src[j] & ~dst[j];
             if (new_bits) {
@@ -512,6 +514,7 @@ struct IDSet {
    bool empty() const { return !size(); }
 
    explicit IDSet(monotonic_buffer_resource& m) : words(m) {}
+   explicit IDSet(const IDSet& other, monotonic_buffer_resource& m) : words(other.words, m) {}
 
 private:
    static uint32_t get_first_set(const block_t& words)

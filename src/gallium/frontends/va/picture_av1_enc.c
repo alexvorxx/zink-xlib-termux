@@ -799,15 +799,24 @@ vlVaHandleVAEncPackedHeaderDataBufferTypeAV1(vlVaContext *context, vlVaBuffer *b
 VAStatus
 vlVaHandleVAEncMiscParameterTypeFrameRateAV1(vlVaContext *context, VAEncMiscParameterBuffer *misc)
 {
+   unsigned temporal_id;
    VAEncMiscParameterFrameRate *fr = (VAEncMiscParameterFrameRate *)misc->data;
-   for (int i = 0; i < ARRAY_SIZE(context->desc.av1enc.rc); i++) {
-      if (fr->framerate & 0xffff0000) {
-         context->desc.av1enc.rc[i].frame_rate_num = fr->framerate       & 0xffff;
-         context->desc.av1enc.rc[i].frame_rate_den = fr->framerate >> 16 & 0xffff;
-      } else {
-         context->desc.av1enc.rc[i].frame_rate_num = fr->framerate;
-         context->desc.av1enc.rc[i].frame_rate_den = 1;
-      }
+
+   temporal_id = context->desc.av1enc.rc[0].rate_ctrl_method !=
+                 PIPE_H2645_ENC_RATE_CONTROL_METHOD_DISABLE ?
+                 fr->framerate_flags.bits.temporal_id :
+                 0;
+
+   if (context->desc.av1enc.seq.num_temporal_layers > 0 &&
+       temporal_id >= context->desc.av1enc.seq.num_temporal_layers)
+      return VA_STATUS_ERROR_INVALID_PARAMETER;
+
+   if (fr->framerate & 0xffff0000) {
+      context->desc.av1enc.rc[temporal_id].frame_rate_num = fr->framerate       & 0xffff;
+      context->desc.av1enc.rc[temporal_id].frame_rate_den = fr->framerate >> 16 & 0xffff;
+   } else {
+      context->desc.av1enc.rc[temporal_id].frame_rate_num = fr->framerate;
+      context->desc.av1enc.rc[temporal_id].frame_rate_den = 1;
    }
 
    return VA_STATUS_SUCCESS;

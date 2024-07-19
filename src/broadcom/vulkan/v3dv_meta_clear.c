@@ -323,9 +323,8 @@ v3dv_meta_clear_finish(struct v3dv_device *device)
 }
 
 static nir_shader *
-get_clear_rect_vs()
+get_clear_rect_vs(const nir_shader_compiler_options *options)
 {
-   const nir_shader_compiler_options *options = v3dv_pipeline_get_nir_options();
    nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_VERTEX, options,
                                                   "meta clear vs");
 
@@ -341,7 +340,8 @@ get_clear_rect_vs()
 }
 
 static nir_shader *
-get_clear_rect_gs(uint32_t push_constant_layer_base)
+get_clear_rect_gs(const nir_shader_compiler_options *options,
+                  uint32_t push_constant_layer_base)
 {
    /* FIXME: this creates a geometry shader that takes the index of a single
     * layer to clear from push constants, so we need to emit a draw call for
@@ -350,7 +350,6 @@ get_clear_rect_gs(uint32_t push_constant_layer_base)
     * however, if we were to do this we would need to be careful not to exceed
     * the maximum number of output vertices allowed in a geometry shader.
     */
-   const nir_shader_compiler_options *options = v3dv_pipeline_get_nir_options();
    nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_GEOMETRY, options,
                                                   "meta clear gs");
    nir_shader *nir = b.shader;
@@ -405,9 +404,9 @@ get_clear_rect_gs(uint32_t push_constant_layer_base)
 }
 
 static nir_shader *
-get_color_clear_rect_fs(uint32_t rt_idx, VkFormat format)
+get_color_clear_rect_fs(const nir_shader_compiler_options *options,
+                        uint32_t rt_idx, VkFormat format)
 {
-   const nir_shader_compiler_options *options = v3dv_pipeline_get_nir_options();
    nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_FRAGMENT, options,
                                                   "meta clear fs");
 
@@ -426,9 +425,8 @@ get_color_clear_rect_fs(uint32_t rt_idx, VkFormat format)
 }
 
 static nir_shader *
-get_depth_clear_rect_fs()
+get_depth_clear_rect_fs(const nir_shader_compiler_options *options)
 {
-   const nir_shader_compiler_options *options = v3dv_pipeline_get_nir_options();
    nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_FRAGMENT, options,
                                                   "meta depth clear fs");
 
@@ -583,9 +581,12 @@ create_color_clear_pipeline(struct v3dv_device *device,
                             VkPipelineLayout pipeline_layout,
                             VkPipeline *pipeline)
 {
-   nir_shader *vs_nir = get_clear_rect_vs();
-   nir_shader *fs_nir = get_color_clear_rect_fs(rt_idx, format);
-   nir_shader *gs_nir = is_layered ? get_clear_rect_gs(16) : NULL;
+   const nir_shader_compiler_options *options =
+      v3dv_pipeline_get_nir_options(&device->devinfo);
+
+   nir_shader *vs_nir = get_clear_rect_vs(options);
+   nir_shader *fs_nir = get_color_clear_rect_fs(options, rt_idx, format);
+   nir_shader *gs_nir = is_layered ? get_clear_rect_gs(options, 16) : NULL;
 
    const VkPipelineVertexInputStateCreateInfo vi_state = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
@@ -645,9 +646,12 @@ create_depth_clear_pipeline(struct v3dv_device *device,
    const bool has_stencil = aspects & VK_IMAGE_ASPECT_STENCIL_BIT;
    assert(has_depth || has_stencil);
 
-   nir_shader *vs_nir = get_clear_rect_vs();
-   nir_shader *fs_nir = has_depth ? get_depth_clear_rect_fs() : NULL;
-   nir_shader *gs_nir = is_layered ? get_clear_rect_gs(4) : NULL;
+   const nir_shader_compiler_options *options =
+      v3dv_pipeline_get_nir_options(&device->devinfo);
+
+   nir_shader *vs_nir = get_clear_rect_vs(options);
+   nir_shader *fs_nir = has_depth ? get_depth_clear_rect_fs(options) : NULL;
+   nir_shader *gs_nir = is_layered ? get_clear_rect_gs(options, 4) : NULL;
 
    const VkPipelineVertexInputStateCreateInfo vi_state = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,

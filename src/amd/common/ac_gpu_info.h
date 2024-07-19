@@ -183,6 +183,7 @@ struct radeon_info {
 
    /* CP info. */
    bool gfx_ib_pad_with_type2;
+   bool has_cp_dma;
    uint32_t me_fw_version;
    uint32_t me_fw_feature;
    uint32_t mec_fw_version;
@@ -218,7 +219,9 @@ struct radeon_info {
    uint32_t max_submitted_ibs[AMD_NUM_IP_TYPES];
    bool is_amdgpu;
    bool has_userptr;
+   bool has_syncobj;
    bool has_timeline_syncobj;
+   bool has_fence_to_handle;
    bool has_local_buffers;
    bool has_bo_metadata;
    bool has_eqaa_surface_allocator;
@@ -267,6 +270,7 @@ struct radeon_info {
    uint32_t max_vgpr_alloc;
    uint32_t wave64_vgpr_alloc_granularity;
    uint32_t max_scratch_waves;
+   bool has_scratch_base_registers;
 
    /* Pos, prim, and attribute rings. */
    uint32_t attribute_ring_size_per_se;   /* GFX11+ */

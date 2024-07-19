@@ -25,7 +25,7 @@
  *    Chia-I Wu <olv@lunarg.com>
  */
 
-#include <GL/internal/dri_interface.h>
+#include "mesa_interface.h"
 #include "main/errors.h"
 #include "main/texobj.h"
 #include "main/teximage.h"
@@ -507,19 +507,11 @@ st_bind_egl_image(struct gl_context *ctx,
    _mesa_dirty_texobj(ctx, texObj);
 }
 
-static GLboolean
+bool
 st_validate_egl_image(struct gl_context *ctx, GLeglImageOES image_handle)
 {
    struct st_context *st = st_context(ctx);
    struct pipe_frontend_screen *fscreen = st->frontend_screen;
 
    return fscreen->validate_egl_image(fscreen, (void *)image_handle);
-}
-
-void
-st_init_eglimage_functions(struct dd_function_table *functions,
-                           bool has_egl_image_validate)
-{
-   if (has_egl_image_validate)
-      functions->ValidateEGLImage = st_validate_egl_image;
 }

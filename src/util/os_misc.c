@@ -64,6 +64,11 @@
 #  include <sys/sysctl.h>
 #elif DETECT_OS_APPLE || DETECT_OS_BSD
 #  include <sys/sysctl.h>
+#  if DETECT_OS_APPLE
+#    include <mach/mach_host.h>
+#    include <mach/vm_param.h>
+#    include <mach/vm_statistics.h>
+#   endif
 #elif DETECT_OS_HAIKU
 #  include <kernel/OS.h>
 #elif DETECT_OS_WINDOWS
@@ -374,6 +379,16 @@ os_get_available_system_memory(uint64_t *size)
    ret = GlobalMemoryStatusEx(&status);
    *size = status.ullAvailPhys;
    return (ret == true);
+#elif DETECT_OS_APPLE
+   vm_statistics64_data_t vm_stats;
+   mach_msg_type_number_t count = HOST_VM_INFO64_COUNT;
+   if (host_statistics64(mach_host_self(), HOST_VM_INFO,
+         (host_info64_t)&vm_stats, &count) != KERN_SUCCESS) {
+      return false;
+   }
+
+   *size = ((uint64_t)vm_stats.free_count + (uint64_t)vm_stats.inactive_count) * PAGE_SIZE;
+   return true;
 #else
    return false;
 #endif
@@ -405,12 +420,8 @@ os_get_page_size(uint64_t *size)
    *size = SysInfo.dwPageSize;
    return true;
 #elif DETECT_OS_APPLE
-   size_t len = sizeof(*size);
-   int mib[2];
-
-   mib[0] = CTL_HW;
-   mib[1] = HW_PAGESIZE;
-   return (sysctl(mib, 2, size, &len, NULL, 0) == 0);
+   *size = PAGE_SIZE;
+   return true;
 #else
 #error unexpected platform in os_sysinfo.c
    return false;

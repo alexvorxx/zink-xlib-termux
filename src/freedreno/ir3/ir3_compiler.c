@@ -50,6 +50,7 @@ static const struct debug_named_value shader_debug_options[] = {
    {"fullsync",   IR3_DBG_FULLSYNC,   "Add (sy) + (ss) after each cat5/cat6"},
    {"fullnop",    IR3_DBG_FULLNOP,    "Add nops before each instruction"},
    {"noearlypreamble", IR3_DBG_NOEARLYPREAMBLE, "Disable early preambles"},
+   {"nodescprefetch", IR3_DBG_NODESCPREFETCH, "Disable descriptor prefetch optimization"},
 #if MESA_DEBUG
    /* MESA_DEBUG-only options: */
    {"schedmsgs",  IR3_DBG_SCHEDMSGS,  "Enable scheduler debug messages"},
@@ -154,7 +155,7 @@ ir3_compiler_create(struct fd_device *dev, const struct fd_dev_id *dev_id,
    /* TODO see if older GPU's were different here */
    compiler->branchstack_size = 64;
    compiler->wave_granularity = dev_info->wave_granularity;
-   compiler->max_waves = 16;
+   compiler->max_waves = dev_info->max_waves;
 
    compiler->max_variable_workgroup_size = 1024;
 
@@ -265,16 +266,7 @@ ir3_compiler_create(struct fd_device *dev, const struct fd_dev_id *dev_id,
       compiler->reg_size_vec4 = 96;
    }
 
-   if (compiler->gen >= 6) {
-      compiler->threadsize_base = 64;
-   } else if (compiler->gen >= 4) {
-      /* TODO: Confirm this for a4xx. For a5xx this is based on the Vulkan
-       * 1.1 subgroupSize which is 32.
-       */
-      compiler->threadsize_base = 32;
-   } else {
-      compiler->threadsize_base = 8;
-   }
+   compiler->threadsize_base = dev_info->threadsize_base;
 
    if (compiler->gen >= 4) {
       /* need special handling for "flat" */

@@ -411,12 +411,6 @@ setup_execbuf_for_cmd_buffers(struct anv_execbuf *execbuf,
    if (result != VK_SUCCESS)
       return result;
 
-   if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
-      result = pin_state_pool(device, execbuf, &device->dynamic_state_db_pool);
-      if (result != VK_SUCCESS)
-         return result;
-   }
-
    result = pin_state_pool(device, execbuf, &device->general_state_pool);
    if (result != VK_SUCCESS)
       return result;
@@ -934,8 +928,9 @@ i915_queue_exec_locked(struct anv_queue *queue,
       if (!INTEL_DEBUG(DEBUG_NO_OACONFIG) &&
           (query_info->kind == INTEL_PERF_QUERY_TYPE_OA ||
            query_info->kind == INTEL_PERF_QUERY_TYPE_RAW)) {
-         int ret = intel_ioctl(device->perf_fd, I915_PERF_IOCTL_CONFIG,
-                               (void *)(uintptr_t) query_info->oa_metrics_set_id);
+         int ret = intel_perf_stream_set_metrics_id(device->physical->perf,
+                                                    device->perf_fd,
+                                                    query_info->oa_metrics_set_id);
          if (ret < 0) {
             result = vk_device_set_lost(&device->vk,
                                         "i915-perf config failed: %s",

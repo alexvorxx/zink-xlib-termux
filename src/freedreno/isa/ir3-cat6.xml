@@ -220,7 +220,7 @@ SOFTWARE.
 	<field   low="41" high="48" name="SRC1" type="#cat6-src-const-or-gpr">
 		<param name="SRC1_CONST" as="SRC_CONST"/>
 	</field>
-	<pattern pos="53"          >x</pattern>
+	<pattern pos="53"          >0</pattern>
 	<pattern low="54" high="58">00011</pattern>  <!-- OPC -->
 
 	<derived name="SRC1_CONST" expr="#false" type="bool"/>
@@ -380,7 +380,7 @@ SOFTWARE.
 	</display>
 	<pattern pos="0"           >0</pattern>
 	<field   low="1"  high="13" name="OFF" type="uint"/>
-	<pattern low="14" high="21">xxxxxxxx</pattern>  <!-- SRC -->
+	<pattern low="14" high="21">00000000</pattern>  <!-- SRC -->
 	<pattern low="22" high="23">11</pattern>
 	<field   low="24" high="31" name="SIZE" type="uint"/>
 	<field   low="32" high="39" name="DST" type="#reg-gpr"/>
@@ -482,7 +482,7 @@ SOFTWARE.
 	<pattern pos="0"           >x</pattern>
 	<field   low="1"  high="8" name="SRC" type="#reg-gpr"/>
 	<pattern low="9"  high="13">xxxxx</pattern> <!-- DST_HI -->
-	<pattern low="14" high="22">xxxxxxxxx</pattern>
+	<pattern low="14" high="22">000000000</pattern>
 	<pattern pos="23"          >1</pattern>
 	<field   low="24" high="26" name="SIZE" type="uint"/>
 	<pattern low="27" high="31">xxxxx</pattern>
@@ -544,9 +544,7 @@ SOFTWARE.
 	<field   low="9"  high="10" name="D_MINUS_ONE" type="uint"/>
 	<pattern pos="11"          >x</pattern>         <!-- TYPED -->
 	<pattern low="12" high="13">xx</pattern>        <!-- TYPE_SIZE -->
-	<pattern low="14" high="21">xxxxxxxx</pattern>  <!-- SRC1 -->
-	<pattern pos="22"          >x</pattern>         <!-- SRC1_IM -->
-	<pattern pos="23"          >x</pattern>         <!-- SRC2_IM -->
+	<pattern low="14" high="23">0000000000</pattern>
 	<pattern low="24" high="31">xxxxxxxx</pattern>  <!-- SRC2 -->
 	<field   low="32" high="39" name="DST" type="#reg-gpr"/>
 	<pattern pos="40"          >0</pattern>

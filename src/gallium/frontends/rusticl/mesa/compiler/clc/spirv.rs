@@ -319,6 +319,8 @@ impl SPIRVBin {
             ImageReadWrite: true,
             Linkage: true,
             LiteralSampler: true,
+            SampledBuffer: true,
+            Sampled1D: true,
             Vector16: true,
             ..Default::default()
         }

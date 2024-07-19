@@ -647,8 +647,20 @@ bi_make_vec8_helper(bi_builder *b, bi_index *src, unsigned *channel,
 
    for (unsigned i = 0; i < count; ++i) {
       unsigned chan = channel ? channel[i] : 0;
+      unsigned lane = chan & 3;
+      bi_index raw_data = bi_extract(b, src[i], chan >> 2);
 
-      bytes[i] = bi_byte(bi_extract(b, src[i], chan >> 2), chan & 3);
+      /* On Bifrost, MKVEC.v4i8 cannot select b1 or b3 */
+      if (b->shader->arch < 9 && lane != 0 && lane != 2) {
+         bytes[i] = bi_byte(bi_rshift_or(b, 32, raw_data, bi_zero(),
+                                         bi_imm_u8(lane * 8), false),
+                            0);
+      } else {
+         bytes[i] = bi_byte(raw_data, lane);
+      }
+
+      assert(b->shader->arch >= 9 || bytes[i].swizzle == BI_SWIZZLE_B0000 ||
+             bytes[i].swizzle == BI_SWIZZLE_B2222);
    }
 
    if (b->shader->arch >= 9) {
@@ -1884,10 +1896,29 @@ bi_alu_src_index(bi_builder *b, nir_alu_src src, unsigned comps)
       unsigned c0 = src.swizzle[0] & 1;
       unsigned c1 = (comps > 1) ? src.swizzle[1] & 1 : c0;
       idx.swizzle = BI_SWIZZLE_H00 + c1 + (c0 << 1);
-   } else if (bitsize == 8) {
-      /* 8-bit vectors not yet supported */
-      assert(comps == 1 && "8-bit vectors not supported");
+   } else if (bitsize == 8 && comps == 1) {
       idx.swizzle = BI_SWIZZLE_B0000 + (src.swizzle[0] & 3);
+   } else if (bitsize == 8) {
+      /* XXX: Use optimized swizzle when posisble */
+      bi_index unoffset_srcs[NIR_MAX_VEC_COMPONENTS] = {bi_null()};
+      unsigned channels[NIR_MAX_VEC_COMPONENTS] = {0};
+
+      for (unsigned i = 0; i < comps; ++i) {
+         unoffset_srcs[i] = bi_src_index(&src.src);
+         channels[i] = src.swizzle[i];
+      }
+
+      bi_index temp = bi_temp(b->shader);
+      bi_make_vec_to(b, temp, unoffset_srcs, channels, comps, bitsize);
+
+      static const enum bi_swizzle swizzle_lut[] = {
+         BI_SWIZZLE_B0000, BI_SWIZZLE_B0011, BI_SWIZZLE_H01, BI_SWIZZLE_H01};
+      assert(comps - 1 < ARRAY_SIZE(swizzle_lut));
+
+      /* Assign a coherent swizzle for the vector */
+      temp.swizzle = swizzle_lut[comps - 1];
+
+      return temp;
    }
 
    return idx;
@@ -4448,7 +4479,7 @@ bifrost_nir_lower_blend_components(struct nir_builder *b,
 
 static nir_mem_access_size_align
 mem_access_size_align_cb(nir_intrinsic_op intrin, uint8_t bytes,
-                         uint8_t input_bit_size, uint32_t align_mul,
+                         uint8_t bit_size, uint32_t align_mul,
                          uint32_t align_offset, bool offset_is_const,
                          const void *cb_data)
 {
@@ -4460,19 +4491,19 @@ mem_access_size_align_cb(nir_intrinsic_op intrin, uint8_t bytes,
 
    /* If the number of bytes is a multiple of 4, use 32-bit loads. Else if it's
     * a multiple of 2, use 16-bit loads. Else use 8-bit loads.
-    */
-   unsigned bit_size = (bytes & 1) ? 8 : (bytes & 2) ? 16 : 32;
-
-   /* But if we're only aligned to 1 byte, use 8-bit loads. If we're only
+    *
+    * But if we're only aligned to 1 byte, use 8-bit loads. If we're only
     * aligned to 2 bytes, use 16-bit loads, unless we needed 8-bit loads due to
     * the size.
     */
-   if (align == 1)
+   if ((bytes & 1) || (align == 1))
       bit_size = 8;
-   else if (align == 2)
-      bit_size = MIN2(bit_size, 16);
+   else if ((bytes & 2) || (align == 2))
+      bit_size = 16;
+   else if (bit_size >= 32)
+      bit_size = 32;
 
-   unsigned num_comps = bytes / (bit_size / 8);
+   unsigned num_comps = MIN2(bytes / (bit_size / 8), 4);
 
    /* Push constants require 32-bit loads. */
    if (intrin == nir_intrinsic_load_push_constant) {
@@ -4503,6 +4534,8 @@ mem_access_size_align_cb(nir_intrinsic_op intrin, uint8_t bytes,
 static void
 bi_optimize_nir(nir_shader *nir, unsigned gpu_id, bool is_blend)
 {
+   NIR_PASS(_, nir, nir_lower_pack);
+
    bool progress;
 
    do {

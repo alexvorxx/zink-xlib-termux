@@ -9,7 +9,7 @@
 
 .venus-manual-rules:
   stage: layered-backends
-  retry: !reference [.scheduled_pipeline-rules, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
     - !reference [.lavapipe-manual-rules, rules]

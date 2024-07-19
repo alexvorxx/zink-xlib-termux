@@ -397,6 +397,9 @@ generate_compute(struct llvmpipe_context *lp,
    lp_build_coro_add_presplit(coro);
 
    variant->function = function;
+   variant->function_name = MALLOC(strlen(func_name)+1);
+   strcpy(variant->function_name, func_name);
+
 
    for (i = 0; i < CS_ARG_MAX - !is_mesh; ++i) {
       if (LLVMGetTypeKind(arg_types[i]) == LLVMPointerTypeKind) {
@@ -406,8 +409,10 @@ generate_compute(struct llvmpipe_context *lp,
       }
    }
 
-   if (variant->gallivm->cache->data_size)
+   if (variant->gallivm->cache->data_size) {
+      gallivm_stub_func(gallivm, function);
       return;
+   }
 
    context_ptr  = LLVMGetParam(function, CS_ARG_CONTEXT);
    resources_ptr  = LLVMGetParam(function, CS_ARG_RESOURCES);
@@ -1013,6 +1018,8 @@ llvmpipe_remove_cs_shader_variant(struct llvmpipe_context *lp,
    lp->nr_cs_variants--;
    lp->nr_cs_instrs -= variant->nr_instrs;
 
+   if(variant->function_name)
+      FREE(variant->function_name);
    FREE(variant);
 }
 
@@ -1269,12 +1276,19 @@ generate_variant(struct llvmpipe_context *lp,
 
    generate_compute(lp, shader, variant);
 
+#if GALLIVM_USE_ORCJIT
+/* module has been moved into ORCJIT after gallivm_compile_module */
+   variant->nr_instrs += lp_build_count_ir_module(variant->gallivm->module);
+
+   gallivm_compile_module(variant->gallivm);
+#else
    gallivm_compile_module(variant->gallivm);
 
    variant->nr_instrs += lp_build_count_ir_module(variant->gallivm->module);
+#endif
 
    variant->jit_function = (lp_jit_cs_func)
-      gallivm_jit_function(variant->gallivm, variant->function);
+      gallivm_jit_function(variant->gallivm, variant->function, variant->function_name);
 
    if (needs_caching) {
       lp_disk_cache_insert_shader(screen, &cached, ir_sha1_cache_key);

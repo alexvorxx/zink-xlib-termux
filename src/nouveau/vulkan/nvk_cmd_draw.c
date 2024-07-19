@@ -18,8 +18,6 @@
 #include "vk_render_pass.h"
 #include "vk_standard_sample_locations.h"
 
-#include "nouveau_context.h"
-
 #include "nv_push_cl902d.h"
 #include "nv_push_cl9097.h"
 #include "nv_push_cl90b5.h"
@@ -486,7 +484,7 @@ nvk_push_draw_state_init(struct nvk_queue *queue, struct nv_push *p)
    P_IMMD(p, NV9097, SET_EDGE_FLAG, V_TRUE);
    P_IMMD(p, NV9097, SET_SAMPLER_BINDING, V_INDEPENDENTLY);
 
-   uint64_t zero_addr = dev->zero_page->offset;
+   uint64_t zero_addr = dev->zero_page->va->addr;
    P_MTHD(p, NV9097, SET_VERTEX_STREAM_SUBSTITUTE_A);
    P_NV9097_SET_VERTEX_STREAM_SUBSTITUTE_A(p, zero_addr >> 32);
    P_NV9097_SET_VERTEX_STREAM_SUBSTITUTE_B(p, zero_addr);
@@ -494,7 +492,7 @@ nvk_push_draw_state_init(struct nvk_queue *queue, struct nv_push *p)
    if (pdev->info.cls_eng3d >= FERMI_A &&
        pdev->info.cls_eng3d < MAXWELL_A) {
       assert(dev->vab_memory);
-      uint64_t vab_addr = dev->vab_memory->offset;
+      uint64_t vab_addr = dev->vab_memory->va->addr;
       P_MTHD(p, NV9097, SET_VAB_MEMORY_AREA_A);
       P_NV9097_SET_VAB_MEMORY_AREA_A(p, vab_addr >> 32);
       P_NV9097_SET_VAB_MEMORY_AREA_B(p, vab_addr);
@@ -505,7 +503,7 @@ nvk_push_draw_state_init(struct nvk_queue *queue, struct nv_push *p)
       P_IMMD(p, NVB097, SET_SELECT_MAXWELL_TEXTURE_HEADERS, V_TRUE);
 
    /* Store the address to CB0 in a pair of state registers */
-   uint64_t cb0_addr = queue->draw_cb0->offset;
+   uint64_t cb0_addr = queue->draw_cb0->va->addr;
    P_MTHD(p, NV9097, SET_MME_SHADOW_SCRATCH(NVK_MME_SCRATCH_CB0_ADDR_HI));
    P_NV9097_SET_MME_SHADOW_SCRATCH(p, NVK_MME_SCRATCH_CB0_ADDR_HI, cb0_addr >> 32);
    P_NV9097_SET_MME_SHADOW_SCRATCH(p, NVK_MME_SCRATCH_CB0_ADDR_LO, cb0_addr);
@@ -1828,24 +1826,26 @@ nvk_flush_rs_state(struct nvk_cmd_buffer *cmd)
 
    if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_CONSERVATIVE_MODE) ||
        BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_EXTRA_PRIMITIVE_OVERESTIMATION_SIZE)) {
-      if (dyn->rs.conservative_mode == VK_CONSERVATIVE_RASTERIZATION_MODE_DISABLED_EXT) {
+      if (nvk_cmd_buffer_3d_cls(cmd) < MAXWELL_B) {
+         assert(dyn->rs.conservative_mode == VK_CONSERVATIVE_RASTERIZATION_MODE_DISABLED_EXT);
+      } else if (dyn->rs.conservative_mode == VK_CONSERVATIVE_RASTERIZATION_MODE_DISABLED_EXT) {
          P_IMMD(p, NVB197, SET_CONSERVATIVE_RASTER, ENABLE_FALSE);
       } else {
          uint32_t extra_overestimate =
             MIN2(3, dyn->rs.extra_primitive_overestimation_size * 4);
 
-         if (nvk_cmd_buffer_3d_cls(cmd)  < VOLTA_A) {
+         if (nvk_cmd_buffer_3d_cls(cmd) >= VOLTA_A) {
+            P_IMMD(p, NVC397, SET_CONSERVATIVE_RASTER_CONTROL, {
+               .extra_prim_bloat = extra_overestimate,
+               .copy_inner_to_outer =
+                  (dyn->rs.conservative_mode == VK_CONSERVATIVE_RASTERIZATION_MODE_UNDERESTIMATE_EXT),
+               .triangle_snap_mode = TRIANGLE_SNAP_MODE_MODE_PRE_SNAP,
+               .line_and_point_snap_mode = LINE_AND_POINT_SNAP_MODE_MODE_PRE_SNAP,
+               .uncertainty_region_size = UNCERTAINTY_REGION_SIZE_SIZE_512,
+            });
+         } else {
             P_1INC(p, NVB197, CALL_MME_MACRO(NVK_MME_SET_CONSERVATIVE_RASTER_STATE));
             P_INLINE_DATA(p, extra_overestimate << 23);
-         } else {
-            P_IMMD(p, NVC397, SET_CONSERVATIVE_RASTER_CONTROL, {
-                      .extra_prim_bloat = extra_overestimate,
-                      .copy_inner_to_outer = 
-                        (dyn->rs.conservative_mode == VK_CONSERVATIVE_RASTERIZATION_MODE_UNDERESTIMATE_EXT),
-                      .triangle_snap_mode = TRIANGLE_SNAP_MODE_MODE_PRE_SNAP,
-                      .line_and_point_snap_mode = LINE_AND_POINT_SNAP_MODE_MODE_PRE_SNAP,
-                      .uncertainty_region_size = UNCERTAINTY_REGION_SIZE_SIZE_512,
-                     });
          }
          P_IMMD(p, NVB197, SET_CONSERVATIVE_RASTER, ENABLE_TRUE);
       }

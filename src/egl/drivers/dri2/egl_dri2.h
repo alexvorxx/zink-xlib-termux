@@ -59,8 +59,7 @@ struct zwp_linux_dmabuf_feedback_v1;
 #endif
 
 #include <GL/gl.h>
-#include <GL/internal/dri_interface.h>
-#include <GL/internal/mesa_interface.h>
+#include "mesa_interface.h"
 #include "kopper_interface.h"
 
 #ifdef HAVE_DRM_PLATFORM
@@ -241,7 +240,6 @@ struct dri2_egl_display {
    __DRIscreen *dri_screen_display_gpu;
    bool own_dri_screen;
    const __DRIconfig **driver_configs;
-   void *driver;
    const __DRIcoreExtension *core;
    const __DRImesaCoreExtension *mesa;
    const __DRIimageDriverExtension *image_driver;
@@ -291,10 +289,6 @@ struct dri2_egl_display {
    bool swap_available;
 #ifdef HAVE_DRI3
    bool multibuffers_available;
-   int dri3_major_version;
-   int dri3_minor_version;
-   int present_major_version;
-   int present_minor_version;
    struct loader_dri3_extensions loader_dri3_ext;
    struct loader_screen_resources screen_resources;
 #endif
@@ -503,9 +497,6 @@ dri2_validate_egl_image(void *image, void *data);
 
 __DRIimage *
 dri2_lookup_egl_image_validated(void *image, void *data);
-
-__DRIimage *
-dri2_lookup_egl_image(__DRIscreen *screen, void *image, void *data);
 
 void
 dri2_get_shifts_and_sizes(const __DRIcoreExtension *core,

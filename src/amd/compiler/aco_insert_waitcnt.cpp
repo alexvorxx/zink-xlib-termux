@@ -260,7 +260,7 @@ struct target_info {
       unordered_events = event_smem | (gfx_level < GFX10 ? event_flat : 0);
    }
 
-   uint8_t get_counters_for_event(uint16_t event) const { return counters[ffs(event) - 1]; }
+   uint8_t get_counters_for_event(wait_event event) const { return counters[ffs(event) - 1]; }
 
 private:
    /* Bitfields of counters affected by each event */
@@ -388,7 +388,7 @@ check_instr(wait_ctx& ctx, wait_imm& wait, alu_delay_info& delay, Instruction* i
          /* Vector Memory reads and writes return in the order they were issued */
          uint8_t vmem_type = get_vmem_type(ctx.gfx_level, instr);
          if (vmem_type) {
-            uint32_t event = get_vmem_event(ctx, instr, vmem_type);
+            wait_event event = get_vmem_event(ctx, instr, vmem_type);
             wait_type type = (wait_type)(ffs(ctx.info->get_counters_for_event(event)) - 1);
             if ((it->second.events & ctx.info->events[type]) == event &&
                 (type != wait_type_vm || it->second.vmem_types == vmem_type))

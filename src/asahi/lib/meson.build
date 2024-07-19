@@ -42,6 +42,7 @@ libagx_shader_files = files(
   'shaders/query.h',
   'shaders/tessellation.cl',
   'shaders/tessellator.cl',
+  'shaders/tessellator.h',
   'shaders/texture.cl',
   'shaders/helper.cl',
 )
@@ -91,7 +92,7 @@ libasahi_lib = static_library(
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',
   link_with: [libasahi_decode, libvdrm],
-  dependencies: [dep_libdrm, dep_valgrind, idep_nir],
+  dependencies: [dep_libdrm, dep_valgrind, idep_nir, idep_mesautil],
   build_by_default : false,
 )
 

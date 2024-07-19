@@ -761,10 +761,14 @@ can_demote_src(struct ir3_instruction *instr)
    case OPC_META_COLLECT:
       return false;
    case OPC_MOV:
-      /* non-shared -> shared floating-point conversions don't work */
+      /* non-shared -> shared floating-point conversions and
+       * 8-bit sign extension don't work.
+       */
       return (!(instr->dsts[0]->flags & IR3_REG_SHARED) ||
-          (full_type(instr->cat1.src_type) != TYPE_F32 &&
-           full_type(instr->cat1.dst_type) != TYPE_F32));
+              !((full_type(instr->cat1.src_type) == TYPE_F32 ||
+                 full_type(instr->cat1.dst_type) == TYPE_F32) ||
+                (instr->cat1.src_type == TYPE_U8 &&
+                 full_type(instr->cat1.dst_type) == TYPE_S32)));
    default:
       return (!is_alu(instr) && !is_sfu(instr)) ||
          !(instr->dsts[0]->flags & IR3_REG_SHARED);

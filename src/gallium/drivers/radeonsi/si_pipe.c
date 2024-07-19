@@ -11,6 +11,7 @@
 #include "radeon_uvd.h"
 #include "si_public.h"
 #include "sid.h"
+#include "ac_shader_util.h"
 #include "ac_shadowed_regs.h"
 #include "compiler/nir/nir.h"
 #include "util/disk_cache.h"
@@ -87,6 +88,7 @@ static const struct debug_named_value radeonsi_debug_options[] = {
 
    /* Multimedia options: */
    { "noefc", DBG(NO_EFC), "Disable hardware based encoder colour format conversion."},
+   {"lowlatencyenc", DBG(LOW_LATENCY_ENCODE), "Enable low latency encoding."},
 
    /* 3D engine options: */
    {"nongg", DBG(NO_NGG), "Disable NGG and use the legacy pipeline."},
@@ -125,7 +127,7 @@ static const struct debug_named_value test_options[] = {
    {"computeblit", DBG(TEST_COMPUTE_BLIT), "Invoke blits tests and exit."},
    {"testvmfaultcp", DBG(TEST_VMFAULT_CP), "Invoke a CP VM fault test and exit."},
    {"testvmfaultshader", DBG(TEST_VMFAULT_SHADER), "Invoke a shader VM fault test and exit."},
-   {"testdmaperf", DBG(TEST_DMA_PERF), "Test DMA performance"},
+   {"dmaperf", DBG(TEST_DMA_PERF), "Test DMA performance"},
    {"testmemperf", DBG(TEST_MEM_PERF), "Test map + memcpy perf using the winsys."},
    {"blitperf", DBG(TEST_BLIT_PERF), "Test gfx and compute clear/copy/blit/resolve performance"},
 
@@ -265,16 +267,10 @@ static void si_destroy_context(struct pipe_context *context)
       sctx->b.delete_vs_state(&sctx->b, sctx->vs_blit_color_layered);
    if (sctx->vs_blit_texcoord)
       sctx->b.delete_vs_state(&sctx->b, sctx->vs_blit_texcoord);
-   if (sctx->cs_clear_buffer)
-      sctx->b.delete_compute_state(&sctx->b, sctx->cs_clear_buffer);
    if (sctx->cs_clear_buffer_rmw)
       sctx->b.delete_compute_state(&sctx->b, sctx->cs_clear_buffer_rmw);
-   if (sctx->cs_copy_buffer)
-      sctx->b.delete_compute_state(&sctx->b, sctx->cs_copy_buffer);
    if (sctx->cs_ubyte_to_ushort)
       sctx->b.delete_compute_state(&sctx->b, sctx->cs_ubyte_to_ushort);
-   if (sctx->cs_clear_12bytes_buffer)
-      sctx->b.delete_compute_state(&sctx->b, sctx->cs_clear_12bytes_buffer);
    for (unsigned i = 0; i < ARRAY_SIZE(sctx->cs_dcc_retile); i++) {
       if (sctx->cs_dcc_retile[i])
          sctx->b.delete_compute_state(&sctx->b, sctx->cs_dcc_retile[i]);
@@ -365,6 +361,13 @@ static void si_destroy_context(struct pipe_context *context)
 
    if (!(sctx->context_flags & SI_CONTEXT_FLAG_AUX))
       p_atomic_dec(&context->screen->num_contexts);
+
+   if (sctx->cs_dma_shaders) {
+      hash_table_u64_foreach(sctx->cs_dma_shaders, entry) {
+         context->delete_compute_state(context, entry.data);
+      }
+      _mesa_hash_table_u64_destroy(sctx->cs_dma_shaders);
+   }
 
    if (sctx->cs_blit_shaders) {
       hash_table_u64_foreach(sctx->cs_blit_shaders, entry) {
@@ -872,6 +875,10 @@ static struct pipe_context *si_create_context(struct pipe_screen *screen, unsign
    sctx->initial_gfx_cs_size = sctx->gfx_cs.current.cdw;
    sctx->last_timestamp_cmd = NULL;
 
+   sctx->cs_dma_shaders = _mesa_hash_table_u64_create(NULL);
+   if (!sctx->cs_dma_shaders)
+      goto fail;
+
    sctx->cs_blit_shaders = _mesa_hash_table_u64_create(NULL);
    if (!sctx->cs_blit_shaders)
       goto fail;
@@ -879,6 +886,11 @@ static struct pipe_context *si_create_context(struct pipe_screen *screen, unsign
    sctx->ps_resolve_shaders = _mesa_hash_table_u64_create(NULL);
    if (!sctx->ps_resolve_shaders)
       goto fail;
+
+   /* Initialize compute_tmpring_size. */
+   ac_get_scratch_tmpring_size(&sctx->screen->info, 0,
+                               &sctx->max_seen_compute_scratch_bytes_per_wave,
+                               &sctx->compute_tmpring_size);
 
    return &sctx->b;
 fail:

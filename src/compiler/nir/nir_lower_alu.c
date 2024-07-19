@@ -37,8 +37,6 @@
  * The shader must be in SSA for this pass.
  */
 
-#define LOWER_MUL_HIGH (1 << 0)
-
 static bool
 lower_alu_instr(nir_builder *b, nir_instr *instr_, UNUSED void *cb_data)
 {
@@ -214,6 +212,30 @@ lower_alu_instr(nir_builder *b, nir_instr *instr_, UNUSED void *cb_data)
       }
       break;
 
+   case nir_op_fmin:
+   case nir_op_fmax: {
+      if (!b->shader->options->lower_fminmax_signed_zero ||
+          !nir_alu_instr_is_signed_zero_preserve(instr))
+         break;
+
+      nir_def *s0 = nir_ssa_for_alu_src(b, instr, 0);
+      nir_def *s1 = nir_ssa_for_alu_src(b, instr, 1);
+
+      bool max = instr->op == nir_op_fmax;
+      nir_def *iminmax = max ? nir_imax(b, s0, s1) : nir_imin(b, s0, s1);
+
+      /* Lower the fmin/fmax to a no_signed_zero fmin/fmax. This ensures that
+       * nir_lower_alu is idempotent, and allows the backend to implement
+       * soundly the no_signed_zero subset of fmin/fmax.
+       */
+      b->fp_fast_math &= ~FLOAT_CONTROLS_SIGNED_ZERO_PRESERVE;
+      nir_def *fminmax = max ? nir_fmax(b, s0, s1) : nir_fmin(b, s0, s1);
+      b->fp_fast_math = instr->fp_fast_math;
+
+      lowered = nir_bcsel(b, nir_feq(b, s0, s1), iminmax, fminmax);
+      break;
+   }
+
    default:
       break;
    }
@@ -231,7 +253,8 @@ nir_lower_alu(nir_shader *shader)
 {
    if (!shader->options->lower_bitfield_reverse &&
        !shader->options->lower_bit_count &&
-       !shader->options->lower_mul_high)
+       !shader->options->lower_mul_high &&
+       !shader->options->lower_fminmax_signed_zero)
       return false;
 
    return nir_shader_instructions_pass(shader, lower_alu_instr,

@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include <stdlib.h>
+
 #include "intel_common.h"
 
 #include "intel_engine.h"

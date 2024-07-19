@@ -778,7 +778,7 @@ namespace {
     * Return the dependency ID of a backend_reg, offset by \p delta GRFs.
     */
    enum intel_eu_dependency_id
-   reg_dependency_id(const intel_device_info *devinfo, const fs_reg &r,
+   reg_dependency_id(const intel_device_info *devinfo, const brw_reg &r,
                      const int delta)
    {
       if (r.file == VGRF) {

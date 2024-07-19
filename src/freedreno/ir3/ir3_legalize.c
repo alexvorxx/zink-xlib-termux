@@ -603,11 +603,11 @@ legalize_block(struct ir3_legalize_ctx *ctx, struct ir3_block *block)
          }
       }
 
-      if (is_tex_or_prefetch(n)) {
+      if (is_tex_or_prefetch(n) && n->dsts_count > 0) {
          regmask_set(&state->needs_sy, n->dsts[0]);
          if (n->opc == OPC_META_TEX_PREFETCH)
             ctx->has_tex_prefetch = true;
-      } else if (n->opc == OPC_RESINFO) {
+      } else if (n->opc == OPC_RESINFO && n->dsts_count > 0) {
          regmask_set(&state->needs_ss, n->dsts[0]);
          ir3_NOP(block)->flags |= IR3_INSTR_SS;
          last_input_needs_ss = false;
@@ -788,6 +788,25 @@ apply_fine_deriv_macro(struct ir3_legalize_ctx *ctx, struct ir3_block *block)
       }
    }
 
+   return true;
+}
+
+/* Some instructions can take a dummy destination of r63.x, which we model as it
+ * not having a destination in the IR to avoid having special code to handle
+ * this. Insert the dummy destination after everything else is done.
+ */
+static bool
+expand_dummy_dests(struct ir3_block *block)
+{
+   foreach_instr (n, &block->instr_list) {
+      if ((n->opc == OPC_SAM || n->opc == OPC_LDC || n->opc == OPC_RESINFO) &&
+          n->dsts_count == 0) {
+         struct ir3_register *dst = ir3_dst_create(n, INVALID_REG, 0);
+         /* Copy the blob's writemask */
+         if (n->opc == OPC_SAM)
+            dst->wrmask = 0b1111;
+      }
+   }
    return true;
 }
 
@@ -1719,6 +1738,10 @@ ir3_legalize(struct ir3 *ir, struct ir3_shader_variant *so, int *max_bary)
    if (so->type == MESA_SHADER_FRAGMENT && so->need_pixlod &&
        so->compiler->gen >= 6)
       helper_sched(ctx, ir, so);
+
+   foreach_block (block, &ir->block_list) {
+      progress |= expand_dummy_dests(block);
+   }
 
    ir3_count_instructions(ir);
    resolve_jumps(ir);

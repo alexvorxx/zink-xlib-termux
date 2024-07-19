@@ -99,6 +99,15 @@ radv_calibrated_timestamps_enabled(const struct radv_physical_device *pdev)
    return RADV_SUPPORT_CALIBRATED_TIMESTAMPS && !(pdev->info.family == CHIP_RAVEN || pdev->info.family == CHIP_RAVEN2);
 }
 
+static bool
+radv_filter_minmax_enabled(const struct radv_physical_device *pdev)
+{
+   /* Tahiti and Verde only: reduction mode is unsupported due to a bug
+    * (it might work sometimes, but that's not enough)
+    */
+   return !(pdev->info.family == CHIP_TAHITI || pdev->info.family == CHIP_VERDE);
+}
+
 bool
 radv_enable_rt(const struct radv_physical_device *pdev, bool rt_pipelines)
 {
@@ -515,6 +524,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .KHR_maintenance4 = true,
       .KHR_maintenance5 = true,
       .KHR_maintenance6 = true,
+      .KHR_maintenance7 = true,
       .KHR_map_memory2 = true,
       .KHR_multiview = true,
       .KHR_performance_query = radv_perf_query_supported(pdev),
@@ -646,7 +656,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .EXT_queue_family_foreign = true,
       .EXT_robustness2 = true,
       .EXT_sample_locations = pdev->info.gfx_level < GFX10,
-      .EXT_sampler_filter_minmax = true,
+      .EXT_sampler_filter_minmax = radv_filter_minmax_enabled(pdev),
       .EXT_scalar_block_layout = pdev->info.gfx_level >= GFX7,
       .EXT_separate_stencil_usage = true,
       .EXT_shader_atomic_float = true,
@@ -716,8 +726,8 @@ radv_physical_device_get_features(const struct radv_physical_device *pdev, struc
    const struct radv_instance *instance = radv_physical_device_instance(pdev);
    bool taskmesh_en = radv_taskmesh_enabled(pdev);
    bool has_perf_query = radv_perf_query_supported(pdev);
-   bool has_shader_image_float_minmax =
-      pdev->info.gfx_level != GFX8 && pdev->info.gfx_level != GFX9 && pdev->info.gfx_level != GFX11;
+   bool has_shader_image_float_minmax = pdev->info.gfx_level != GFX8 && pdev->info.gfx_level != GFX9 &&
+                                        pdev->info.gfx_level != GFX11 && pdev->info.gfx_level != GFX11_5;
    bool has_fragment_shader_interlock = radv_has_pops(pdev);
 
    *features = (struct vk_features){
@@ -1220,6 +1230,9 @@ radv_physical_device_get_features(const struct radv_physical_device *pdev, struc
 
       /* VK_EXT_shader_replicated_composites */
       .shaderReplicatedComposites = true,
+
+      /* VK_KHR_maintenance7 */
+      .maintenance7 = true,
    };
 }
 
@@ -1924,6 +1937,16 @@ radv_get_physical_device_properties(struct radv_physical_device *pdev)
    p->supportedImageAlignmentMask = (4 * 1024) | (64 * 1024);
    if (gfx11plus)
       p->supportedImageAlignmentMask |= 256 * 1024;
+
+   /* VK_KHR_maintenance7 */
+   p->robustFragmentShadingRateAttachmentAccess = true;
+   p->separateDepthStencilAttachmentAccess = true;
+   p->maxDescriptorSetTotalUniformBuffersDynamic = MAX_DYNAMIC_UNIFORM_BUFFERS;
+   p->maxDescriptorSetTotalStorageBuffersDynamic = MAX_DYNAMIC_STORAGE_BUFFERS;
+   p->maxDescriptorSetTotalBuffersDynamic = MAX_DYNAMIC_BUFFERS;
+   p->maxDescriptorSetUpdateAfterBindTotalUniformBuffersDynamic = MAX_DYNAMIC_UNIFORM_BUFFERS;
+   p->maxDescriptorSetUpdateAfterBindTotalStorageBuffersDynamic = MAX_DYNAMIC_STORAGE_BUFFERS;
+   p->maxDescriptorSetUpdateAfterBindTotalBuffersDynamic = MAX_DYNAMIC_BUFFERS;
 }
 
 static VkResult

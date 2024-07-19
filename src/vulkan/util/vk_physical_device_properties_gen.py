@@ -67,6 +67,7 @@ RENAMED_PROPERTIES = {
 
 SPECIALIZED_PROPERTY_STRUCTS = [
     "HostImageCopyPropertiesEXT",
+    "LayeredApiPropertiesListKHR",
 ]
 
 # Properties not extending VkPhysicalDeviceProperties2 in the XML,
@@ -219,6 +220,20 @@ vk_common_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
 
          memcpy(properties->optimalTilingLayoutUUID, pdevice->properties.optimalTilingLayoutUUID, VK_UUID_SIZE);
          properties->identicalMemoryTypeRequirements = pdevice->properties.identicalMemoryTypeRequirements;
+         break;
+      }
+
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_LAYERED_API_PROPERTIES_LIST_KHR: {
+         VkPhysicalDeviceLayeredApiPropertiesListKHR *properties = (void *)ext;
+         if (properties->pLayeredApis) {
+            uint32_t written_api_count = MIN2(properties->layeredApiCount,
+                                              pdevice->properties.layeredApiCount);
+            memcpy(properties->pLayeredApis, pdevice->properties.pLayeredApis,
+                   sizeof(VkPhysicalDeviceLayeredApiPropertiesKHR) * written_api_count);
+            properties->layeredApiCount = written_api_count;
+         } else {
+            properties->layeredApiCount = pdevice->properties.layeredApiCount;
+         }
          break;
       }
 

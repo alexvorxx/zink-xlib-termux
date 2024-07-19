@@ -195,6 +195,14 @@ static void radeon_vcn_enc_get_roi_param(struct radeon_encoder *enc,
    }
 }
 
+static void radeon_vcn_enc_get_latency_param(struct radeon_encoder *enc)
+{
+   struct si_screen *sscreen = (struct si_screen *)enc->screen;
+
+   enc->enc_pic.enc_latency.encode_latency =
+      sscreen->debug_flags & DBG(LOW_LATENCY_ENCODE) ? 1000 : 0;
+}
+
 static void radeon_vcn_enc_h264_get_cropping_param(struct radeon_encoder *enc,
                                                    struct pipe_h264_enc_picture_desc *pic)
 {
@@ -408,6 +416,20 @@ static void radeon_vcn_enc_get_input_format_param(struct radeon_encoder *enc,
       enc->enc_pic.enc_input_format.input_color_packing_format = RENCODE_COLOR_PACKING_FORMAT_A8B8G8R8;
       enc->enc_pic.enc_input_format.input_color_space = RENCODE_COLOR_SPACE_RGB;
       break;
+   case PIPE_FORMAT_B10G10R10A2_UNORM:
+   case PIPE_FORMAT_B10G10R10X2_UNORM:
+      enc->enc_pic.enc_input_format.input_color_bit_depth = RENCODE_COLOR_BIT_DEPTH_10_BIT;
+      enc->enc_pic.enc_input_format.input_chroma_subsampling = RENCODE_CHROMA_SUBSAMPLING_4_4_4;
+      enc->enc_pic.enc_input_format.input_color_packing_format = RENCODE_COLOR_PACKING_FORMAT_A2R10G10B10;
+      enc->enc_pic.enc_input_format.input_color_space = RENCODE_COLOR_SPACE_RGB;
+      break;
+   case PIPE_FORMAT_R10G10B10A2_UNORM:
+   case PIPE_FORMAT_R10G10B10X2_UNORM:
+      enc->enc_pic.enc_input_format.input_color_bit_depth = RENCODE_COLOR_BIT_DEPTH_10_BIT;
+      enc->enc_pic.enc_input_format.input_chroma_subsampling = RENCODE_CHROMA_SUBSAMPLING_4_4_4;
+      enc->enc_pic.enc_input_format.input_color_packing_format = RENCODE_COLOR_PACKING_FORMAT_A2B10G10R10;
+      enc->enc_pic.enc_input_format.input_color_space = RENCODE_COLOR_SPACE_RGB;
+      break;
    case PIPE_FORMAT_NV12: /* FALL THROUGH */
    default:
       enc->enc_pic.enc_input_format.input_color_bit_depth = RENCODE_COLOR_BIT_DEPTH_8_BIT;
@@ -455,6 +477,7 @@ static void radeon_vcn_enc_h264_get_param(struct radeon_encoder *enc,
    use_filter = enc->enc_pic.h264_deblock.disable_deblocking_filter_idc != 1;
    radeon_vcn_enc_get_intra_refresh_param(enc, use_filter, &pic->intra_refresh);
    radeon_vcn_enc_get_roi_param(enc, &pic->roi);
+   radeon_vcn_enc_get_latency_param(enc);
 }
 
 static void radeon_vcn_enc_hevc_get_cropping_param(struct radeon_encoder *enc,
@@ -679,6 +702,7 @@ static void radeon_vcn_enc_hevc_get_param(struct radeon_encoder *enc,
                                         !(enc->enc_pic.hevc_deblock.deblocking_filter_disabled),
                                          &pic->intra_refresh);
    radeon_vcn_enc_get_roi_param(enc, &pic->roi);
+   radeon_vcn_enc_get_latency_param(enc);
 }
 
 static void radeon_vcn_enc_av1_get_spec_misc_param(struct radeon_encoder *enc,
@@ -892,6 +916,7 @@ static void radeon_vcn_enc_av1_get_param(struct radeon_encoder *enc,
                                          true,
                                          &pic->intra_refresh);
    radeon_vcn_enc_get_roi_param(enc, &pic->roi);
+   radeon_vcn_enc_get_latency_param(enc);
 }
 
 static void radeon_vcn_enc_get_param(struct radeon_encoder *enc, struct pipe_picture_desc *picture)

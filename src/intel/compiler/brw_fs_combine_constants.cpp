@@ -1150,7 +1150,7 @@ struct register_allocation {
    uint16_t avail;
 };
 
-static fs_reg
+static brw_reg
 allocate_slots(struct register_allocation *regs, unsigned num_regs,
                unsigned bytes, unsigned align_bytes,
                brw::simple_allocator &alloc)
@@ -1172,7 +1172,7 @@ allocate_slots(struct register_allocation *regs, unsigned num_regs,
 
             regs[i].avail &= ~(mask << j);
 
-            fs_reg reg(VGRF, regs[i].nr);
+            brw_reg reg = brw_vgrf(regs[i].nr, BRW_TYPE_F);
             reg.offset = j * 2;
 
             return reg;
@@ -1243,7 +1243,7 @@ parcel_out_registers(struct imm *imm, unsigned len, const bblock_t *cur_block,
              */
             const unsigned width = ver == 8 && imm[i].is_half_float ? 2 : 1;
 
-            const fs_reg reg = allocate_slots(regs, num_regs,
+            const brw_reg reg = allocate_slots(regs, num_regs,
                                               imm[i].size * width,
                                               get_alignment_for_imm(&imm[i]),
                                               alloc);
@@ -1569,7 +1569,7 @@ brw_fs_opt_combine_constants(fs_visitor &s)
       const uint32_t width = 1;
       const fs_builder ibld = fs_builder(&s, width).at(insert_block, n).exec_all();
 
-      fs_reg reg(VGRF, imm->nr);
+      brw_reg reg = brw_vgrf(imm->nr, BRW_TYPE_F);
       reg.offset = imm->subreg_offset;
       reg.stride = 0;
 
@@ -1591,7 +1591,7 @@ brw_fs_opt_combine_constants(fs_visitor &s)
    /* Rewrite the immediate sources to refer to the new GRFs. */
    for (int i = 0; i < table.len; i++) {
       foreach_list_typed(reg_link, link, link, table.imm[i].uses) {
-         fs_reg *reg = &link->inst->src[link->src];
+         brw_reg *reg = &link->inst->src[link->src];
 
          if (link->inst->opcode == BRW_OPCODE_SEL) {
             if (link->type == either_type) {
@@ -1709,7 +1709,7 @@ brw_fs_opt_combine_constants(fs_visitor &s)
              inst->conditional_mod == BRW_CONDITIONAL_GE ||
              inst->conditional_mod == BRW_CONDITIONAL_L);
 
-      fs_reg temp = inst->src[0];
+      brw_reg temp = inst->src[0];
       inst->src[0] = inst->src[1];
       inst->src[1] = temp;
 

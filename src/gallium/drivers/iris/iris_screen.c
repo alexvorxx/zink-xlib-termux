@@ -126,7 +126,7 @@ static void
 iris_warn_cl()
 {
    static bool warned = false;
-   if (warned)
+   if (warned || INTEL_DEBUG(DEBUG_CL_QUIET))
       return;
 
    warned = true;

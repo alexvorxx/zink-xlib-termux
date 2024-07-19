@@ -15,6 +15,7 @@ EPHEMERAL=(
     ccache
     "clang-${LLVM_VERSION}"
     cmake
+    dpkg-dev
     g++
     glslang-tools
     libasound2-dev

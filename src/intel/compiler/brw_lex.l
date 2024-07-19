@@ -2,7 +2,7 @@
 %option nounput
 %{
 #include <string.h>
-#include "brw_asm.h"
+#include "brw_asm_internal.h"
 #undef ALIGN16
 #include "brw_gram.tab.h"
 
@@ -10,7 +10,7 @@
 int yycolumn = 1;
 
 int saved_state = 0;
-extern char *input_filename;
+extern const char *input_filename;
 
 #define YY_NO_INPUT
 #define YY_USER_ACTION                                  	\
@@ -380,6 +380,7 @@ sr[0-9]+ 	{ yylval.integer = atoi(yytext + 2); return STATEREG; }
 		        }
 <MSGDESC>"{"    	{ yyless(0); BEGIN(INITIAL); return MSGDESC_END; }
 <MSGDESC>.      	{ }
+<MSGDESC>\n     	{ yycolumn = 1; }
 
 "0x"[0-9a-f][0-9a-f]* 	{
 			   yylval.llint = strtoull(yytext + 2, NULL, 16);

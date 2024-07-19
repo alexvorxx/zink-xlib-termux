@@ -1,22 +1,5 @@
 # Copyright © 2017 Intel Corporation
-
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+# SPDX-License-Identifier: MIT
 
 intel_nir_files = files(
   'intel_nir.h',
@@ -168,6 +151,7 @@ idep_intel_compiler_brw = declare_dependency(
   link_with : [libintel_compiler_brw],
   dependencies : [
     idep_nir,
+    idep_mesautil,
   ],
 )
 
@@ -213,6 +197,7 @@ if with_tests
         'test_fs_cmod_propagation.cpp',
         'test_fs_combine_constants.cpp',
         'test_fs_copy_propagation.cpp',
+        'test_fs_cse.cpp',
         'test_fs_saturate_propagation.cpp',
         'test_fs_scoreboard.cpp',
         'test_simd_selection.cpp',
@@ -258,11 +243,32 @@ brw_lex_yy_c = custom_target(
   command : [prog_flex, '-o', '@OUTPUT@', '@INPUT@']
 )
 
+brw_asm_deps = [
+  dep_thread,
+  idep_intel_compiler_brw,
+  idep_intel_dev,
+  idep_mesautil,
+]
+
+brw_asm = static_library(
+  'brw_asm',
+  ['brw_asm.c', brw_gram_tab[0], brw_gram_tab[1], brw_lex_yy_c],
+  dependencies : brw_asm_deps,
+  include_directories : [inc_include, inc_src, inc_intel],
+  c_args : [no_override_init_args],
+  gnu_symbol_visibility : 'hidden',
+  build_by_default : false,
+)
+
+idep_brw_asm = declare_dependency(
+  link_with : brw_asm,
+  dependencies : brw_asm_deps,
+)
+
 brw_asm_tool = executable(
   'brw_asm',
-  ['brw_asm_tool.c', brw_gram_tab[0], brw_gram_tab[1], brw_lex_yy_c],
-  dependencies : [idep_mesautil, dep_thread, idep_intel_dev,
-                  idep_intel_compiler_brw],
+  ['brw_asm_tool.c'],
+  dependencies : idep_brw_asm,
   include_directories : [inc_include, inc_src, inc_intel],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',

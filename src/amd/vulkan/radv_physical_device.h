@@ -210,7 +210,8 @@ static inline bool
 radv_has_shader_buffer_float_minmax(const struct radv_physical_device *pdev, unsigned bitsize)
 {
    return (pdev->info.gfx_level <= GFX7 && !pdev->use_llvm) || pdev->info.gfx_level == GFX10 ||
-          pdev->info.gfx_level == GFX10_3 || (pdev->info.gfx_level == GFX11 && bitsize == 32);
+          pdev->info.gfx_level == GFX10_3 ||
+          ((pdev->info.gfx_level == GFX11 || pdev->info.gfx_level == GFX11_5) && bitsize == 32);
 }
 
 static inline bool

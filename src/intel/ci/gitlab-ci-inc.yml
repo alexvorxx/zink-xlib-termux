@@ -42,7 +42,7 @@
 
 .i915g-manual-rules:
   stage: intel
-  retry: !reference [.scheduled_pipeline-rules, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
     - !reference [.gl-manual-rules, rules]
@@ -64,7 +64,7 @@
 
 .crocus-manual-rules:
   stage: intel
-  retry: !reference [.scheduled_pipeline-rules, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
     - !reference [.anholt-farm-manual-rules, rules]
@@ -88,7 +88,7 @@
 
 .iris-manual-rules:
   stage: intel
-  retry: !reference [.scheduled_pipeline-rules, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
     - !reference [.collabora-farm-manual-rules, rules]
@@ -102,7 +102,7 @@
 # .performance-rules)
 .iris-rules-performance:
   stage: intel
-  retry: !reference [.scheduled_pipeline-rules, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
     - !reference [.collabora-farm-manual-rules, rules]
@@ -133,7 +133,7 @@
 
 .anv-manual-rules:
   stage: intel
-  retry: !reference [.scheduled_pipeline-rules, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
     - !reference [.collabora-farm-manual-rules, rules]
@@ -156,7 +156,7 @@
 
 .hasvk-manual-rules:
   stage: intel
-  retry: !reference [.scheduled_pipeline-rules, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
     - !reference [.anholt-farm-manual-rules, rules]

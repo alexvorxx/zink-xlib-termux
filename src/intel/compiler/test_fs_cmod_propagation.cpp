@@ -130,10 +130,10 @@ cmod_propagation(fs_visitor *v)
 
 TEST_F(cmod_propagation_test, basic)
 {
-   fs_reg dest = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg zero(brw_imm_f(0.0f));
+   brw_reg dest = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg zero(brw_imm_f(0.0f));
    bld.ADD(dest, src0, src1);
    bld.CMP(bld.null_reg_f(), dest, zero, BRW_CONDITIONAL_GE);
 
@@ -161,10 +161,10 @@ TEST_F(cmod_propagation_test, basic)
 
 TEST_F(cmod_propagation_test, basic_other_flag)
 {
-   fs_reg dest = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg zero(brw_imm_f(0.0f));
+   brw_reg dest = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg zero(brw_imm_f(0.0f));
    bld.ADD(dest, src0, src1);
    bld.CMP(bld.null_reg_f(), dest, zero, BRW_CONDITIONAL_GE)
       ->flag_subreg = 1;
@@ -194,10 +194,10 @@ TEST_F(cmod_propagation_test, basic_other_flag)
 
 TEST_F(cmod_propagation_test, cmp_nonzero)
 {
-   fs_reg dest = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg nonzero(brw_imm_f(1.0f));
+   brw_reg dest = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg nonzero(brw_imm_f(1.0f));
    bld.ADD(dest, src0, src1);
    bld.CMP(bld.null_reg_f(), dest, nonzero, BRW_CONDITIONAL_GE);
 
@@ -226,9 +226,9 @@ TEST_F(cmod_propagation_test, cmp_nonzero)
 
 TEST_F(cmod_propagation_test, non_cmod_instruction)
 {
-   fs_reg dest = bld.vgrf(BRW_TYPE_UD);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_UD);
-   fs_reg zero(brw_imm_ud(0u));
+   brw_reg dest = bld.vgrf(BRW_TYPE_UD);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_UD);
+   brw_reg zero(brw_imm_ud(0u));
    bld.FBL(dest, src0);
    bld.CMP(bld.null_reg_ud(), dest, zero, BRW_CONDITIONAL_GE);
 
@@ -257,8 +257,8 @@ TEST_F(cmod_propagation_test, non_cmod_instruction)
 
 TEST_F(cmod_propagation_test, non_cmod_livechannel)
 {
-   fs_reg dest = bld.vgrf(BRW_TYPE_UD);
-   fs_reg zero(brw_imm_d(0));
+   brw_reg dest = bld.vgrf(BRW_TYPE_UD);
+   brw_reg zero(brw_imm_d(0));
    bld.emit(SHADER_OPCODE_FIND_LIVE_CHANNEL, dest)->exec_size = 32;
    bld.CMP(bld.null_reg_d(), dest, zero, BRW_CONDITIONAL_Z)->exec_size = 32;
 
@@ -288,11 +288,11 @@ TEST_F(cmod_propagation_test, non_cmod_livechannel)
 
 TEST_F(cmod_propagation_test, intervening_flag_write)
 {
-   fs_reg dest = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src2 = bld.vgrf(BRW_TYPE_F);
-   fs_reg zero(brw_imm_f(0.0f));
+   brw_reg dest = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src2 = bld.vgrf(BRW_TYPE_F);
+   brw_reg zero(brw_imm_f(0.0f));
    bld.ADD(dest, src0, src1);
    bld.CMP(bld.null_reg_f(), src2, zero, BRW_CONDITIONAL_GE);
    bld.CMP(bld.null_reg_f(), dest, zero, BRW_CONDITIONAL_GE);
@@ -325,11 +325,11 @@ TEST_F(cmod_propagation_test, intervening_flag_write)
 
 TEST_F(cmod_propagation_test, intervening_mismatch_flag_write)
 {
-   fs_reg dest = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src2 = bld.vgrf(BRW_TYPE_F);
-   fs_reg zero(brw_imm_f(0.0f));
+   brw_reg dest = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src2 = bld.vgrf(BRW_TYPE_F);
+   brw_reg zero(brw_imm_f(0.0f));
    bld.ADD(dest, src0, src1);
    bld.CMP(bld.null_reg_f(), src2, zero, BRW_CONDITIONAL_GE)
       ->flag_subreg = 1;
@@ -365,12 +365,12 @@ TEST_F(cmod_propagation_test, intervening_mismatch_flag_write)
 
 TEST_F(cmod_propagation_test, intervening_flag_read)
 {
-   fs_reg dest0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg dest1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src2 = bld.vgrf(BRW_TYPE_F);
-   fs_reg zero(brw_imm_f(0.0f));
+   brw_reg dest0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg dest1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src2 = bld.vgrf(BRW_TYPE_F);
+   brw_reg zero(brw_imm_f(0.0f));
    bld.ADD(dest0, src0, src1);
    set_predicate(BRW_PREDICATE_NORMAL, bld.SEL(dest1, src2, zero));
    bld.CMP(bld.null_reg_f(), dest0, zero, BRW_CONDITIONAL_GE);
@@ -403,12 +403,12 @@ TEST_F(cmod_propagation_test, intervening_flag_read)
 
 TEST_F(cmod_propagation_test, intervening_mismatch_flag_read)
 {
-   fs_reg dest0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg dest1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src2 = bld.vgrf(BRW_TYPE_F);
-   fs_reg zero(brw_imm_f(0.0f));
+   brw_reg dest0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg dest1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src2 = bld.vgrf(BRW_TYPE_F);
+   brw_reg zero(brw_imm_f(0.0f));
    bld.ADD(dest0, src0, src1);
    set_predicate(BRW_PREDICATE_NORMAL, bld.SEL(dest1, src2, zero))
       ->flag_subreg = 1;
@@ -444,13 +444,13 @@ TEST_F(cmod_propagation_test, intervening_mismatch_flag_read)
 
 TEST_F(cmod_propagation_test, intervening_dest_write)
 {
-   fs_reg dest = bld.vgrf(BRW_TYPE_F, 4);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src2 = bld.vgrf(BRW_TYPE_F, 2);
-   fs_reg zero(brw_imm_f(0.0f));
+   brw_reg dest = bld.vgrf(BRW_TYPE_F, 4);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src2 = bld.vgrf(BRW_TYPE_F, 2);
+   brw_reg zero(brw_imm_f(0.0f));
 
-   fs_reg tex_srcs[TEX_LOGICAL_NUM_SRCS];
+   brw_reg tex_srcs[TEX_LOGICAL_NUM_SRCS];
    tex_srcs[TEX_LOGICAL_SRC_COORDINATE] = src2;
    tex_srcs[TEX_LOGICAL_SRC_SURFACE] = brw_imm_ud(0);
    tex_srcs[TEX_LOGICAL_SRC_COORD_COMPONENTS] = brw_imm_ud(2);
@@ -491,12 +491,12 @@ TEST_F(cmod_propagation_test, intervening_dest_write)
 
 TEST_F(cmod_propagation_test, intervening_flag_read_same_value)
 {
-   fs_reg dest0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg dest1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src2 = bld.vgrf(BRW_TYPE_F);
-   fs_reg zero(brw_imm_f(0.0f));
+   brw_reg dest0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg dest1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src2 = bld.vgrf(BRW_TYPE_F);
+   brw_reg zero(brw_imm_f(0.0f));
    set_condmod(BRW_CONDITIONAL_GE, bld.ADD(dest0, src0, src1));
    set_predicate(BRW_PREDICATE_NORMAL, bld.SEL(dest1, src2, zero));
    bld.CMP(bld.null_reg_f(), dest0, zero, BRW_CONDITIONAL_GE);
@@ -529,10 +529,10 @@ TEST_F(cmod_propagation_test, intervening_flag_read_same_value)
 
 TEST_F(cmod_propagation_test, negate)
 {
-   fs_reg dest = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg zero(brw_imm_f(0.0f));
+   brw_reg dest = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg zero(brw_imm_f(0.0f));
    bld.ADD(dest, src0, src1);
    dest.negate = true;
    bld.CMP(bld.null_reg_f(), dest, zero, BRW_CONDITIONAL_GE);
@@ -561,9 +561,9 @@ TEST_F(cmod_propagation_test, negate)
 
 TEST_F(cmod_propagation_test, movnz)
 {
-   fs_reg dest = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg dest = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_F);
    bld.CMP(dest, src0, src1, BRW_CONDITIONAL_GE);
    set_condmod(BRW_CONDITIONAL_NZ,
                bld.MOV(bld.null_reg_f(), dest));
@@ -592,10 +592,10 @@ TEST_F(cmod_propagation_test, movnz)
 
 TEST_F(cmod_propagation_test, different_types_cmod_with_zero)
 {
-   fs_reg dest = bld.vgrf(BRW_TYPE_D);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_D);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_D);
-   fs_reg zero(brw_imm_f(0.0f));
+   brw_reg dest = bld.vgrf(BRW_TYPE_D);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_D);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_D);
+   brw_reg zero(brw_imm_f(0.0f));
    bld.ADD(dest, src0, src1);
    bld.CMP(bld.null_reg_f(), retype(dest, BRW_TYPE_F), zero,
            BRW_CONDITIONAL_GE);
@@ -625,10 +625,10 @@ TEST_F(cmod_propagation_test, different_types_cmod_with_zero)
 
 TEST_F(cmod_propagation_test, andnz_one)
 {
-   fs_reg dest = bld.vgrf(BRW_TYPE_D);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg zero(brw_imm_f(0.0f));
-   fs_reg one(brw_imm_d(1));
+   brw_reg dest = bld.vgrf(BRW_TYPE_D);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg zero(brw_imm_f(0.0f));
+   brw_reg one(brw_imm_d(1));
 
    bld.CMP(retype(dest, BRW_TYPE_F), src0, zero, BRW_CONDITIONAL_L);
    set_condmod(BRW_CONDITIONAL_NZ,
@@ -659,10 +659,10 @@ TEST_F(cmod_propagation_test, andnz_one)
 
 TEST_F(cmod_propagation_test, andnz_non_one)
 {
-   fs_reg dest = bld.vgrf(BRW_TYPE_D);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg zero(brw_imm_f(0.0f));
-   fs_reg nonone(brw_imm_d(38));
+   brw_reg dest = bld.vgrf(BRW_TYPE_D);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg zero(brw_imm_f(0.0f));
+   brw_reg nonone(brw_imm_d(38));
 
    bld.CMP(retype(dest, BRW_TYPE_F), src0, zero, BRW_CONDITIONAL_L);
    set_condmod(BRW_CONDITIONAL_NZ,
@@ -693,9 +693,9 @@ TEST_F(cmod_propagation_test, andnz_non_one)
 
 TEST_F(cmod_propagation_test, cmp_cmpnz)
 {
-   fs_reg dst0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg zero(brw_imm_f(0));
+   brw_reg dst0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg zero(brw_imm_f(0));
 
    bld.CMP(dst0, src0, zero, BRW_CONDITIONAL_NZ);
    bld.CMP(bld.null_reg_f(), dst0, zero, BRW_CONDITIONAL_NZ);
@@ -720,9 +720,9 @@ TEST_F(cmod_propagation_test, cmp_cmpnz)
 
 TEST_F(cmod_propagation_test, cmp_cmpg)
 {
-   fs_reg dst0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg zero(brw_imm_f(0));
+   brw_reg dst0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg zero(brw_imm_f(0));
 
    bld.CMP(dst0, src0, zero, BRW_CONDITIONAL_NZ);
    bld.CMP(bld.null_reg_f(), dst0, zero, BRW_CONDITIONAL_G);
@@ -749,9 +749,9 @@ TEST_F(cmod_propagation_test, cmp_cmpg)
 
 TEST_F(cmod_propagation_test, plnnz_cmpnz)
 {
-   fs_reg dst0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg zero(brw_imm_f(0));
+   brw_reg dst0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg zero(brw_imm_f(0));
 
    set_condmod(BRW_CONDITIONAL_NZ, bld.PLN(dst0, src0, zero));
    bld.CMP(bld.null_reg_f(), dst0, zero, BRW_CONDITIONAL_NZ);
@@ -776,9 +776,9 @@ TEST_F(cmod_propagation_test, plnnz_cmpnz)
 
 TEST_F(cmod_propagation_test, plnnz_cmpz)
 {
-   fs_reg dst0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg zero(brw_imm_f(0));
+   brw_reg dst0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg zero(brw_imm_f(0));
 
    set_condmod(BRW_CONDITIONAL_NZ, bld.PLN(dst0, src0, zero));
    bld.CMP(bld.null_reg_f(), dst0, zero, BRW_CONDITIONAL_Z);
@@ -803,10 +803,10 @@ TEST_F(cmod_propagation_test, plnnz_cmpz)
 
 TEST_F(cmod_propagation_test, plnnz_sel_cmpz)
 {
-   fs_reg dst0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg dst1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg zero(brw_imm_f(0));
+   brw_reg dst0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg dst1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg zero(brw_imm_f(0));
 
    set_condmod(BRW_CONDITIONAL_NZ, bld.PLN(dst0, src0, zero));
    set_predicate(BRW_PREDICATE_NORMAL, bld.SEL(dst1, src0, zero));
@@ -837,10 +837,9 @@ TEST_F(cmod_propagation_test, plnnz_sel_cmpz)
 
 TEST_F(cmod_propagation_test, cmp_cmpg_D)
 {
-   fs_reg dst0 = bld.vgrf(BRW_TYPE_D);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_D);
-   fs_reg zero(brw_imm_d(0));
-   fs_reg one(brw_imm_d(1));
+   brw_reg dst0 = bld.vgrf(BRW_TYPE_D);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_D);
+   brw_reg zero(brw_imm_d(0));
 
    bld.CMP(dst0, src0, zero, BRW_CONDITIONAL_NZ);
    bld.CMP(bld.null_reg_d(), dst0, zero, BRW_CONDITIONAL_G);
@@ -867,9 +866,9 @@ TEST_F(cmod_propagation_test, cmp_cmpg_D)
 
 TEST_F(cmod_propagation_test, cmp_cmpg_UD)
 {
-   fs_reg dst0 = bld.vgrf(BRW_TYPE_UD);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_UD);
-   fs_reg zero(brw_imm_ud(0));
+   brw_reg dst0 = bld.vgrf(BRW_TYPE_UD);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_UD);
+   brw_reg zero(brw_imm_ud(0));
 
    bld.CMP(dst0, src0, zero, BRW_CONDITIONAL_NZ);
    bld.CMP(bld.null_reg_ud(), dst0, zero, BRW_CONDITIONAL_G);
@@ -894,9 +893,9 @@ TEST_F(cmod_propagation_test, cmp_cmpg_UD)
 
 TEST_F(cmod_propagation_test, cmp_cmpl_D)
 {
-   fs_reg dst0 = bld.vgrf(BRW_TYPE_D);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_D);
-   fs_reg zero(brw_imm_d(0));
+   brw_reg dst0 = bld.vgrf(BRW_TYPE_D);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_D);
+   brw_reg zero(brw_imm_d(0));
 
    bld.CMP(dst0, src0, zero, BRW_CONDITIONAL_NZ);
    bld.CMP(bld.null_reg_d(), dst0, zero, BRW_CONDITIONAL_L);
@@ -921,9 +920,9 @@ TEST_F(cmod_propagation_test, cmp_cmpl_D)
 
 TEST_F(cmod_propagation_test, cmp_cmpl_UD)
 {
-   fs_reg dst0 = bld.vgrf(BRW_TYPE_UD);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_UD);
-   fs_reg zero(brw_imm_ud(0));
+   brw_reg dst0 = bld.vgrf(BRW_TYPE_UD);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_UD);
+   brw_reg zero(brw_imm_ud(0));
 
    bld.CMP(dst0, src0, zero, BRW_CONDITIONAL_NZ);
    bld.CMP(bld.null_reg_ud(), dst0, zero, BRW_CONDITIONAL_L);
@@ -950,10 +949,10 @@ TEST_F(cmod_propagation_test, cmp_cmpl_UD)
 
 TEST_F(cmod_propagation_test, andz_one)
 {
-   fs_reg dest = bld.vgrf(BRW_TYPE_D);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg zero(brw_imm_f(0.0f));
-   fs_reg one(brw_imm_d(1));
+   brw_reg dest = bld.vgrf(BRW_TYPE_D);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg zero(brw_imm_f(0.0f));
+   brw_reg one(brw_imm_d(1));
 
    bld.CMP(retype(dest, BRW_TYPE_F), src0, zero, BRW_CONDITIONAL_L);
    set_condmod(BRW_CONDITIONAL_Z,
@@ -984,9 +983,9 @@ TEST_F(cmod_propagation_test, andz_one)
 
 TEST_F(cmod_propagation_test, add_not_merge_with_compare)
 {
-   fs_reg dest = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg dest = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_F);
    bld.ADD(dest, src0, src1);
    bld.CMP(bld.null_reg_f(), src0, src1, BRW_CONDITIONAL_L);
 
@@ -1017,9 +1016,9 @@ TEST_F(cmod_propagation_test, add_not_merge_with_compare)
 
 TEST_F(cmod_propagation_test, subtract_merge_with_compare)
 {
-   fs_reg dest = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg dest = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_F);
    bld.ADD(dest, src0, negate(src1));
    bld.CMP(bld.null_reg_f(), src0, src1, BRW_CONDITIONAL_L);
 
@@ -1045,10 +1044,10 @@ TEST_F(cmod_propagation_test, subtract_merge_with_compare)
 
 TEST_F(cmod_propagation_test, subtract_immediate_merge_with_compare)
 {
-   fs_reg dest = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg one(brw_imm_f(1.0f));
-   fs_reg negative_one(brw_imm_f(-1.0f));
+   brw_reg dest = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg one(brw_imm_f(1.0f));
+   brw_reg negative_one(brw_imm_f(-1.0f));
 
    bld.ADD(dest, src0, negative_one);
    bld.CMP(bld.null_reg_f(), src0, one, BRW_CONDITIONAL_NZ);
@@ -1075,10 +1074,10 @@ TEST_F(cmod_propagation_test, subtract_immediate_merge_with_compare)
 
 TEST_F(cmod_propagation_test, subtract_merge_with_compare_intervening_add)
 {
-   fs_reg dest0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg dest1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg dest0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg dest1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_F);
    bld.ADD(dest0, src0, negate(src1));
    bld.ADD(dest1, src0, src1);
    bld.CMP(bld.null_reg_f(), src0, src1, BRW_CONDITIONAL_L);
@@ -1109,10 +1108,10 @@ TEST_F(cmod_propagation_test, subtract_merge_with_compare_intervening_add)
 
 TEST_F(cmod_propagation_test, subtract_not_merge_with_compare_intervening_partial_write)
 {
-   fs_reg dest0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg dest1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg dest0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg dest1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_F);
    bld.ADD(dest0, src0, negate(src1));
    set_predicate(BRW_PREDICATE_NORMAL, bld.ADD(dest1, src0, negate(src1)));
    bld.CMP(bld.null_reg_f(), src0, src1, BRW_CONDITIONAL_L);
@@ -1144,10 +1143,10 @@ TEST_F(cmod_propagation_test, subtract_not_merge_with_compare_intervening_partia
 
 TEST_F(cmod_propagation_test, subtract_not_merge_with_compare_intervening_add)
 {
-   fs_reg dest0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg dest1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg dest0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg dest1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_F);
    bld.ADD(dest0, src0, negate(src1));
    set_condmod(BRW_CONDITIONAL_EQ, bld.ADD(dest1, src0, src1));
    bld.CMP(bld.null_reg_f(), src0, src1, BRW_CONDITIONAL_L);
@@ -1179,9 +1178,9 @@ TEST_F(cmod_propagation_test, subtract_not_merge_with_compare_intervening_add)
 
 TEST_F(cmod_propagation_test, add_merge_with_compare)
 {
-   fs_reg dest = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg dest = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_F);
    bld.ADD(dest, src0, src1);
    bld.CMP(bld.null_reg_f(), src0, negate(src1), BRW_CONDITIONAL_L);
 
@@ -1207,9 +1206,9 @@ TEST_F(cmod_propagation_test, add_merge_with_compare)
 
 TEST_F(cmod_propagation_test, negative_subtract_merge_with_compare)
 {
-   fs_reg dest = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg dest = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_F);
    bld.ADD(dest, src1, negate(src0));
    bld.CMP(bld.null_reg_f(), src0, src1, BRW_CONDITIONAL_L);
 
@@ -1238,11 +1237,11 @@ TEST_F(cmod_propagation_test, negative_subtract_merge_with_compare)
 
 TEST_F(cmod_propagation_test, subtract_delete_compare)
 {
-   fs_reg dest = bld.vgrf(BRW_TYPE_F);
-   fs_reg dest1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src2 = bld.vgrf(BRW_TYPE_F);
+   brw_reg dest = bld.vgrf(BRW_TYPE_F);
+   brw_reg dest1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src2 = bld.vgrf(BRW_TYPE_F);
 
    set_condmod(BRW_CONDITIONAL_L, bld.ADD(dest, src0, negate(src1)));
    set_predicate(BRW_PREDICATE_NORMAL, bld.MOV(dest1, src2));
@@ -1277,11 +1276,11 @@ TEST_F(cmod_propagation_test, subtract_delete_compare_other_flag)
    /* This test is the same as subtract_delete_compare but it explicitly used
     * flag f0.1 for the subtraction and the comparison.
     */
-   fs_reg dest = bld.vgrf(BRW_TYPE_F);
-   fs_reg dest1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src2 = bld.vgrf(BRW_TYPE_F);
+   brw_reg dest = bld.vgrf(BRW_TYPE_F);
+   brw_reg dest1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src2 = bld.vgrf(BRW_TYPE_F);
 
    set_condmod(BRW_CONDITIONAL_L, bld.ADD(dest, src0, negate(src1)))
       ->flag_subreg = 1;
@@ -1316,9 +1315,9 @@ TEST_F(cmod_propagation_test, subtract_delete_compare_other_flag)
 
 TEST_F(cmod_propagation_test, subtract_to_mismatch_flag)
 {
-   fs_reg dest = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg dest = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_F);
 
    set_condmod(BRW_CONDITIONAL_L, bld.ADD(dest, src0, negate(src1)));
    bld.CMP(bld.null_reg_f(), src0, src1, BRW_CONDITIONAL_L)
@@ -1351,9 +1350,9 @@ TEST_F(cmod_propagation_test, subtract_to_mismatch_flag)
 TEST_F(cmod_propagation_test,
        subtract_merge_with_compare_intervening_mismatch_flag_write)
 {
-   fs_reg dest0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg dest0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_F);
 
    bld.ADD(dest0, src0, negate(src1));
    bld.CMP(bld.null_reg_f(), src0, src1, BRW_CONDITIONAL_L)
@@ -1398,12 +1397,12 @@ TEST_F(cmod_propagation_test,
 TEST_F(cmod_propagation_test,
        subtract_merge_with_compare_intervening_mismatch_flag_read)
 {
-   fs_reg dest0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg dest1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src2 = bld.vgrf(BRW_TYPE_F);
-   fs_reg zero(brw_imm_f(0.0f));
+   brw_reg dest0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg dest1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src2 = bld.vgrf(BRW_TYPE_F);
+   brw_reg zero(brw_imm_f(0.0f));
 
    bld.ADD(dest0, src0, negate(src1));
    set_predicate(BRW_PREDICATE_NORMAL, bld.SEL(dest1, src2, zero))
@@ -1438,10 +1437,10 @@ TEST_F(cmod_propagation_test,
 
 TEST_F(cmod_propagation_test, subtract_delete_compare_derp)
 {
-   fs_reg dest0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg dest1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg dest0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg dest1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_F);
 
    set_condmod(BRW_CONDITIONAL_L, bld.ADD(dest0, src0, negate(src1)));
    set_predicate(BRW_PREDICATE_NORMAL, bld.ADD(dest1, negate(src0), src1));
@@ -1473,8 +1472,8 @@ TEST_F(cmod_propagation_test, subtract_delete_compare_derp)
 
 TEST_F(cmod_propagation_test, signed_unsigned_comparison_mismatch)
 {
-   fs_reg dest0 = bld.vgrf(BRW_TYPE_D);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_D);
+   brw_reg dest0 = bld.vgrf(BRW_TYPE_D);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_D);
    src0.type = BRW_TYPE_W;
 
    bld.ASR(dest0, negate(src0), brw_imm_d(15));
@@ -1504,9 +1503,9 @@ TEST_F(cmod_propagation_test, signed_unsigned_comparison_mismatch)
 
 TEST_F(cmod_propagation_test, ior_f2i_nz)
 {
-   fs_reg dest = bld.vgrf(BRW_TYPE_D);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_D);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_D);
+   brw_reg dest = bld.vgrf(BRW_TYPE_D);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_D);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_D);
 
    bld.OR(dest, src0, src1);
    bld.MOV(bld.null_reg_d(), retype(dest, BRW_TYPE_F))
@@ -1550,9 +1549,9 @@ cmod_propagation_test::test_mov_prop(enum brw_conditional_mod cmod,
                                      enum brw_reg_type mov_dst_type,
                                      bool expected_cmod_prop_progress)
 {
-   fs_reg dest = bld.vgrf(add_type);
-   fs_reg src0 = bld.vgrf(add_type);
-   fs_reg src1 = bld.vgrf(add_type);
+   brw_reg dest = bld.vgrf(add_type);
+   brw_reg src0 = bld.vgrf(add_type);
+   brw_reg src1 = bld.vgrf(add_type);
 
    bld.ADD(dest, src0, src1);
    bld.MOV(retype(bld.null_reg_ud(), mov_dst_type), dest)
@@ -2127,10 +2126,10 @@ cmod_propagation_test::test_saturate_prop(enum brw_conditional_mod before,
                                           enum brw_reg_type op_type,
                                           bool expected_cmod_prop_progress)
 {
-   fs_reg dest = bld.vgrf(add_type);
-   fs_reg src0 = bld.vgrf(add_type);
-   fs_reg src1 = bld.vgrf(add_type);
-   fs_reg zero(brw_imm_ud(0));
+   brw_reg dest = bld.vgrf(add_type);
+   brw_reg src0 = bld.vgrf(add_type);
+   brw_reg src1 = bld.vgrf(add_type);
+   brw_reg zero(brw_imm_ud(0));
 
    bld.ADD(dest, src0, src1)->saturate = true;
 
@@ -2612,9 +2611,9 @@ TEST_F(cmod_propagation_test, not_to_or)
    /* Exercise propagation of conditional modifier from a NOT instruction to
     * another ALU instruction as performed by cmod_propagate_not.
     */
-   fs_reg dest = bld.vgrf(BRW_TYPE_UD);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_UD);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_UD);
+   brw_reg dest = bld.vgrf(BRW_TYPE_UD);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_UD);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_UD);
    bld.OR(dest, src0, src1);
    set_condmod(BRW_CONDITIONAL_NZ, bld.NOT(bld.null_reg_ud(), dest));
 
@@ -2645,9 +2644,9 @@ TEST_F(cmod_propagation_test, not_to_and)
    /* Exercise propagation of conditional modifier from a NOT instruction to
     * another ALU instruction as performed by cmod_propagate_not.
     */
-   fs_reg dest = bld.vgrf(BRW_TYPE_UD);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_UD);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_UD);
+   brw_reg dest = bld.vgrf(BRW_TYPE_UD);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_UD);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_UD);
    bld.AND(dest, src0, src1);
    set_condmod(BRW_CONDITIONAL_NZ, bld.NOT(bld.null_reg_ud(), dest));
 
@@ -2683,9 +2682,9 @@ TEST_F(cmod_propagation_test, not_to_uadd)
     * restriction is just the the destination type of the ALU instruction is
     * the same as the source type of the NOT instruction.
     */
-   fs_reg dest = bld.vgrf(BRW_TYPE_UD);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_UD);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_UD);
+   brw_reg dest = bld.vgrf(BRW_TYPE_UD);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_UD);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_UD);
    bld.ADD(dest, src0, src1);
    set_condmod(BRW_CONDITIONAL_NZ, bld.NOT(bld.null_reg_ud(), dest));
 
@@ -2723,9 +2722,9 @@ TEST_F(cmod_propagation_test, not_to_fadd_to_ud)
     * restriction is just the the destination type of the ALU instruction is
     * the same as the source type of the NOT instruction.
     */
-   fs_reg dest = bld.vgrf(BRW_TYPE_UD);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg dest = bld.vgrf(BRW_TYPE_UD);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_F);
    bld.ADD(dest, src0, src1);
    set_condmod(BRW_CONDITIONAL_NZ, bld.NOT(bld.null_reg_ud(), dest));
 
@@ -2763,9 +2762,9 @@ TEST_F(cmod_propagation_test, not_to_fadd)
     * restriction is just the the destination type of the ALU instruction is
     * the same as the source type of the NOT instruction.
     */
-   fs_reg dest = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg dest = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_F);
    bld.ADD(dest, src0, src1);
    set_condmod(BRW_CONDITIONAL_NZ,
                bld.NOT(bld.null_reg_ud(),
@@ -2800,12 +2799,12 @@ TEST_F(cmod_propagation_test, not_to_or_intervening_flag_read_compatible_value)
    /* Exercise propagation of conditional modifier from a NOT instruction to
     * another ALU instruction as performed by cmod_propagate_not.
     */
-   fs_reg dest0 = bld.vgrf(BRW_TYPE_UD);
-   fs_reg dest1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_UD);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_UD);
-   fs_reg src2 = bld.vgrf(BRW_TYPE_F);
-   fs_reg zero(brw_imm_f(0.0f));
+   brw_reg dest0 = bld.vgrf(BRW_TYPE_UD);
+   brw_reg dest1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_UD);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_UD);
+   brw_reg src2 = bld.vgrf(BRW_TYPE_F);
+   brw_reg zero(brw_imm_f(0.0f));
    set_condmod(BRW_CONDITIONAL_Z, bld.OR(dest0, src0, src1));
    set_predicate(BRW_PREDICATE_NORMAL, bld.SEL(dest1, src2, zero));
    set_condmod(BRW_CONDITIONAL_NZ, bld.NOT(bld.null_reg_ud(), dest0));
@@ -2842,12 +2841,12 @@ TEST_F(cmod_propagation_test,
    /* Exercise propagation of conditional modifier from a NOT instruction to
     * another ALU instruction as performed by cmod_propagate_not.
     */
-   fs_reg dest0 = bld.vgrf(BRW_TYPE_UD);
-   fs_reg dest1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_UD);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_UD);
-   fs_reg src2 = bld.vgrf(BRW_TYPE_F);
-   fs_reg zero(brw_imm_f(0.0f));
+   brw_reg dest0 = bld.vgrf(BRW_TYPE_UD);
+   brw_reg dest1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_UD);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_UD);
+   brw_reg src2 = bld.vgrf(BRW_TYPE_F);
+   brw_reg zero(brw_imm_f(0.0f));
    set_condmod(BRW_CONDITIONAL_Z, bld.OR(dest0, src0, src1))
       ->flag_subreg = 1;
    set_predicate(BRW_PREDICATE_NORMAL, bld.SEL(dest1, src2, zero));
@@ -2887,12 +2886,12 @@ TEST_F(cmod_propagation_test, not_to_or_intervening_flag_read_incompatible_value
    /* Exercise propagation of conditional modifier from a NOT instruction to
     * another ALU instruction as performed by cmod_propagate_not.
     */
-   fs_reg dest0 = bld.vgrf(BRW_TYPE_UD);
-   fs_reg dest1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_UD);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_UD);
-   fs_reg src2 = bld.vgrf(BRW_TYPE_F);
-   fs_reg zero(brw_imm_f(0.0f));
+   brw_reg dest0 = bld.vgrf(BRW_TYPE_UD);
+   brw_reg dest1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_UD);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_UD);
+   brw_reg src2 = bld.vgrf(BRW_TYPE_F);
+   brw_reg zero(brw_imm_f(0.0f));
    set_condmod(BRW_CONDITIONAL_NZ, bld.OR(dest0, src0, src1));
    set_predicate(BRW_PREDICATE_NORMAL, bld.SEL(dest1, src2, zero));
    set_condmod(BRW_CONDITIONAL_NZ, bld.NOT(bld.null_reg_ud(), dest0));
@@ -2929,10 +2928,10 @@ TEST_F(cmod_propagation_test, not_to_or_intervening_mismatch_flag_write)
    /* Exercise propagation of conditional modifier from a NOT instruction to
     * another ALU instruction as performed by cmod_propagate_not.
     */
-   fs_reg dest0 = bld.vgrf(BRW_TYPE_UD);
-   fs_reg dest1 = bld.vgrf(BRW_TYPE_UD);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_UD);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_UD);
+   brw_reg dest0 = bld.vgrf(BRW_TYPE_UD);
+   brw_reg dest1 = bld.vgrf(BRW_TYPE_UD);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_UD);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_UD);
 
    bld.OR(dest0, src0, src1);
    set_condmod(BRW_CONDITIONAL_Z, bld.OR(dest1, src0, src1))
@@ -2972,12 +2971,12 @@ TEST_F(cmod_propagation_test, not_to_or_intervening_mismatch_flag_read)
    /* Exercise propagation of conditional modifier from a NOT instruction to
     * another ALU instruction as performed by cmod_propagate_not.
     */
-   fs_reg dest0 = bld.vgrf(BRW_TYPE_UD);
-   fs_reg dest1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_UD);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_UD);
-   fs_reg src2 = bld.vgrf(BRW_TYPE_F);
-   fs_reg zero(brw_imm_f(0.0f));
+   brw_reg dest0 = bld.vgrf(BRW_TYPE_UD);
+   brw_reg dest1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_UD);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_UD);
+   brw_reg src2 = bld.vgrf(BRW_TYPE_F);
+   brw_reg zero(brw_imm_f(0.0f));
 
    bld.OR(dest0, src0, src1);
    set_predicate(BRW_PREDICATE_NORMAL, bld.SEL(dest1, src2, zero))
@@ -3014,10 +3013,10 @@ TEST_F(cmod_propagation_test, not_to_or_intervening_mismatch_flag_read)
 
 TEST_F(cmod_propagation_test, cmp_to_add_float_e)
 {
-   fs_reg dest = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg neg10(brw_imm_f(-10.0f));
-   fs_reg pos10(brw_imm_f(10.0f));
+   brw_reg dest = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg neg10(brw_imm_f(-10.0f));
+   brw_reg pos10(brw_imm_f(10.0f));
 
    bld.ADD(dest, src0, neg10)->saturate = true;
    bld.CMP(bld.null_reg_f(), src0, pos10, BRW_CONDITIONAL_EQ);
@@ -3044,10 +3043,10 @@ TEST_F(cmod_propagation_test, cmp_to_add_float_e)
 
 TEST_F(cmod_propagation_test, cmp_to_add_float_g)
 {
-   fs_reg dest = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg neg10(brw_imm_f(-10.0f));
-   fs_reg pos10(brw_imm_f(10.0f));
+   brw_reg dest = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg neg10(brw_imm_f(-10.0f));
+   brw_reg pos10(brw_imm_f(10.0f));
 
    bld.ADD(dest, src0, neg10)->saturate = true;
    bld.CMP(bld.null_reg_f(), src0, pos10, BRW_CONDITIONAL_G);
@@ -3072,10 +3071,10 @@ TEST_F(cmod_propagation_test, cmp_to_add_float_g)
 
 TEST_F(cmod_propagation_test, cmp_to_add_float_le)
 {
-   fs_reg dest = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg neg10(brw_imm_f(-10.0f));
-   fs_reg pos10(brw_imm_f(10.0f));
+   brw_reg dest = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg neg10(brw_imm_f(-10.0f));
+   brw_reg pos10(brw_imm_f(10.0f));
 
    bld.ADD(dest, src0, neg10)->saturate = true;
    bld.CMP(bld.null_reg_f(), src0, pos10, BRW_CONDITIONAL_LE);
@@ -3100,13 +3099,13 @@ TEST_F(cmod_propagation_test, cmp_to_add_float_le)
 
 TEST_F(cmod_propagation_test, prop_across_sel)
 {
-   fs_reg dest1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg dest2 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src0 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src1 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src2 = bld.vgrf(BRW_TYPE_F);
-   fs_reg src3 = bld.vgrf(BRW_TYPE_F);
-   fs_reg zero(brw_imm_f(0.0f));
+   brw_reg dest1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg dest2 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src0 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src1 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src2 = bld.vgrf(BRW_TYPE_F);
+   brw_reg src3 = bld.vgrf(BRW_TYPE_F);
+   brw_reg zero(brw_imm_f(0.0f));
    bld.ADD(dest1, src0, src1);
    bld.emit_minmax(dest2, src2, src3, BRW_CONDITIONAL_GE);
    bld.CMP(bld.null_reg_f(), dest1, zero, BRW_CONDITIONAL_GE);

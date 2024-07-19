@@ -39,7 +39,7 @@ struct constant_fold_state {
 static bool
 try_fold_alu(nir_builder *b, nir_alu_instr *alu)
 {
-   nir_const_value src[NIR_MAX_VEC_COMPONENTS][NIR_MAX_VEC_COMPONENTS];
+   nir_const_value src[NIR_ALU_MAX_INPUTS][NIR_MAX_VEC_COMPONENTS];
 
    /* In the case that any outputs/inputs have unsized types, then we need to
     * guess the bit-size. In this case, the validator ensures that all
@@ -75,7 +75,7 @@ try_fold_alu(nir_builder *b, nir_alu_instr *alu)
       bit_size = 32;
 
    nir_const_value dest[NIR_MAX_VEC_COMPONENTS];
-   nir_const_value *srcs[NIR_MAX_VEC_COMPONENTS];
+   nir_const_value *srcs[NIR_ALU_MAX_INPUTS];
    memset(dest, 0, sizeof(dest));
    for (unsigned i = 0; i < nir_op_infos[alu->op].num_inputs; ++i)
       srcs[i] = src[i];
@@ -280,6 +280,23 @@ try_fold_intrinsic(nir_builder *b, nir_intrinsic_instr *intrin,
          return true;
       }
       return false;
+
+   case nir_intrinsic_inverse_ballot: {
+      if (!nir_src_is_const(intrin->src[0]))
+         return false;
+      bool constant_true = true;
+      bool constant_false = true;
+      for (unsigned i = 0; i < nir_src_num_components(intrin->src[0]); i++) {
+         int64_t value = nir_src_comp_as_int(intrin->src[0], i);
+         constant_true &= value == -1;
+         constant_false &= value == 0;
+      }
+      if (!constant_true && !constant_false)
+         return false;
+      b->cursor = nir_before_instr(&intrin->instr);
+      nir_def_replace(&intrin->def, nir_imm_bool(b, constant_true));
+      return true;
+   }
 
    default:
       return false;

@@ -36,26 +36,6 @@ impl From<RWFlags> for pipe_map_flags {
     }
 }
 
-pub enum ResourceMapType {
-    Normal,
-    Async,
-    Coherent,
-}
-
-impl From<ResourceMapType> for pipe_map_flags {
-    fn from(map_type: ResourceMapType) -> Self {
-        match map_type {
-            ResourceMapType::Normal => pipe_map_flags(0),
-            ResourceMapType::Async => pipe_map_flags::PIPE_MAP_UNSYNCHRONIZED,
-            ResourceMapType::Coherent => {
-                pipe_map_flags::PIPE_MAP_COHERENT
-                    | pipe_map_flags::PIPE_MAP_PERSISTENT
-                    | pipe_map_flags::PIPE_MAP_UNSYNCHRONIZED
-            }
-        }
-    }
-}
-
 impl PipeContext {
     pub(super) fn new(context: *mut pipe_context, screen: &Arc<PipeScreen>) -> Option<Self> {
         let s = Self {
@@ -221,16 +201,16 @@ impl PipeContext {
         if ptr.is_null() {
             None
         } else {
-            Some(PipeTransfer::new(is_buffer, out, ptr))
+            Some(PipeTransfer::new(self, is_buffer, out, ptr))
         }
     }
 
-    fn _buffer_map(
+    pub fn buffer_map(
         &self,
         res: &PipeResource,
         offset: i32,
         size: i32,
-        flags: pipe_map_flags,
+        rw: RWFlags,
     ) -> Option<PipeTransfer> {
         let b = pipe_box {
             x: offset,
@@ -240,45 +220,11 @@ impl PipeContext {
             ..Default::default()
         };
 
-        self.resource_map(res, &b, flags, true)
-    }
-
-    pub fn buffer_map(
-        &self,
-        res: &PipeResource,
-        offset: i32,
-        size: i32,
-        rw: RWFlags,
-        map_type: ResourceMapType,
-    ) -> Option<PipeTransfer> {
-        let mut flags: pipe_map_flags = map_type.into();
-        flags |= rw.into();
-        self._buffer_map(res, offset, size, flags)
-    }
-
-    pub fn buffer_map_directly(
-        &self,
-        res: &PipeResource,
-        offset: i32,
-        size: i32,
-        rw: RWFlags,
-    ) -> Option<PipeTransfer> {
-        let flags =
-            pipe_map_flags::PIPE_MAP_DIRECTLY | pipe_map_flags::PIPE_MAP_UNSYNCHRONIZED | rw.into();
-        self._buffer_map(res, offset, size, flags)
+        self.resource_map(res, &b, rw.into(), true)
     }
 
     pub(super) fn buffer_unmap(&self, tx: *mut pipe_transfer) {
         unsafe { self.pipe.as_ref().buffer_unmap.unwrap()(self.pipe.as_ptr(), tx) };
-    }
-
-    pub fn _texture_map(
-        &self,
-        res: &PipeResource,
-        bx: &pipe_box,
-        flags: pipe_map_flags,
-    ) -> Option<PipeTransfer> {
-        self.resource_map(res, bx, flags, false)
     }
 
     pub fn texture_map(
@@ -286,22 +232,8 @@ impl PipeContext {
         res: &PipeResource,
         bx: &pipe_box,
         rw: RWFlags,
-        map_type: ResourceMapType,
     ) -> Option<PipeTransfer> {
-        let mut flags: pipe_map_flags = map_type.into();
-        flags |= rw.into();
-        self._texture_map(res, bx, flags)
-    }
-
-    pub fn texture_map_directly(
-        &self,
-        res: &PipeResource,
-        bx: &pipe_box,
-        rw: RWFlags,
-    ) -> Option<PipeTransfer> {
-        let flags =
-            pipe_map_flags::PIPE_MAP_DIRECTLY | pipe_map_flags::PIPE_MAP_UNSYNCHRONIZED | rw.into();
-        self.resource_map(res, bx, flags, false)
+        self.resource_map(res, bx, rw.into(), false)
     }
 
     pub(super) fn texture_unmap(&self, tx: *mut pipe_transfer) {
@@ -418,7 +350,9 @@ impl PipeContext {
         }
     }
 
-    pub fn set_constant_buffer_stream(&self, idx: u32, data: &[u8]) {
+    /// returns false when failing to allocate GPU memory.
+    #[must_use]
+    pub fn set_constant_buffer_stream(&self, idx: u32, data: &[u8]) -> bool {
         let mut cb = pipe_constant_buffer {
             buffer: ptr::null_mut(),
             buffer_offset: 0,
@@ -439,13 +373,19 @@ impl PipeContext {
             );
             u_upload_unmap(stream);
 
+            if cb.buffer.is_null() {
+                return false;
+            }
+
             self.pipe.as_ref().set_constant_buffer.unwrap()(
                 self.pipe.as_ptr(),
                 pipe_shader_type::PIPE_SHADER_COMPUTE,
                 idx,
-                false,
+                true,
                 &cb,
             );
+
+            true
         }
     }
 

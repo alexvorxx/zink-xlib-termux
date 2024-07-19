@@ -1090,9 +1090,14 @@ tu6_emit_tile_select(struct tu_cmd_buffer *cmd,
       }
 
       /* Make the CP wait until the CP_MEM_WRITE's to the command buffers
-       * land.
+       * land. When loading FS params via UBOs, we also need to invalidate
+       * UCHE because the FS param patchpoint is read through UCHE.
        */
       tu_cs_emit_pkt7(cs, CP_WAIT_MEM_WRITES, 0);
+      if (cmd->device->compiler->load_shader_consts_via_preamble) {
+         tu_emit_event_write<CHIP>(cmd, cs, FD_CACHE_INVALIDATE);
+         tu_cs_emit_wfi(cs);
+      }
       tu_cs_emit_pkt7(cs, CP_WAIT_FOR_ME, 0);
    }
 }
@@ -2781,13 +2786,25 @@ tu_bind_descriptor_sets(struct tu_cmd_buffer *cmd,
                          A6XX_TEX_CONST_2_STARTOFFSETTEXELS__MASK) >>
                         A6XX_TEX_CONST_2_STARTOFFSETTEXELS__SHIFT;
 
-                     /* Without the ability to cast 16-bit as 32-bit, there is
-                      * only one descriptor whose texels are 32 bits (4
-                      * bytes). With casting, there are two descriptors, the
-                      * first being 16-bit and the second being 32-bit.
+                     /* Use descriptor's format to determine the shift amount
+                      * that's to be used on the offset value.
                       */
-                     unsigned offset_shift =
-                        binding->size == 4 * A6XX_TEX_CONST_DWORDS || i == 1 ? 2 : 1;
+                     uint32_t format = (dst_desc[0] &
+                                        A6XX_TEX_CONST_0_FMT__MASK) >>
+                                       A6XX_TEX_CONST_0_FMT__SHIFT;
+                     unsigned offset_shift;
+                     switch (format) {
+                     case FMT6_16_UINT:
+                        offset_shift = 1;
+                        break;
+                     case FMT6_32_UINT:
+                        offset_shift = 2;
+                        break;
+                     case FMT6_8_UINT:
+                     default:
+                        offset_shift = 0;
+                        break;
+                     }
 
                      va += desc_offset << offset_shift;
                      va += offset;
@@ -4296,6 +4313,9 @@ tu_emit_subpass_begin_gmem(struct tu_cmd_buffer *cmd)
                             cmd->state.pass->has_cond_load_store &&
                             !cmd->state.rp.draw_cs_writes_to_cond_pred;
 
+   if (cmd->state.pass->has_fdm)
+      tu_cs_set_writeable(cs, true);
+
    tu_cond_exec_start(cs, CP_COND_EXEC_0_RENDER_MODE_GMEM);
 
    /* Emit gmem loads that are first used in this subpass. */
@@ -4325,6 +4345,10 @@ tu_emit_subpass_begin_gmem(struct tu_cmd_buffer *cmd)
    }
 
    tu_cond_exec_end(cs); /* CP_COND_EXEC_0_RENDER_MODE_GMEM */
+
+   if (cmd->state.pass->has_fdm)
+      tu_cs_set_writeable(cs, false);
+
 }
 
 /* Emits sysmem clears that are first used in this subpass. */
@@ -5099,6 +5123,38 @@ fdm_apply_fs_params(struct tu_cmd_buffer *cmd,
 }
 
 static void
+tu_emit_fdm_params(struct tu_cmd_buffer *cmd,
+                   struct tu_cs *cs, struct tu_shader *fs,
+                   unsigned num_units)
+{
+   STATIC_ASSERT(IR3_DP_FS_FRAG_INVOCATION_COUNT == IR3_DP_FS_DYNAMIC);
+   tu_cs_emit(cs, fs->fs.per_samp ?
+              cmd->vk.dynamic_graphics_state.ms.rasterization_samples : 1);
+   tu_cs_emit(cs, 0);
+   tu_cs_emit(cs, 0);
+   tu_cs_emit(cs, 0);
+
+   STATIC_ASSERT(IR3_DP_FS_FRAG_SIZE == IR3_DP_FS_DYNAMIC + 4);
+   STATIC_ASSERT(IR3_DP_FS_FRAG_OFFSET == IR3_DP_FS_DYNAMIC + 6);
+   if (num_units > 1) {
+      if (fs->fs.has_fdm) {
+         struct apply_fs_params_state state = {
+            .num_consts = num_units - 1,
+         };
+         tu_create_fdm_bin_patchpoint(cmd, cs, 4 * (num_units - 1),
+                                      fdm_apply_fs_params, state);
+      } else {
+         for (unsigned i = 1; i < num_units; i++) {
+            tu_cs_emit(cs, 1);
+            tu_cs_emit(cs, 1);
+            tu_cs_emit(cs, fui(0.0f));
+            tu_cs_emit(cs, fui(0.0f));
+         }
+      }
+   }
+}
+
+static void
 tu6_emit_fs_params(struct tu_cmd_buffer *cmd)
 {
    uint32_t offset = fs_params_offset(cmd);
@@ -5132,36 +5188,75 @@ tu6_emit_fs_params(struct tu_cmd_buffer *cmd)
    tu_cs_emit(&cs, 0);
    tu_cs_emit(&cs, 0);
 
-   STATIC_ASSERT(IR3_DP_FS_FRAG_INVOCATION_COUNT == IR3_DP_FS_DYNAMIC);
-   tu_cs_emit(&cs, fs->fs.per_samp ?
-              cmd->vk.dynamic_graphics_state.ms.rasterization_samples : 1);
-   tu_cs_emit(&cs, 0);
-   tu_cs_emit(&cs, 0);
-   tu_cs_emit(&cs, 0);
-
-   STATIC_ASSERT(IR3_DP_FS_FRAG_SIZE == IR3_DP_FS_DYNAMIC + 4);
-   STATIC_ASSERT(IR3_DP_FS_FRAG_OFFSET == IR3_DP_FS_DYNAMIC + 6);
-   if (num_units > 1) {
-      if (fs->fs.has_fdm) {
-         struct apply_fs_params_state state = {
-            .num_consts = num_units - 1,
-         };
-         tu_create_fdm_bin_patchpoint(cmd, &cs, 4 * (num_units - 1),
-                                      fdm_apply_fs_params, state);
-      } else {
-         for (unsigned i = 1; i < num_units; i++) {
-            tu_cs_emit(&cs, 1);
-            tu_cs_emit(&cs, 1);
-            tu_cs_emit(&cs, fui(0.0f));
-            tu_cs_emit(&cs, fui(0.0f));
-         }
-      }
-   }
+   tu_emit_fdm_params(cmd, &cs, fs, num_units);
 
    cmd->state.fs_params = tu_cs_end_draw_state(&cmd->sub_cs, &cs);
 
    if (fs->fs.has_fdm)
       tu_cs_set_writeable(&cmd->sub_cs, false);
+}
+
+static void
+tu7_emit_fs_params(struct tu_cmd_buffer *cmd)
+{
+   struct tu_shader *fs = cmd->state.shaders[MESA_SHADER_FRAGMENT];
+
+   int ubo_offset = fs->const_state.fdm_ubo.idx;
+   if (ubo_offset < 0) {
+      cmd->state.fs_params = (struct tu_draw_state) {};
+      return;
+   }
+
+   unsigned num_units = DIV_ROUND_UP(fs->const_state.fdm_ubo.size, 4);
+
+   if (fs->fs.has_fdm)
+      tu_cs_set_writeable(&cmd->sub_cs, true);
+
+   struct tu_cs cs;
+   VkResult result =
+      tu_cs_begin_sub_stream_aligned(&cmd->sub_cs, num_units, 4, &cs);
+   if (result != VK_SUCCESS) {
+      tu_cs_set_writeable(&cmd->sub_cs, false);
+      vk_command_buffer_set_error(&cmd->vk, result);
+      return;
+   }
+
+   tu_emit_fdm_params(cmd, &cs, fs, num_units);
+
+   struct tu_draw_state fdm_ubo = tu_cs_end_draw_state(&cmd->sub_cs, &cs);
+
+   if (fs->fs.has_fdm)
+      tu_cs_set_writeable(&cmd->sub_cs, false);
+
+   result = tu_cs_begin_sub_stream(&cmd->sub_cs, 6, &cs);
+   if (result != VK_SUCCESS) {
+      vk_command_buffer_set_error(&cmd->vk, result);
+      return;
+   }
+
+   tu_cs_emit_pkt7(&cs, CP_LOAD_STATE6_FRAG, 5);
+   tu_cs_emit(&cs,
+              CP_LOAD_STATE6_0_DST_OFF(ubo_offset) |
+              CP_LOAD_STATE6_0_STATE_TYPE(ST6_UBO)|
+              CP_LOAD_STATE6_0_STATE_SRC(SS6_DIRECT) |
+              CP_LOAD_STATE6_0_STATE_BLOCK(SB6_FS_SHADER) |
+              CP_LOAD_STATE6_0_NUM_UNIT(1));
+   tu_cs_emit(&cs, CP_LOAD_STATE6_1_EXT_SRC_ADDR(0));
+   tu_cs_emit(&cs, CP_LOAD_STATE6_2_EXT_SRC_ADDR_HI(0));
+   tu_cs_emit_qw(&cs,
+                 fdm_ubo.iova |
+                 (uint64_t)A6XX_UBO_1_SIZE(num_units) << 32);
+
+   cmd->state.fs_params = tu_cs_end_draw_state(&cmd->sub_cs, &cs);
+}
+
+static void
+tu_emit_fs_params(struct tu_cmd_buffer *cmd)
+{
+   if (cmd->device->compiler->load_shader_consts_via_preamble)
+      tu7_emit_fs_params(cmd);
+   else
+      tu6_emit_fs_params(cmd);
 }
 
 template <chip CHIP>
@@ -5333,7 +5428,7 @@ tu6_draw_common(struct tu_cmd_buffer *cmd,
    if (BITSET_TEST(cmd->vk.dynamic_graphics_state.dirty,
                    MESA_VK_DYNAMIC_MS_RASTERIZATION_SAMPLES) ||
        (cmd->state.dirty & (TU_CMD_DIRTY_PROGRAM | TU_CMD_DIRTY_FDM))) {
-      tu6_emit_fs_params(cmd);
+      tu_emit_fs_params(cmd);
       dirty_fs_params = true;
    }
 

@@ -626,7 +626,7 @@ instr_is_16bit(amd_gfx_level gfx_level, aco_opcode op)
    case aco_opcode::v_fmaak_f16:
    /* VOP1 */
    case aco_opcode::v_cvt_f16_f32:
-   case aco_opcode::p_cvt_f16_f32_rtne:
+   case aco_opcode::p_v_cvt_f16_f32_rtne:
    case aco_opcode::v_cvt_f16_u16:
    case aco_opcode::v_cvt_f16_i16:
    case aco_opcode::v_rcp_f16:
@@ -1358,7 +1358,8 @@ get_op_fixed_to_def(Instruction* instr)
        instr->opcode == aco_opcode::v_fmac_legacy_f32 ||
        instr->opcode == aco_opcode::v_pk_fmac_f16 || instr->opcode == aco_opcode::v_writelane_b32 ||
        instr->opcode == aco_opcode::v_writelane_b32_e64 ||
-       instr->opcode == aco_opcode::v_dot4c_i32_i8) {
+       instr->opcode == aco_opcode::v_dot4c_i32_i8 || instr->opcode == aco_opcode::s_fmac_f32 ||
+       instr->opcode == aco_opcode::s_fmac_f16) {
       return 2;
    } else if (instr->opcode == aco_opcode::s_addk_i32 || instr->opcode == aco_opcode::s_mulk_i32 ||
               instr->opcode == aco_opcode::s_cmovk_i32) {
@@ -1416,7 +1417,8 @@ bool
 Instruction::isTrans() const noexcept
 {
    return instr_info.classes[(int)opcode] == instr_class::valu_transcendental32 ||
-          instr_info.classes[(int)opcode] == instr_class::valu_double_transcendental;
+          instr_info.classes[(int)opcode] == instr_class::valu_double_transcendental ||
+          instr_info.classes[(int)opcode] == instr_class::valu_pseudo_scalar_trans;
 }
 
 size_t

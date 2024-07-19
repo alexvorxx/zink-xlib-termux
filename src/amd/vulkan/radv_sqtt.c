@@ -685,7 +685,9 @@ radv_reset_sqtt_trace(struct radv_device *device)
    /* Clear timed cmdbufs. */
    simple_mtx_lock(&device->sqtt_command_pool_mtx);
    for (unsigned i = 0; i < ARRAY_SIZE(device->sqtt_command_pool); i++) {
-      vk_common_TrimCommandPool(radv_device_to_handle(device), vk_command_pool_to_handle(device->sqtt_command_pool[i]),
+      /* If RADV_DEBUG_NO_COMPUTE_QUEUE is used, there's no compute sqtt command pool */
+      if (device->sqtt_command_pool[i])
+         vk_common_TrimCommandPool(radv_device_to_handle(device), vk_command_pool_to_handle(device->sqtt_command_pool[i]),
                                 0);
    }
    simple_mtx_unlock(&device->sqtt_command_pool_mtx);

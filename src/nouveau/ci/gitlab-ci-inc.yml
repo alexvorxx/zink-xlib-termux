@@ -24,7 +24,7 @@
 
 .nvk-valve-manual-rules:
   stage: nouveau
-  retry: !reference [.scheduled_pipeline-rules, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
     - !reference [.valve-farm-manual-rules, rules]

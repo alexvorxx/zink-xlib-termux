@@ -35,7 +35,12 @@
 #include "util/u_cpu_detect.h"
 #include "lp_bld.h"
 #include "lp_bld_passmgr.h"
+
+#if GALLIVM_USE_ORCJIT
+#include <llvm-c/Orc.h>
+#else
 #include <llvm-c/ExecutionEngine.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -46,13 +51,20 @@ struct gallivm_state
 {
    char *module_name;
    LLVMModuleRef module;
-   LLVMExecutionEngineRef engine;
    LLVMTargetDataRef target;
+#if GALLIVM_USE_ORCJIT
+   /* own this->module */
+   LLVMOrcThreadSafeContextRef _ts_context;
+   /* each module is in its own jitdylib */
+   LLVMOrcJITDylibRef _per_module_jd;
+#else
+   LLVMExecutionEngineRef engine;
    struct lp_passmgr *passmgr;
-   LLVMContextRef context;
-   LLVMBuilderRef builder;
    LLVMMCJITMemoryManagerRef memorymgr;
    struct lp_generated_code *code;
+#endif
+   LLVMContextRef context;
+   LLVMBuilderRef builder;
    struct lp_cached_code *cache;
    unsigned compiled;
    LLVMValueRef coro_malloc_hook;
@@ -102,7 +114,10 @@ gallivm_compile_module(struct gallivm_state *gallivm);
 
 func_pointer
 gallivm_jit_function(struct gallivm_state *gallivm,
-                     LLVMValueRef func);
+                     LLVMValueRef func, const char *func_name);
+
+void
+gallivm_stub_func(struct gallivm_state *gallivm, LLVMValueRef func);
 
 unsigned gallivm_get_perf_flags(void);
 

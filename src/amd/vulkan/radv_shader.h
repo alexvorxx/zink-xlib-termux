@@ -84,6 +84,9 @@ struct radv_shader_stage_key {
 
    /* Whether the mesh shader is used with a task shader. */
    uint8_t has_task_shader : 1;
+
+   /* Whether the shader is used with indirect pipeline binds. */
+   uint8_t indirect_bindable : 1;
 };
 
 struct radv_ps_epilog_key {
@@ -141,7 +144,6 @@ struct radv_graphics_state_key {
 
    struct {
       uint32_t provoking_vtx_last : 1;
-      uint32_t line_smooth_enabled : 1;
    } rs;
 
    struct {
@@ -708,7 +710,11 @@ void radv_shader_combine_cfg_vs_gs(const struct radv_shader *vs, const struct ra
 void radv_shader_combine_cfg_tes_gs(const struct radv_shader *tes, const struct radv_shader *gs, uint32_t *rsrc1_out,
                                     uint32_t *rsrc2_out);
 
-const struct radv_userdata_info *radv_get_user_sgpr(const struct radv_shader *shader, int idx);
+const struct radv_userdata_info *radv_get_user_sgpr_info(const struct radv_shader *shader, int idx);
+
+uint32_t radv_get_user_sgpr_loc(const struct radv_shader *shader, int idx);
+
+uint32_t radv_get_user_sgpr(const struct radv_shader *shader, int idx);
 
 void radv_precompute_registers_hw_ngg(struct radv_device *device, const struct ac_shader_config *config,
                                       struct radv_shader_info *info);

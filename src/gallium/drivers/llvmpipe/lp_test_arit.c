@@ -440,7 +440,7 @@ test_unary(unsigned verbose, FILE *fp, const struct unary_test_t *test, unsigned
 
    gallivm_compile_module(gallivm);
 
-   test_func_jit = (unary_func_t) gallivm_jit_function(gallivm, test_func);
+   test_func_jit = (unary_func_t) gallivm_jit_function(gallivm, test_func, test_name);
 
    gallivm_free_ir(gallivm);
 

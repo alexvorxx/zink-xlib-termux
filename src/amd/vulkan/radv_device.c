@@ -78,10 +78,16 @@ typedef void *drmDevicePtr;
 #include "ac_formats.h"
 
 static bool
-radv_spm_trace_enabled(struct radv_instance *instance)
+radv_spm_trace_enabled(const struct radv_instance *instance)
 {
    return (instance->vk.trace_mode & RADV_TRACE_MODE_RGP) &&
           debug_get_bool_option("RADV_THREAD_TRACE_CACHE_COUNTERS", true);
+}
+
+static bool
+radv_trap_handler_enabled()
+{
+   return !!getenv("RADV_TRAP_HANDLER");
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
@@ -514,9 +520,35 @@ radv_device_finish_notifier(struct radv_device *device)
 #endif
 }
 
-static void
-radv_device_finish_perf_counter_lock_cs(struct radv_device *device)
+static VkResult
+radv_device_init_perf_counter(struct radv_device *device)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const size_t bo_size = PERF_CTR_BO_PASS_OFFSET + sizeof(uint64_t) * PERF_CTR_MAX_PASSES;
+   VkResult result;
+
+   result = radv_bo_create(device, NULL, bo_size, 4096, RADEON_DOMAIN_GTT,
+                           RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING, RADV_BO_PRIORITY_UPLOAD_BUFFER,
+                           0, true, &device->perf_counter_bo);
+   if (result != VK_SUCCESS)
+      return result;
+
+   device->perf_counter_lock_cs = calloc(sizeof(struct radeon_winsys_cs *), 2 * PERF_CTR_MAX_PASSES);
+   if (!device->perf_counter_lock_cs)
+      return VK_ERROR_OUT_OF_HOST_MEMORY;
+
+   if (!pdev->ac_perfcounters.blocks)
+      return VK_ERROR_INITIALIZATION_FAILED;
+
+   return VK_SUCCESS;
+}
+
+static void
+radv_device_finish_perf_counter(struct radv_device *device)
+{
+   if (device->perf_counter_bo)
+      radv_bo_destroy(device, NULL, device->perf_counter_bo);
+
    if (!device->perf_counter_lock_cs)
       return;
 
@@ -526,6 +558,184 @@ radv_device_finish_perf_counter_lock_cs(struct radv_device *device)
    }
 
    free(device->perf_counter_lock_cs);
+}
+
+static VkResult
+radv_device_init_memory_cache(struct radv_device *device)
+{
+   struct vk_pipeline_cache_create_info info = {.weak_ref = true};
+
+   device->mem_cache = vk_pipeline_cache_create(&device->vk, &info, NULL);
+   if (!device->mem_cache)
+      return VK_ERROR_OUT_OF_HOST_MEMORY;
+
+   return VK_SUCCESS;
+}
+
+static void
+radv_device_finish_memory_cache(struct radv_device *device)
+{
+   vk_pipeline_cache_destroy(device->mem_cache, NULL);
+}
+
+static VkResult
+radv_device_init_rgp(struct radv_device *device)
+{
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
+
+   if (!(instance->vk.trace_mode & RADV_TRACE_MODE_RGP))
+      return VK_SUCCESS;
+
+   if (pdev->info.gfx_level < GFX8 || pdev->info.gfx_level > GFX11_5) {
+      fprintf(stderr, "GPU hardware not supported: refer to "
+                      "the RGP documentation for the list of "
+                      "supported GPUs!\n");
+      abort();
+   }
+
+   if (!radv_sqtt_init(device))
+      return VK_ERROR_INITIALIZATION_FAILED;
+
+   fprintf(stderr,
+           "radv: Thread trace support is enabled (initial buffer size: %u MiB, "
+           "instruction timing: %s, cache counters: %s, queue events: %s).\n",
+           device->sqtt.buffer_size / (1024 * 1024), radv_is_instruction_timing_enabled() ? "enabled" : "disabled",
+           radv_spm_trace_enabled(instance) ? "enabled" : "disabled",
+           radv_sqtt_queue_events_enabled() ? "enabled" : "disabled");
+
+   if (radv_spm_trace_enabled(instance)) {
+      if (pdev->info.gfx_level >= GFX10 && pdev->info.gfx_level < GFX11_5) {
+         if (!radv_spm_init(device))
+            return VK_ERROR_INITIALIZATION_FAILED;
+      } else {
+         fprintf(stderr, "radv: SPM isn't supported for this GPU (%s)!\n", pdev->name);
+      }
+   }
+
+   return VK_SUCCESS;
+}
+
+static void
+radv_device_finish_rgp(struct radv_device *device)
+{
+   radv_sqtt_finish(device);
+   radv_spm_finish(device);
+}
+
+static void
+radv_device_init_rmv(struct radv_device *device)
+{
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
+
+   if (!(instance->vk.trace_mode & VK_TRACE_MODE_RMV))
+      return;
+
+   struct vk_rmv_device_info info;
+   memset(&info, 0, sizeof(struct vk_rmv_device_info));
+   radv_rmv_fill_device_info(pdev, &info);
+   vk_memory_trace_init(&device->vk, &info);
+   radv_memory_trace_init(device);
+}
+
+static VkResult
+radv_device_init_trap_handler(struct radv_device *device)
+{
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
+   if (!radv_trap_handler_enabled())
+      return VK_SUCCESS;
+
+   /* TODO: Add support for more hardware. */
+   assert(pdev->info.gfx_level == GFX8);
+
+   fprintf(stderr, "**********************************************************************\n");
+   fprintf(stderr, "* WARNING: RADV_TRAP_HANDLER is experimental and only for debugging! *\n");
+   fprintf(stderr, "**********************************************************************\n");
+
+   if (!radv_trap_handler_init(device))
+      return VK_ERROR_INITIALIZATION_FAILED;
+
+   return VK_SUCCESS;
+}
+
+static VkResult
+radv_device_init_device_fault_detection(struct radv_device *device)
+{
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   struct radv_instance *instance = radv_physical_device_instance(pdev);
+
+   if (!radv_device_fault_detection_enabled(device))
+      return VK_SUCCESS;
+
+   if (!radv_init_trace(device))
+      return VK_ERROR_INITIALIZATION_FAILED;
+
+   fprintf(stderr, "*****************************************************************************\n");
+   fprintf(stderr, "* WARNING: RADV_DEBUG=hang is costly and should only be used for debugging! *\n");
+   fprintf(stderr, "*****************************************************************************\n");
+
+   /* Wait for idle after every draw/dispatch to identify the
+    * first bad call.
+    */
+   instance->debug_flags |= RADV_DEBUG_SYNC_SHADERS;
+
+   radv_dump_enabled_options(device, stderr);
+
+   return VK_SUCCESS;
+}
+
+static void
+radv_device_finish_device_fault_detection(struct radv_device *device)
+{
+   radv_finish_trace(device);
+   ralloc_free(device->gpu_hang_report);
+}
+
+static VkResult
+radv_device_init_tools(struct radv_device *device)
+{
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   struct radv_instance *instance = radv_physical_device_instance(pdev);
+   VkResult result;
+
+   result = radv_device_init_device_fault_detection(device);
+   if (result != VK_SUCCESS)
+      return result;
+
+   result = radv_device_init_rgp(device);
+   if (result != VK_SUCCESS)
+      return result;
+
+   radv_device_init_rmv(device);
+
+   result = radv_device_init_trap_handler(device);
+   if (result != VK_SUCCESS)
+      return result;
+
+   if ((instance->vk.trace_mode & RADV_TRACE_MODE_RRA) && radv_enable_rt(pdev, false)) {
+      result = radv_rra_trace_init(device);
+      if (result != VK_SUCCESS)
+         return result;
+   }
+
+   result = radv_printf_data_init(device);
+   if (result != VK_SUCCESS)
+      return result;
+
+   return VK_SUCCESS;
+}
+
+static void
+radv_device_finish_tools(struct radv_device *device)
+{
+   radv_printf_data_finish(device);
+   radv_rra_trace_finish(radv_device_to_handle(device), &device->rra_trace);
+   radv_trap_handler_finish(device);
+   radv_memory_trace_finish(device);
+   radv_device_finish_rgp(device);
+   radv_device_finish_device_fault_detection(device);
 }
 
 struct dispatch_table_builder {
@@ -869,7 +1079,6 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    VkResult result;
    struct radv_device *device;
 
-   bool keep_shader_info = false;
    bool overallocation_disallowed = false;
 
    vk_foreach_struct_const (ext, pCreateInfo->pNext) {
@@ -958,14 +1167,12 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
       const VkDeviceQueueGlobalPriorityCreateInfoKHR *global_priority =
          vk_find_struct_const(queue_create->pNext, DEVICE_QUEUE_GLOBAL_PRIORITY_CREATE_INFO_KHR);
 
-      device->queues[qfi] = vk_alloc(&device->vk.alloc, queue_create->queueCount * sizeof(struct radv_queue), 8,
-                                     VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
+      device->queues[qfi] = vk_zalloc(&device->vk.alloc, queue_create->queueCount * sizeof(struct radv_queue), 8,
+                                      VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
       if (!device->queues[qfi]) {
          result = VK_ERROR_OUT_OF_HOST_MEMORY;
          goto fail_queue;
       }
-
-      memset(device->queues[qfi], 0, queue_create->queueCount * sizeof(struct radv_queue));
 
       device->queue_count[qfi] = queue_create->queueCount;
 
@@ -1034,90 +1241,6 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
     */
    device->dispatch_initiator_task = device->dispatch_initiator | S_00B800_DISABLE_DISP_PREMPT_EN(1);
 
-   if (radv_device_fault_detection_enabled(device)) {
-      /* Enable GPU hangs detection and dump logs if a GPU hang is
-       * detected.
-       */
-      keep_shader_info = true;
-
-      if (!radv_init_trace(device)) {
-         result = VK_ERROR_INITIALIZATION_FAILED;
-         goto fail;
-      }
-
-      fprintf(stderr, "*****************************************************************************\n");
-      fprintf(stderr, "* WARNING: RADV_DEBUG=hang is costly and should only be used for debugging! *\n");
-      fprintf(stderr, "*****************************************************************************\n");
-
-      /* Wait for idle after every draw/dispatch to identify the
-       * first bad call.
-       */
-      instance->debug_flags |= RADV_DEBUG_SYNC_SHADERS;
-
-      radv_dump_enabled_options(device, stderr);
-   }
-
-   if (instance->vk.trace_mode & RADV_TRACE_MODE_RGP) {
-      if (pdev->info.gfx_level < GFX8 || pdev->info.gfx_level > GFX11) {
-         fprintf(stderr, "GPU hardware not supported: refer to "
-                         "the RGP documentation for the list of "
-                         "supported GPUs!\n");
-         abort();
-      }
-
-      if (!radv_sqtt_init(device)) {
-         result = VK_ERROR_INITIALIZATION_FAILED;
-         goto fail;
-      }
-
-      fprintf(stderr,
-              "radv: Thread trace support is enabled (initial buffer size: %u MiB, "
-              "instruction timing: %s, cache counters: %s, queue events: %s).\n",
-              device->sqtt.buffer_size / (1024 * 1024), radv_is_instruction_timing_enabled() ? "enabled" : "disabled",
-              radv_spm_trace_enabled(instance) ? "enabled" : "disabled",
-              radv_sqtt_queue_events_enabled() ? "enabled" : "disabled");
-
-      if (radv_spm_trace_enabled(instance)) {
-         if (pdev->info.gfx_level >= GFX10) {
-            if (!radv_spm_init(device)) {
-               result = VK_ERROR_INITIALIZATION_FAILED;
-               goto fail;
-            }
-         } else {
-            fprintf(stderr, "radv: SPM isn't supported for this GPU (%s)!\n", pdev->name);
-         }
-      }
-   }
-
-#ifndef _WIN32
-   if (instance->vk.trace_mode & VK_TRACE_MODE_RMV) {
-      struct vk_rmv_device_info info;
-      memset(&info, 0, sizeof(struct vk_rmv_device_info));
-      radv_rmv_fill_device_info(pdev, &info);
-      vk_memory_trace_init(&device->vk, &info);
-      radv_memory_trace_init(device);
-   }
-#endif
-
-   if (getenv("RADV_TRAP_HANDLER")) {
-      /* TODO: Add support for more hardware. */
-      assert(pdev->info.gfx_level == GFX8);
-
-      fprintf(stderr, "**********************************************************************\n");
-      fprintf(stderr, "* WARNING: RADV_TRAP_HANDLER is experimental and only for debugging! *\n");
-      fprintf(stderr, "**********************************************************************\n");
-
-      /* To get the disassembly of the faulty shaders, we have to
-       * keep some shader info around.
-       */
-      keep_shader_info = true;
-
-      if (!radv_trap_handler_init(device)) {
-         result = VK_ERROR_INITIALIZATION_FAILED;
-         goto fail;
-      }
-   }
-
    if (pdev->info.gfx_level == GFX10_3) {
       if (getenv("RADV_FORCE_VRS_CONFIG_FILE")) {
          const char *file = radv_get_force_vrs_config_file();
@@ -1140,7 +1263,8 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    /* PKT3_LOAD_SH_REG_INDEX is supported on GFX8+, but it hangs with compute queues until GFX10.3. */
    device->load_grid_size_from_user_sgpr = pdev->info.gfx_level >= GFX10_3;
 
-   device->keep_shader_info = keep_shader_info;
+   /* Keep shader info for GPU hangs debugging. */
+   device->keep_shader_info = radv_device_fault_detection_enabled(device) || radv_trap_handler_enabled();
 
    /* Initialize the per-device cache key before compiling meta shaders. */
    radv_device_init_cache_key(device);
@@ -1179,12 +1303,9 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    if (!(instance->debug_flags & RADV_DEBUG_NO_IBS))
       radv_create_gfx_preamble(device);
 
-   struct vk_pipeline_cache_create_info info = {.weak_ref = true};
-   device->mem_cache = vk_pipeline_cache_create(&device->vk, &info, NULL);
-   if (!device->mem_cache) {
-      result = VK_ERROR_OUT_OF_HOST_MEMORY;
+   result = radv_device_init_memory_cache(device);
+   if (result != VK_SUCCESS)
       goto fail_meta;
-   }
 
    device->force_aniso = MIN2(16, (int)debug_get_num_option("RADV_TEX_ANISO", -1));
    if (device->force_aniso >= 0) {
@@ -1192,36 +1313,16 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    }
 
    if (device->vk.enabled_features.performanceCounterQueryPools) {
-      size_t bo_size = PERF_CTR_BO_PASS_OFFSET + sizeof(uint64_t) * PERF_CTR_MAX_PASSES;
-      result = radv_bo_create(device, NULL, bo_size, 4096, RADEON_DOMAIN_GTT,
-                              RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING,
-                              RADV_BO_PRIORITY_UPLOAD_BUFFER, 0, true, &device->perf_counter_bo);
+      result = radv_device_init_perf_counter(device);
       if (result != VK_SUCCESS)
          goto fail_cache;
-
-      device->perf_counter_lock_cs = calloc(sizeof(struct radeon_winsys_cs *), 2 * PERF_CTR_MAX_PASSES);
-      if (!device->perf_counter_lock_cs) {
-         result = VK_ERROR_OUT_OF_HOST_MEMORY;
-         goto fail_cache;
-      }
-
-      if (!pdev->ac_perfcounters.blocks) {
-         result = VK_ERROR_INITIALIZATION_FAILED;
-         goto fail_cache;
-      }
-   }
-
-   if ((instance->vk.trace_mode & RADV_TRACE_MODE_RRA) && radv_enable_rt(pdev, false)) {
-      result = radv_rra_trace_init(device);
-      if (result != VK_SUCCESS)
-         goto fail;
    }
 
    if (device->vk.enabled_features.rayTracingPipelineShaderGroupHandleCaptureReplay) {
       device->capture_replay_arena_vas = _mesa_hash_table_u64_create(NULL);
    }
 
-   result = radv_printf_data_init(device);
+   result = radv_device_init_tools(device);
    if (result != VK_SUCCESS)
       goto fail_cache;
 
@@ -1236,24 +1337,14 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    return VK_SUCCESS;
 
 fail_cache:
-   vk_pipeline_cache_destroy(device->mem_cache, NULL);
+   radv_device_finish_memory_cache(device);
 fail_meta:
    radv_device_finish_meta(device);
 fail:
-   radv_printf_data_finish(device);
+   radv_device_finish_perf_counter(device);
 
-   radv_sqtt_finish(device);
+   radv_device_finish_tools(device);
 
-   radv_rra_trace_finish(radv_device_to_handle(device), &device->rra_trace);
-
-   radv_spm_finish(device);
-
-   radv_trap_handler_finish(device);
-   radv_finish_trace(device);
-
-   radv_device_finish_perf_counter_lock_cs(device);
-   if (device->perf_counter_bo)
-      radv_bo_destroy(device, NULL, device->perf_counter_bo);
    if (device->gfx_init)
       radv_bo_destroy(device, NULL, device->gfx_init);
 
@@ -1303,9 +1394,7 @@ radv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
    if (!device)
       return;
 
-   radv_device_finish_perf_counter_lock_cs(device);
-   if (device->perf_counter_bo)
-      radv_bo_destroy(device, NULL, device->perf_counter_bo);
+   radv_device_finish_perf_counter(device);
 
    if (device->gfx_init)
       radv_bo_destroy(device, NULL, device->gfx_init);
@@ -1332,7 +1421,7 @@ radv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
 
    radv_device_finish_meta(device);
 
-   vk_pipeline_cache_destroy(device->mem_cache, NULL);
+   radv_device_finish_memory_cache(device);
 
    radv_destroy_shader_upload_queue(device);
 
@@ -1349,24 +1438,9 @@ radv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
    simple_mtx_destroy(&device->compute_scratch_mtx);
    simple_mtx_destroy(&device->pso_cache_stats_mtx);
 
-   radv_trap_handler_finish(device);
-   radv_finish_trace(device);
-
    radv_destroy_shader_arenas(device);
    if (device->capture_replay_arena_vas)
       _mesa_hash_table_u64_destroy(device->capture_replay_arena_vas);
-
-   radv_printf_data_finish(device);
-
-   radv_sqtt_finish(device);
-
-   radv_rra_trace_finish(_device, &device->rra_trace);
-
-   radv_memory_trace_finish(device);
-
-   radv_spm_finish(device);
-
-   ralloc_free(device->gpu_hang_report);
 
    vk_device_finish(&device->vk);
    vk_free(&device->vk.alloc, device);
@@ -1789,8 +1863,9 @@ bool
 radv_device_set_pstate(struct radv_device *device, bool enable)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    struct radeon_winsys *ws = device->ws;
-   enum radeon_ctx_pstate pstate = enable ? RADEON_CTX_PSTATE_PEAK : RADEON_CTX_PSTATE_NONE;
+   enum radeon_ctx_pstate pstate = enable ? instance->profile_pstate : RADEON_CTX_PSTATE_NONE;
 
    if (pdev->info.has_stable_pstate) {
       /* pstate is per-device; setting it for one ctx is sufficient.

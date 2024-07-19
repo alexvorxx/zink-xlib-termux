@@ -152,6 +152,8 @@
  *    which must be managed by the driver; if a buffer is bound multiple times in
  *    the same binding point (e.g., vertex buffer slots 0,1,2), this will be counted
  *    as a single rebind.
+ *    A buffer which has had its backing storage replaced may have its backing storage
+ *    accessed through multiple pipe_resources.
  *
  *
  * Optional resource busy callbacks for better performance

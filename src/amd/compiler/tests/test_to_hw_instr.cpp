@@ -425,7 +425,9 @@ BEGIN_TEST(to_hw_instr.extract)
          //~gfx(9|11)_unsigned! s1: %_:s[0] = s_pack_ll_b32_b16 %_:s[1], 0
          //~gfx.*_signed! s1: %_:s[0] = s_sext_i32_i16 %_:s[1]
          EXT(0, 16)
-         //! s1: %_:s[0],  s1: %_:scc = @s_shr %_:s[1], 16
+         //~gfx(7,8)_unsigned! s1: %_:s[0],  s1: %_:scc = @s_shr %_:s[1], 16
+         //~gfx(9|11)_unsigned! s1: %_:s[0] = s_pack_hh_b32_b16 %_:s[1], 0
+         //~gfx.*_signed! s1: %_:s[0],  s1: %_:scc = @s_shr %_:s[1], 16
          EXT(1, 16)
 
 #undef EXT
@@ -523,9 +525,11 @@ BEGIN_TEST(to_hw_instr.insert)
       INS(2, 8)
       //! s1: %_:s[0],  s1: %_:scc = s_lshl_b32 %_:s[1], 24
       INS(3, 8)
-      //! s1: %_:s[0],  s1: %_:scc = s_bfe_u32 %_:s[1], 0x100000
+      //~gfx(7|8)! s1: %_:s[0],  s1: %_:scc = s_bfe_u32 %_:s[1], 0x100000
+      //~gfx(9|11)! s1: %_:s[0] = s_pack_ll_b32_b16 %_:s[1], 0
       INS(0, 16)
-      //! s1: %_:s[0],  s1: %_:scc = s_lshl_b32 %_:s[1], 16
+      //~gfx(7|8)! s1: %_:s[0],  s1: %_:scc = s_lshl_b32 %_:s[1], 16
+      //~gfx(9|11)! s1: %_:s[0] = s_pack_ll_b32_b16 0, %_:s[1]
       INS(1, 16)
 
 #undef INS

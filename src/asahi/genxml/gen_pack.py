@@ -30,13 +30,15 @@ pack_header = """
 #include "util/bitpack_helpers.h"
 #include "util/half_float.h"
 #define FILE_TYPE FILE
-#define CONSTANT const
+#define CONSTANT_ const
+#define GLOBAL_
 #else
 
 #include "libagx.h"
 #define assert(x)
 #define FILE_TYPE void
-#define CONSTANT constant
+#define CONSTANT_ constant
+#define GLOBAL_ global
 
 static uint64_t
 util_bitpack_uint(uint64_t v, uint32_t start, uint32_t end)
@@ -107,7 +109,7 @@ _mesa_half_to_float(uint16_t w)
 #define __gen_unpack_half(x, y, z) _mesa_half_to_float(__gen_unpack_uint(x, y, z))
 
 static inline uint64_t
-__gen_unpack_uint(CONSTANT uint32_t *restrict cl, uint32_t start, uint32_t end)
+__gen_unpack_uint(CONSTANT_ uint32_t *restrict cl, uint32_t start, uint32_t end)
 {
    uint64_t val = 0;
    const int width = end - start + 1;
@@ -132,13 +134,13 @@ __gen_pack_lod(float f, uint32_t start, uint32_t end)
 }
 
 static inline float
-__gen_unpack_lod(CONSTANT uint32_t *restrict cl, uint32_t start, uint32_t end)
+__gen_unpack_lod(CONSTANT_ uint32_t *restrict cl, uint32_t start, uint32_t end)
 {
     return ((float) __gen_unpack_uint(cl, start, end)) / (1 << 6);
 }
 
 static inline uint64_t
-__gen_unpack_sint(CONSTANT uint32_t *restrict cl, uint32_t start, uint32_t end)
+__gen_unpack_sint(CONSTANT_ uint32_t *restrict cl, uint32_t start, uint32_t end)
 {
    int size = end - start + 1;
    int64_t val = __gen_unpack_uint(cl, start, end);
@@ -174,14 +176,14 @@ __gen_from_groups(uint32_t value, uint32_t group_size, uint32_t length)
 
 #define agx_pack(dst, T, name)                              \\
    for (struct AGX_ ## T name = { AGX_ ## T ## _header }, \\
-        *_loop_count = (void *) ((uintptr_t) 0);                  \\
+        *_loop_count = (GLOBAL_ void *) ((uintptr_t) 0);                  \\
         (uintptr_t)_loop_count < 1;       \\
-        ({ AGX_ ## T ## _pack((uint32_t *) (dst), &name);  \\
-           _loop_count = (void*)(((uintptr_t)_loop_count) + 1); }))
+        ({ AGX_ ## T ## _pack((GLOBAL_ uint32_t *) (dst), &name);  \\
+           _loop_count = (GLOBAL_ void*)(((uintptr_t)_loop_count) + 1); }))
 
 #define agx_unpack(fp, src, T, name)                        \\
         struct AGX_ ## T name;                         \\
-        AGX_ ## T ## _unpack(fp, (CONSTANT uint8_t *)(src), &name)
+        AGX_ ## T ## _unpack(fp, (CONSTANT_ uint8_t *)(src), &name)
 
 #define agx_print(fp, T, var, indent)                   \\
         AGX_ ## T ## _print(fp, &(var), indent)
@@ -547,7 +549,7 @@ class Group(object):
             convert = None
 
             args = []
-            args.append('(CONSTANT uint32_t *) cl')
+            args.append('(CONSTANT_ uint32_t *) cl')
             args.append(str(fieldref.start))
             args.append(str(fieldref.end))
 
@@ -702,7 +704,7 @@ class Parser(object):
         print("};\n")
 
     def emit_pack_function(self, name, group):
-        print("static inline void\n%s_pack(uint32_t * restrict cl,\n%sconst struct %s * restrict values)\n{" %
+        print("static inline void\n%s_pack(GLOBAL_ uint32_t * restrict cl,\n%sconst struct %s * restrict values)\n{" %
               (name, ' ' * (len(name) + 6), name))
 
         group.emit_pack_function()
@@ -720,7 +722,7 @@ class Parser(object):
 
     def emit_unpack_function(self, name, group):
         print("static inline bool")
-        print("%s_unpack(FILE_TYPE *fp, CONSTANT uint8_t * restrict cl,\n%sstruct %s * restrict values)\n{" %
+        print("%s_unpack(FILE_TYPE *fp, CONSTANT_ uint8_t * restrict cl,\n%sstruct %s * restrict values)\n{" %
               (name.upper(), ' ' * (len(name) + 8), name))
 
         group.emit_unpack_function()

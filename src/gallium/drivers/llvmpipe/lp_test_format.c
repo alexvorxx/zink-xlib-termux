@@ -44,6 +44,8 @@
 
 #include "lp_test.h"
 
+#define MAX_NAME 64
+
 static struct lp_build_format_cache *cache_ptr;
 
 void
@@ -79,9 +81,9 @@ static LLVMValueRef
 add_fetch_rgba_test(struct gallivm_state *gallivm, unsigned verbose,
                     const struct util_format_description *desc,
                     struct lp_type type,
-                    unsigned use_cache)
+                    unsigned use_cache,
+                    char *name)
 {
-   char name[256];
    LLVMContextRef context = gallivm->context;
    LLVMModuleRef module = gallivm->module;
    LLVMBuilderRef builder = gallivm->builder;
@@ -96,7 +98,7 @@ add_fetch_rgba_test(struct gallivm_state *gallivm, unsigned verbose,
    LLVMValueRef rgba;
    LLVMValueRef cache = NULL;
 
-   snprintf(name, sizeof name, "fetch_%s_%s", desc->short_name,
+   snprintf(name, MAX_NAME * sizeof(char), "fetch_%s_%s", desc->short_name,
             type.floating ? "float" : "unorm8");
 
    args[0] = LLVMPointerType(lp_build_vec_type(gallivm, type), 0);
@@ -142,6 +144,7 @@ test_format_float(unsigned verbose, FILE *fp,
    lp_context_ref context;
    struct gallivm_state *gallivm;
    LLVMValueRef fetch = NULL;
+   char fetch_name[MAX_NAME];
    fetch_ptr_t fetch_ptr;
    alignas(16) uint8_t packed[UTIL_FORMAT_MAX_PACKED_BYTES];
    alignas(16) float unpacked[4];
@@ -153,11 +156,11 @@ test_format_float(unsigned verbose, FILE *fp,
    gallivm = gallivm_create("test_module_float", &context, NULL);
 
    fetch = add_fetch_rgba_test(gallivm, verbose, desc,
-                               lp_float32_vec4_type(), use_cache);
+                               lp_float32_vec4_type(), use_cache, fetch_name);
 
    gallivm_compile_module(gallivm);
 
-   fetch_ptr = (fetch_ptr_t) gallivm_jit_function(gallivm, fetch);
+   fetch_ptr = (fetch_ptr_t) gallivm_jit_function(gallivm, fetch, fetch_name);
 
    gallivm_free_ir(gallivm);
 
@@ -243,6 +246,7 @@ test_format_unorm8(unsigned verbose, FILE *fp,
    lp_context_ref context;
    struct gallivm_state *gallivm;
    LLVMValueRef fetch = NULL;
+   char fetch_name[MAX_NAME];
    fetch_ptr_t fetch_ptr;
    alignas(16) uint8_t packed[UTIL_FORMAT_MAX_PACKED_BYTES];
    uint8_t unpacked[4];
@@ -254,11 +258,11 @@ test_format_unorm8(unsigned verbose, FILE *fp,
    gallivm = gallivm_create("test_module_unorm8", &context, NULL);
 
    fetch = add_fetch_rgba_test(gallivm, verbose, desc,
-                               lp_unorm8_vec4_type(), use_cache);
+                               lp_unorm8_vec4_type(), use_cache, fetch_name);
 
    gallivm_compile_module(gallivm);
 
-   fetch_ptr = (fetch_ptr_t) gallivm_jit_function(gallivm, fetch);
+   fetch_ptr = (fetch_ptr_t) gallivm_jit_function(gallivm, fetch, fetch_name);
 
    gallivm_free_ir(gallivm);
 

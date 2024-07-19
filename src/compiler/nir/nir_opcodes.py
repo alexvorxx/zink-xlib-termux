@@ -927,12 +927,31 @@ opcode("fdph", 1, tfloat, [3, 4], [tfloat, tfloat], False, "",
 opcode("fdph_replicated", 0, tfloat, [3, 4], [tfloat, tfloat], False, "",
        "src0.x * src1.x + src0.y * src1.y + src0.z * src1.z + src1.w")
 
-binop("fmin", tfloat, _2src_commutative + associative, "fmin(src0, src1)")
-binop("imin", tint, _2src_commutative + associative, "src1 > src0 ? src0 : src1")
-binop("umin", tuint, _2src_commutative + associative, "src1 > src0 ? src0 : src1")
-binop("fmax", tfloat, _2src_commutative + associative, "fmax(src0, src1)")
-binop("imax", tint, _2src_commutative + associative, "src1 > src0 ? src1 : src0")
-binop("umax", tuint, _2src_commutative + associative, "src1 > src0 ? src1 : src0")
+# The C fmin/fmax functions have implementation-defined behaviour for signed
+# zeroes. However, SPIR-V requires:
+#
+#   fmin(-0, +0) = -0
+#   fmax(+0, -0) = +0
+#
+# The NIR opcodes match SPIR-V. Furthermore, the NIR opcodes are commutative, so
+# we must also ensure:
+#
+#   fmin(+0, -0) = -0
+#   fmax(-0, +0) = +0
+#
+# To implement the constant folding, when the sources are equal, we use the
+# min/max of the bit patterns which will order the signed zeroes while
+# preserving all other values.
+for op, macro in [("fmin", "MIN2"), ("fmax", "MAX2")]:
+    binop(op, tfloat, _2src_commutative + associative,
+          "bit_size == 64 ? " +
+          f"(src0 == src1 ? uid({macro}((int64_t)dui(src0), (int64_t)dui(src1))) : {op}(src0, src1)) :"
+          f"(src0 == src1 ? uif({macro}((int32_t)fui(src0), (int32_t)fui(src1))) : {op}f(src0, src1))")
+
+binop("imin", tint, _2src_commutative + associative, "MIN2(src0, src1)")
+binop("umin", tuint, _2src_commutative + associative, "MIN2(src0, src1)")
+binop("imax", tint, _2src_commutative + associative, "MAX2(src0, src1)")
+binop("umax", tuint, _2src_commutative + associative, "MAX2(src0, src1)")
 
 binop("fpow", tfloat, "", "bit_size == 64 ? pow(src0, src1) : powf(src0, src1)")
 
@@ -1351,6 +1370,19 @@ binop_convert("interleave_agx", tuint32, tuint16, "", """
       Interleave bits of 16-bit integers to calculate a 32-bit integer. This can
       be used as-is for Morton encoding.
       """)
+
+# NVIDIA PRMT
+opcode("prmt_nv", 0, tuint32, [0, 0, 0], [tuint32, tuint32, tuint32],
+       False, "", """
+    dst = 0;
+    for (unsigned i = 0; i < 4; i++) {
+        uint8_t byte = (src0 >> (i * 4)) & 0x7;
+        uint8_t x = byte < 4 ? (src1 >> (byte * 8))
+                             : (src2 >> ((byte - 4) * 8));
+        if ((src0 >> (i * 4)) & 0x8)
+            x = ((int8_t)x) >> 7;
+        dst |= ((uint32_t)x) << i * 8;
+    }""")
 
 # 24b multiply into 32b result (with sign extension)
 binop("imul24", tint32, _2src_commutative + associative,

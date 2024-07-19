@@ -161,7 +161,9 @@ coro_free(char *ptr)
 
 void lp_build_coro_add_malloc_hooks(struct gallivm_state *gallivm)
 {
+#if !GALLIVM_USE_ORCJIT
    assert(gallivm->engine);
+#endif
 
    assert(gallivm->coro_malloc_hook);
    assert(gallivm->coro_free_hook);

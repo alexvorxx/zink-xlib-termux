@@ -53,14 +53,14 @@ type_name(type_t type)
 {
    static const char *type_names[] = {
       /* clang-format off */
-      [TYPE_F16] = "f16",
-      [TYPE_F32] = "f32",
-      [TYPE_U16] = "u16",
-      [TYPE_U32] = "u32",
-      [TYPE_S16] = "s16",
-      [TYPE_S32] = "s32",
-      [TYPE_U8]  = "u8", 
-      [TYPE_S8]  = "s8",
+      [TYPE_F16]   = "f16",
+      [TYPE_F32]   = "f32",
+      [TYPE_U16]   = "u16",
+      [TYPE_U32]   = "u32",
+      [TYPE_S16]   = "s16",
+      [TYPE_S32]   = "s32",
+      [TYPE_U8]    = "u8",
+      [TYPE_U8_32] = "u8_32",
       /* clang-format on */
    };
    return type_names[type];

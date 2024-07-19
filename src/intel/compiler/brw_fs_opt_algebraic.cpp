@@ -9,7 +9,7 @@
 using namespace brw;
 
 static uint64_t
-src_as_uint(const fs_reg &src)
+src_as_uint(const brw_reg &src)
 {
    assert(src.file == IMM);
 
@@ -37,7 +37,7 @@ src_as_uint(const fs_reg &src)
    }
 }
 
-static fs_reg
+static brw_reg
 brw_imm_for_type(uint64_t value, enum brw_reg_type type)
 {
    switch (type) {
@@ -99,7 +99,7 @@ brw_fs_opt_algebraic(fs_visitor &s)
                 inst->src[0].type != BRW_TYPE_F)
                assert(!"unimplemented: saturate mixed types");
 
-            if (fs_reg_saturate_immediate(&inst->src[0])) {
+            if (brw_reg_saturate_immediate(&inst->src[0])) {
                inst->saturate = false;
                progress = true;
             }
@@ -394,7 +394,7 @@ brw_fs_opt_algebraic(fs_visitor &s)
              */
             assert(!inst->saturate);
 
-            fs_reg result;
+            brw_reg result;
 
             switch (brw_type_size_bytes(inst->src[0].type)) {
             case 2:
@@ -470,7 +470,7 @@ brw_fs_opt_algebraic(fs_visitor &s)
        */
       if (progress && inst->sources == 2 && inst->is_commutative()) {
          if (inst->src[0].file == IMM) {
-            fs_reg tmp = inst->src[1];
+            brw_reg tmp = inst->src[1];
             inst->src[1] = inst->src[0];
             inst->src[0] = tmp;
          }

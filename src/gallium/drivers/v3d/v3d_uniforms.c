@@ -202,10 +202,13 @@ write_tmu_p1(struct v3d_job *job,
         if (sampler->border_color_variants)
                 variant = sview->sampler_variant;
 
+        uint32_t p1_packed = v3d_unit_data_get_offset(data);
+        v3d_pack_unnormalized_coordinates(&job->v3d->screen->devinfo, &p1_packed,
+                                          sampler->base.unnormalized_coords);
+
         cl_aligned_reloc(&job->indirect, uniforms,
                          v3d_resource(sampler->sampler_state)->bo,
-                         sampler->sampler_state_offset[variant] |
-                         v3d_unit_data_get_offset(data));
+                         sampler->sampler_state_offset[variant] | p1_packed);
 }
 
 struct v3d_cl_reloc

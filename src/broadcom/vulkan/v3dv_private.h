@@ -2063,11 +2063,11 @@ struct v3dv_descriptor_set_layout {
    /* Shader stages affected by this descriptor set */
    uint16_t shader_stages;
 
-   /* Number of descriptors in this descriptor set */
-   uint32_t descriptor_count;
-
    /* Number of dynamic offsets used by this descriptor set */
    uint16_t dynamic_offset_count;
+
+   /* Number of descriptors in this descriptor set */
+   uint32_t descriptor_count;
 
    /* Descriptor set layouts can be destroyed even if they are still being
     * used.
@@ -2374,7 +2374,7 @@ v3dv_cmd_buffer_get_descriptor_state(struct v3dv_cmd_buffer *cmd_buffer,
       return &cmd_buffer->state.gfx.descriptor_state;
 }
 
-const nir_shader_compiler_options *v3dv_pipeline_get_nir_options(void);
+const nir_shader_compiler_options *v3dv_pipeline_get_nir_options(const struct v3d_device_info *devinfo);
 
 uint32_t v3dv_physical_device_vendor_id(const struct v3dv_physical_device *dev);
 uint32_t v3dv_physical_device_device_id(const struct v3dv_physical_device *dev);

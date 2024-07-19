@@ -58,7 +58,7 @@ struct DownwardsCursor {
          clause_demand(initial_clause_demand)
    {}
 
-   void verify_invariants(const RegisterDemand* register_demand);
+   void verify_invariants(const Block* block);
 };
 
 /**
@@ -78,7 +78,7 @@ struct UpwardsCursor {
    }
 
    bool has_insert_idx() const { return insert_idx != -1; }
-   void verify_invariants(const RegisterDemand* register_demand);
+   void verify_invariants(const Block* block);
 };
 
 struct MoveState {
@@ -86,7 +86,6 @@ struct MoveState {
 
    Block* block;
    Instruction* current;
-   RegisterDemand* register_demand; /* demand per instruction */
    bool improved_rar;
 
    std::vector<bool> depends_on;
@@ -145,7 +144,7 @@ move_element(T begin_it, size_t idx, size_t before)
 }
 
 void
-DownwardsCursor::verify_invariants(const RegisterDemand* register_demand)
+DownwardsCursor::verify_invariants(const Block* block)
 {
    assert(source_idx < insert_idx_clause);
    assert(insert_idx_clause < insert_idx);
@@ -153,13 +152,13 @@ DownwardsCursor::verify_invariants(const RegisterDemand* register_demand)
 #ifndef NDEBUG
    RegisterDemand reference_demand;
    for (int i = source_idx + 1; i < insert_idx_clause; ++i) {
-      reference_demand.update(register_demand[i]);
+      reference_demand.update(block->instructions[i]->register_demand);
    }
    assert(total_demand == reference_demand);
 
    reference_demand = {};
    for (int i = insert_idx_clause; i < insert_idx; ++i) {
-      reference_demand.update(register_demand[i]);
+      reference_demand.update(block->instructions[i]->register_demand);
    }
    assert(clause_demand == reference_demand);
 #endif
@@ -185,8 +184,8 @@ MoveState::downwards_init(int current_idx, bool improved_rar_, bool may_form_cla
       }
    }
 
-   DownwardsCursor cursor(current_idx, register_demand[current_idx]);
-   cursor.verify_invariants(register_demand);
+   DownwardsCursor cursor(current_idx, block->instructions[current_idx]->register_demand);
+   cursor.verify_invariants(block);
    return cursor;
 }
 
@@ -236,7 +235,8 @@ MoveState::downwards_move(DownwardsCursor& cursor, bool add_to_clause)
    /* New demand for the moved instruction */
    const RegisterDemand temp = get_temp_registers(instr);
    const RegisterDemand temp2 = get_temp_registers(block->instructions[dest_insert_idx - 1]);
-   const RegisterDemand new_demand = register_demand[dest_insert_idx - 1] - temp2 + temp;
+   const RegisterDemand new_demand =
+      block->instructions[dest_insert_idx - 1]->register_demand - temp2 + temp;
    if (new_demand.exceeds(max_registers))
       return move_fail_pressure;
 
@@ -244,10 +244,9 @@ MoveState::downwards_move(DownwardsCursor& cursor, bool add_to_clause)
    move_element(block->instructions.begin(), cursor.source_idx, dest_insert_idx);
 
    /* update register pressure */
-   move_element(register_demand, cursor.source_idx, dest_insert_idx);
    for (int i = cursor.source_idx; i < dest_insert_idx - 1; i++)
-      register_demand[i] -= candidate_diff;
-   register_demand[dest_insert_idx - 1] = new_demand;
+      block->instructions[i]->register_demand -= candidate_diff;
+   block->instructions[dest_insert_idx - 1]->register_demand = new_demand;
    cursor.insert_idx_clause--;
    if (cursor.source_idx != cursor.insert_idx_clause) {
       /* Update demand if we moved over any instructions before the clause */
@@ -263,7 +262,7 @@ MoveState::downwards_move(DownwardsCursor& cursor, bool add_to_clause)
    }
 
    cursor.source_idx--;
-   cursor.verify_invariants(register_demand);
+   cursor.verify_invariants(block);
    return move_success;
 }
 
@@ -281,13 +280,13 @@ MoveState::downwards_skip(DownwardsCursor& cursor)
          }
       }
    }
-   cursor.total_demand.update(register_demand[cursor.source_idx]);
+   cursor.total_demand.update(instr->register_demand);
    cursor.source_idx--;
-   cursor.verify_invariants(register_demand);
+   cursor.verify_invariants(block);
 }
 
 void
-UpwardsCursor::verify_invariants(const RegisterDemand* register_demand)
+UpwardsCursor::verify_invariants(const Block* block)
 {
 #ifndef NDEBUG
    if (!has_insert_idx()) {
@@ -298,7 +297,7 @@ UpwardsCursor::verify_invariants(const RegisterDemand* register_demand)
 
    RegisterDemand reference_demand;
    for (int i = insert_idx; i < source_idx; ++i) {
-      reference_demand.update(register_demand[i]);
+      reference_demand.update(block->instructions[i]->register_demand);
    }
    assert(total_demand == reference_demand);
 #endif
@@ -335,7 +334,7 @@ void
 MoveState::upwards_update_insert_idx(UpwardsCursor& cursor)
 {
    cursor.insert_idx = cursor.source_idx;
-   cursor.total_demand = register_demand[cursor.insert_idx];
+   cursor.total_demand = block->instructions[cursor.insert_idx]->register_demand;
 }
 
 MoveResult
@@ -363,7 +362,7 @@ MoveState::upwards_move(UpwardsCursor& cursor)
       return move_fail_pressure;
    const RegisterDemand temp2 = get_temp_registers(block->instructions[cursor.insert_idx - 1]);
    const RegisterDemand new_demand =
-      register_demand[cursor.insert_idx - 1] - temp2 + candidate_diff + temp;
+      block->instructions[cursor.insert_idx - 1]->register_demand - temp2 + candidate_diff + temp;
    if (new_demand.exceeds(max_registers))
       return move_fail_pressure;
 
@@ -371,18 +370,17 @@ MoveState::upwards_move(UpwardsCursor& cursor)
    move_element(block->instructions.begin(), cursor.source_idx, cursor.insert_idx);
 
    /* update register pressure */
-   move_element(register_demand, cursor.source_idx, cursor.insert_idx);
-   register_demand[cursor.insert_idx] = new_demand;
+   block->instructions[cursor.insert_idx]->register_demand = new_demand;
    for (int i = cursor.insert_idx + 1; i <= cursor.source_idx; i++)
-      register_demand[i] += candidate_diff;
+      block->instructions[i]->register_demand += candidate_diff;
    cursor.total_demand += candidate_diff;
 
-   cursor.total_demand.update(register_demand[cursor.source_idx]);
+   cursor.total_demand.update(block->instructions[cursor.source_idx]->register_demand);
 
    cursor.insert_idx++;
    cursor.source_idx++;
 
-   cursor.verify_invariants(register_demand);
+   cursor.verify_invariants(block);
 
    return move_success;
 }
@@ -400,12 +398,12 @@ MoveState::upwards_skip(UpwardsCursor& cursor)
          if (op.isTemp())
             RAR_dependencies[op.tempId()] = true;
       }
-      cursor.total_demand.update(register_demand[cursor.source_idx]);
+      cursor.total_demand.update(instr->register_demand);
    }
 
    cursor.source_idx++;
 
-   cursor.verify_invariants(register_demand);
+   cursor.verify_invariants(block);
 }
 
 bool
@@ -1172,7 +1170,6 @@ schedule_block(sched_ctx& ctx, Program* program, Block* block)
    ctx.last_SMEM_dep_idx = 0;
    ctx.last_SMEM_stall = INT16_MIN;
    ctx.mv.block = block;
-   ctx.mv.register_demand = program->live.register_demand[block->index].data();
 
    /* go through all instructions and find memory loads */
    unsigned num_stores = 0;
@@ -1224,10 +1221,9 @@ schedule_block(sched_ctx& ctx, Program* program, Block* block)
    }
 
    /* resummarize the block's register demand */
-   block->register_demand = RegisterDemand();
-   for (unsigned idx = 0; idx < block->instructions.size(); idx++) {
-      block->register_demand.update(program->live.register_demand[block->index][idx]);
-   }
+   block->register_demand = block->live_in_demand;
+   for (const aco_ptr<Instruction>& instr : block->instructions)
+      block->register_demand.update(instr->register_demand);
 }
 
 } /* end namespace */
@@ -1299,8 +1295,11 @@ schedule_program(Program* program)
    std::vector<RegisterDemand> block_demands(program->blocks.size());
    std::vector<std::vector<RegisterDemand>> register_demands(program->blocks.size());
    for (unsigned j = 0; j < program->blocks.size(); j++) {
-      block_demands[j] = program->blocks[j].register_demand;
-      register_demands[j] = program->live.register_demand[j];
+      Block &b = program->blocks[j];
+      block_demands[j] = b.register_demand;
+      register_demands[j].reserve(b.instructions.size());
+      for (unsigned i = 0; i < b.instructions.size(); i++)
+         register_demands[j].emplace_back(b.instructions[i]->register_demand);
    }
 
    aco::live_var_analysis(program);
@@ -1308,7 +1307,7 @@ schedule_program(Program* program)
    for (unsigned j = 0; j < program->blocks.size(); j++) {
       Block &b = program->blocks[j];
       for (unsigned i = 0; i < b.instructions.size(); i++)
-         assert(register_demands[b.index][i] == program->live.register_demand[b.index][i]);
+         assert(register_demands[j][i] == b.instructions[i]->register_demand);
       assert(b.register_demand == block_demands[j]);
    }
 

@@ -222,7 +222,7 @@ for line in p.stdout.decode().split("\n"):
     if "GL_RENDER" in line:
         line = line.split("=")[1]
         gpu_name_full = "(".join(line.split("(")[:-1]).strip()
-        gpu_name = line.replace("(TM)", "").split("(")[1].split(",")[0].lower()
+        gpu_name = line.replace("(TM)", "").split("(")[1].split(",")[1].lower().strip()
         break
     elif "gfx_level" in line:
         gfx_level = int(line.split("=")[1])

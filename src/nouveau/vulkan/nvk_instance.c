@@ -12,6 +12,7 @@
 #include "util/build_id.h"
 #include "util/driconf.h"
 #include "util/mesa-sha1.h"
+#include "util/u_debug.h"
 
 VKAPI_ATTR VkResult VKAPI_CALL
 nvk_EnumerateInstanceVersion(uint32_t *pApiVersion)
@@ -74,6 +75,22 @@ nvk_EnumerateInstanceExtensionProperties(const char *pLayerName,
       &instance_extensions, pPropertyCount, pProperties);
 }
 
+static void
+nvk_init_debug_flags(struct nvk_instance *instance)
+{
+   const struct debug_control flags[] = {
+      { "push_dump", NVK_DEBUG_PUSH_DUMP },
+      { "push", NVK_DEBUG_PUSH_DUMP },
+      { "push_sync", NVK_DEBUG_PUSH_SYNC },
+      { "zero_memory", NVK_DEBUG_ZERO_MEMORY },
+      { "vm", NVK_DEBUG_VM },
+      { "no_cbuf", NVK_DEBUG_NO_CBUF },
+      { NULL, 0 },
+   };
+
+   instance->debug_flags = parse_debug_string(getenv("NVK_DEBUG"), flags);
+}
+
 static const driOptionDescription nvk_dri_options[] = {
    DRI_CONF_SECTION_PERFORMANCE
       DRI_CONF_ADAPTIVE_SYNC(true)
@@ -132,6 +149,7 @@ nvk_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
    if (result != VK_SUCCESS)
       goto fail_alloc;
 
+   nvk_init_debug_flags(instance);
    nvk_init_dri_options(instance);
 
    instance->vk.physical_devices.try_create_for_drm =

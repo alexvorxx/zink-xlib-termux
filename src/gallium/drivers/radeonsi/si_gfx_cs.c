@@ -152,7 +152,7 @@ void si_flush_gfx_cs(struct si_context *ctx, unsigned flags, struct pipe_fence_h
 
    /* Make sure CP DMA is idle at the end of IBs after L2 prefetches
     * because the kernel doesn't wait for it. */
-   if (ctx->gfx_level >= GFX7)
+   if (ctx->gfx_level >= GFX7 && ctx->screen->info.has_cp_dma)
       si_cp_dma_wait_for_idle(ctx, &ctx->gfx_cs);
 
    /* If we use s_sendmsg to set tess factors to all 0 or all 1 instead of writing to the tess

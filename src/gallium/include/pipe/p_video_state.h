@@ -412,7 +412,6 @@ struct pipe_h264_picture_desc
    struct
    {
       bool slice_info_present;
-      uint32_t slice_count;
       uint8_t slice_type[128];
       uint32_t slice_data_size[128];
       uint32_t slice_data_offset[128];

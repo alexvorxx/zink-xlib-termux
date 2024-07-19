@@ -332,7 +332,7 @@ lp_build_fill_mattrs(std::vector<std::string> &MAttrs)
    llvm::StringMap<bool> features;
    llvm::sys::getHostCPUFeatures(features);
 
-   for (StringMapIterator<bool> f = features.begin();
+   for (llvm::StringMapIterator<bool> f = features.begin();
         f != features.end();
         ++f) {
       MAttrs.push_back(((*f).second ? "+" : "-") + (*f).first().str());
@@ -405,6 +405,14 @@ lp_build_fill_mattrs(std::vector<std::string> &MAttrs)
    MAttrs.push_back(util_get_cpu_caps()->has_msa ? "+msa" : "-msa");
    /* MSA requires a 64-bit FPU register file */
    MAttrs.push_back("+fp64");
+#endif
+
+#if DETECT_ARCH_RISCV64 == 1
+   /* Before riscv is more matured and util_get_cpu_caps() is implemented,
+    * assume this for now since most of linux capable riscv machine are
+    * riscv64gc
+    */
+   MAttrs = {"+m","+c","+a","+d","+f"};
 #endif
 }
 

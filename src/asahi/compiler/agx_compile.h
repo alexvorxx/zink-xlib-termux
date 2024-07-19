@@ -270,6 +270,7 @@ static const nir_shader_compiler_options agx_nir_options = {
    .lower_isign = true,
    .lower_fsign = true,
    .lower_iabs = true,
+   .lower_fminmax_signed_zero = true,
    .lower_fdph = true,
    .lower_ffract = true,
    .lower_ldexp = true,

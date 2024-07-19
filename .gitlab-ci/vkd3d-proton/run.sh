@@ -17,7 +17,7 @@ mkdir -p "$RESULTS"
 # Modifiying here directly LD_LIBRARY_PATH may cause problems when
 # using a command wrapper. Hence, we will just set it when running the
 # command.
-export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$INSTALL/lib/:/vkd3d-proton-tests/x64/"
+export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$INSTALL/lib/:$INSTALL/lib/dri:/vkd3d-proton-tests/x64/"
 
 
 # Set the Vulkan driver to use.

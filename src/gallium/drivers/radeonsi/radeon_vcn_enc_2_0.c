@@ -35,6 +35,7 @@
 #define RENCODE_IB_PARAM_VIDEO_BITSTREAM_BUFFER    0x00000012
 #define RENCODE_IB_PARAM_QP_MAP                    0x00000014
 #define RENCODE_IB_PARAM_FEEDBACK_BUFFER           0x00000015
+#define RENCODE_IB_PARAM_ENCODE_LATENCY            0x00000018
 #define RENCODE_IB_PARAM_ENCODE_STATISTICS         0x00000019
 
 #define RENCODE_HEVC_IB_PARAM_SLICE_CONTROL        0x00100001
@@ -590,6 +591,7 @@ void radeon_enc_2_0_init(struct radeon_encoder *enc)
    enc->cmd.deblocking_filter_h264 = RENCODE_H264_IB_PARAM_DEBLOCKING_FILTER;
    enc->cmd.enc_statistics = RENCODE_IB_PARAM_ENCODE_STATISTICS;
    enc->cmd.enc_qp_map = RENCODE_IB_PARAM_QP_MAP;
+   enc->cmd.enc_latency = RENCODE_IB_PARAM_ENCODE_LATENCY;
 
    enc->enc_pic.session_info.interface_version =
       ((RENCODE_FW_INTERFACE_MAJOR_VERSION << RENCODE_IF_MAJOR_VERSION_SHIFT) |

@@ -2310,7 +2310,6 @@ radv_queue_init(struct radv_device *device, struct radv_queue *queue, int idx,
    queue->priority = radv_get_queue_global_priority(global_priority);
    queue->hw_ctx = device->hw_ctx[queue->priority];
    queue->state.qf = vk_queue_to_radv(pdev, create_info->queueFamilyIndex);
-   queue->gang_sem_bo = NULL;
 
    VkResult result = vk_queue_init(&queue->vk, &device->vk, create_info, idx);
    if (result != VK_SUCCESS)

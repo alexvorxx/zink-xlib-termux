@@ -29,20 +29,12 @@
 #include <stdint.h>
 #include <string.h>
 
-#if defined(MAJOR_IN_SYSMACROS)
-#include <sys/sysmacros.h>
-#elif defined(MAJOR_IN_MKDEV)
-#include <sys/mkdev.h>
-#endif
-
 #include "compiler/glsl/list.h"
 #include "dev/intel_device_info.h"
 #include "util/bitscan.h"
 #include "util/bitset.h"
 #include "util/hash_table.h"
 #include "util/ralloc.h"
-
-#include "drm-uapi/i915_drm.h"
 
 #define INTEL_PERF_MAX_METRIC_SETS (1500)
 
@@ -132,13 +124,6 @@ struct intel_pipeline_stat {
 #define STATS_BO_SIZE               4096
 #define STATS_BO_END_OFFSET_BYTES   (STATS_BO_SIZE / 2)
 #define MAX_STAT_COUNTERS           (STATS_BO_END_OFFSET_BYTES / 8)
-
-/* Up to now all platforms uses the same sample size */
-#define INTEL_PERF_OA_SAMPLE_SIZE 256
-
-/* header + sample */
-#define INTEL_PERF_OA_HEADER_SAMPLE_SIZE (sizeof(struct intel_perf_record_header) + \
-                                          INTEL_PERF_OA_SAMPLE_SIZE)
 
 struct intel_perf_query_result {
    /**
@@ -254,7 +239,7 @@ struct intel_perf_query_info {
 
    /* OA specific */
    uint64_t oa_metrics_set_id;
-   uint64_t oa_format;
+   uint64_t oa_format;/* KMD value */
 
    /* For indexing into the accumulator[] ... */
    int gpu_time_offset;
@@ -331,15 +316,18 @@ struct intel_perf_query_counter_info {
    } location;
 };
 
-struct intel_perf_config {
+enum intel_perf_features {
+   INTEL_PERF_FEATURE_HOLD_PREEMPTION = (1 << 0),
+   INTEL_PERF_FEATURE_GLOBAL_SSEU = (1 << 1),
    /* Whether i915 has DRM_I915_QUERY_PERF_CONFIG support. */
-   bool i915_query_supported;
+   INTEL_PERF_FEATURE_QUERY_PERF = (1 << 2),
+};
 
+struct intel_perf_config {
    /* Have extended metrics been enabled */
    bool enable_all_metrics;
 
-   /* Version of the i915-perf subsystem, refer to i915_drm.h. */
-   int i915_perf_version;
+   enum intel_perf_features features_supported;
 
    /* Number of bits to shift the OA timestamp values by to match the ring
     * timestamp.
@@ -365,6 +353,7 @@ struct intel_perf_config {
    int n_counters;
 
    struct intel_perf_query_field_layout query_layout;
+   size_t oa_sample_size;
 
    /* Variables referenced in the XML meta data for OA performance
     * counters, e.g in the normalization equations.
@@ -428,6 +417,8 @@ enum intel_perf_record_type {
    INTEL_PERF_RECORD_TYPE_SAMPLE = 1,
    INTEL_PERF_RECORD_TYPE_OA_REPORT_LOST = 2,
    INTEL_PERF_RECORD_TYPE_OA_BUFFER_LOST = 3,
+   INTEL_PERF_RECORD_TYPE_COUNTER_OVERFLOW = 4,
+   INTEL_PERF_RECORD_TYPE_MMIO_TRG_Q_FULL = 5,
    INTEL_PERF_RECORD_TYPE_MAX,
 };
 
@@ -472,6 +463,8 @@ struct intel_perf_registers *intel_perf_load_configuration(struct intel_perf_con
 uint64_t intel_perf_store_configuration(struct intel_perf_config *perf_cfg, int fd,
                                         const struct intel_perf_registers *config,
                                         const char *guid);
+void intel_perf_remove_configuration(struct intel_perf_config *perf_cfg, int fd,
+                                     uint64_t config_id);
 
 static inline unsigned
 intel_perf_query_counter_info_first_query(const struct intel_perf_query_counter_info *counter_info)
@@ -511,6 +504,7 @@ void intel_perf_query_result_accumulate(struct intel_perf_query_result *result,
 /** Read the timestamp value in a report.
  */
 uint64_t intel_perf_report_timestamp(const struct intel_perf_query_info *query,
+                                     const struct intel_device_info *devinfo,
                                      const uint32_t *report);
 
 /** Accumulate the delta between 2 snapshots of OA perf registers (layout
@@ -566,7 +560,7 @@ uint64_t intel_perf_get_oa_format(struct intel_perf_config *perf_cfg);
 static inline bool
 intel_perf_has_hold_preemption(const struct intel_perf_config *perf)
 {
-   return perf->i915_perf_version >= 3;
+   return perf->features_supported & INTEL_PERF_FEATURE_HOLD_PREEMPTION;
 }
 
 /** Whether we have the ability to lock EU array power configuration for the
@@ -576,7 +570,7 @@ intel_perf_has_hold_preemption(const struct intel_perf_config *perf)
 static inline bool
 intel_perf_has_global_sseu(const struct intel_perf_config *perf)
 {
-   return perf->i915_perf_version >= 4;
+   return perf->features_supported & INTEL_PERF_FEATURE_GLOBAL_SSEU;
 }
 
 uint32_t intel_perf_get_n_passes(struct intel_perf_config *perf,
@@ -595,6 +589,10 @@ int intel_perf_stream_open(struct intel_perf_config *perf_config, int drm_fd,
 int intel_perf_stream_read_samples(struct intel_perf_config *perf_config,
                                    int perf_stream_fd, uint8_t *buffer,
                                    size_t buffer_len);
+int intel_perf_stream_set_state(struct intel_perf_config *perf_config,
+                                int perf_stream_fd, bool enable);
+int intel_perf_stream_set_metrics_id(struct intel_perf_config *perf_config,
+                                     int perf_stream_fd, uint64_t metrics_set_id);
 
 #ifdef __cplusplus
 } // extern "C"

@@ -29,7 +29,6 @@
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
-#include <pthread.h>
 #include <poll.h>
 #include <sys/mman.h>
 #include <sys/types.h>
@@ -47,6 +46,7 @@
 #include "linux-drm-syncobj-v1-client-protocol.h"
 #include "tearing-control-v1-client-protocol.h"
 
+#include <util/cnd_monotonic.h>
 #include <util/compiler.h>
 #include <util/hash_table.h>
 #include <util/timespec.h>
@@ -197,10 +197,10 @@ struct wsi_wl_swapchain {
    bool fifo_ready;
 
    struct {
-      pthread_mutex_t lock; /* protects all members */
+      mtx_t lock; /* protects all members */
       uint64_t max_completed;
       struct wl_list outstanding_list;
-      pthread_cond_t list_advanced;
+      struct u_cnd_monotonic list_advanced;
       struct wl_event_queue *queue;
       struct wp_presentation *wp_presentation;
       /* Fallback when wp_presentation is not supported */
@@ -1761,20 +1761,20 @@ dispatch_present_id_queue(struct wsi_swapchain *wsi_chain, struct timespec *end_
     * so there should be no problem locking without timeout.
     * We would like to be able to support timeout = 0 to query the current max_completed count.
     * A timedlock with no timeout can be problematic in that scenario. */
-   err = pthread_mutex_lock(&chain->present_ids.lock);
-   if (err != 0)
+   err = mtx_lock(&chain->present_ids.lock);
+   if (err != thrd_success)
       return VK_ERROR_OUT_OF_DATE_KHR;
 
    /* Someone else is dispatching events; wait for them to update the chain
     * status and wake us up. */
    if (chain->present_ids.dispatch_in_progress) {
-      err = pthread_cond_timedwait(&chain->present_ids.list_advanced,
-                                   &chain->present_ids.lock, end_time);
-      pthread_mutex_unlock(&chain->present_ids.lock);
+      err = u_cnd_monotonic_timedwait(&chain->present_ids.list_advanced,
+                                      &chain->present_ids.lock, end_time);
+      mtx_unlock(&chain->present_ids.lock);
 
-      if (err == ETIMEDOUT)
+      if (err == thrd_timedout)
          return VK_TIMEOUT;
-      else if (err != 0)
+      else if (err != thrd_success)
          return VK_ERROR_OUT_OF_DATE_KHR;
 
       return VK_SUCCESS;
@@ -1790,23 +1790,23 @@ dispatch_present_id_queue(struct wsi_swapchain *wsi_chain, struct timespec *end_
     *
     * We'll pick up the lock again in the dispatched functions.
     */
-   pthread_mutex_unlock(&chain->present_ids.lock);
+   mtx_unlock(&chain->present_ids.lock);
 
    ret = loader_wayland_dispatch(wl_display,
                                  chain->present_ids.queue,
                                  end_time);
 
-   pthread_mutex_lock(&chain->present_ids.lock);
+   mtx_lock(&chain->present_ids.lock);
 
    /* Wake up other waiters who may have been unblocked by the events
     * we just read. */
-   pthread_cond_broadcast(&chain->present_ids.list_advanced);
+   u_cnd_monotonic_broadcast(&chain->present_ids.list_advanced);
 
    assert(chain->present_ids.dispatch_in_progress);
    chain->present_ids.dispatch_in_progress = false;
 
-   pthread_cond_broadcast(&chain->present_ids.list_advanced);
-   pthread_mutex_unlock(&chain->present_ids.lock);
+   u_cnd_monotonic_broadcast(&chain->present_ids.list_advanced);
+   mtx_unlock(&chain->present_ids.lock);
 
    if (ret == -1)
       return VK_ERROR_OUT_OF_DATE_KHR;
@@ -1859,12 +1859,12 @@ wsi_wl_swapchain_wait_for_present(struct wsi_swapchain *wsi_chain,
    timespec_from_nsec(&end_time, MIN2(atimeout, assumed_success_at));
 
    while (1) {
-      err = pthread_mutex_lock(&chain->present_ids.lock);
-      if (err != 0)
+      err = mtx_lock(&chain->present_ids.lock);
+      if (err != thrd_success)
          return VK_ERROR_OUT_OF_DATE_KHR;
 
       bool completed = chain->present_ids.max_completed >= present_id;
-      pthread_mutex_unlock(&chain->present_ids.lock);
+      mtx_unlock(&chain->present_ids.lock);
 
       if (completed)
          return VK_SUCCESS;
@@ -1970,12 +1970,12 @@ presentation_handle_sync_output(void *data,
 static void
 wsi_wl_presentation_update_present_id(struct wsi_wl_present_id *id)
 {
-   pthread_mutex_lock(&id->chain->present_ids.lock);
+   mtx_lock(&id->chain->present_ids.lock);
    if (id->present_id > id->chain->present_ids.max_completed)
       id->chain->present_ids.max_completed = id->present_id;
 
    wl_list_remove(&id->link);
-   pthread_mutex_unlock(&id->chain->present_ids.lock);
+   mtx_unlock(&id->chain->present_ids.lock);
    vk_free(id->alloc, id);
 }
 
@@ -2184,7 +2184,7 @@ wsi_wl_swapchain_queue_present(struct wsi_swapchain *wsi_chain,
 
       id->submission_time = os_time_get_nano();
 
-      pthread_mutex_lock(&chain->present_ids.lock);
+      mtx_lock(&chain->present_ids.lock);
 
       if (chain->present_ids.wp_presentation) {
          id->feedback = wp_presentation_feedback(chain->present_ids.wp_presentation,
@@ -2198,7 +2198,7 @@ wsi_wl_swapchain_queue_present(struct wsi_swapchain *wsi_chain,
       }
 
       wl_list_insert(&chain->present_ids.outstanding_list, &id->link);
-      pthread_mutex_unlock(&chain->present_ids.lock);
+      mtx_unlock(&chain->present_ids.lock);
    }
 
    chain->images[image_index].busy = true;
@@ -2409,8 +2409,8 @@ wsi_wl_swapchain_chain_free(struct wsi_wl_swapchain *chain,
       wl_proxy_wrapper_destroy(chain->present_ids.wp_presentation);
    if (chain->present_ids.surface)
       wl_proxy_wrapper_destroy(chain->present_ids.surface);
-   pthread_cond_destroy(&chain->present_ids.list_advanced);
-   pthread_mutex_destroy(&chain->present_ids.lock);
+   u_cnd_monotonic_destroy(&chain->present_ids.list_advanced);
+   mtx_destroy(&chain->present_ids.lock);
 
    if (chain->present_ids.queue)
       wl_event_queue_destroy(chain->present_ids.queue);
@@ -2601,11 +2601,11 @@ wsi_wl_surface_create_swapchain(VkIcdSurfaceBase *icd_surface,
       chain->drm_modifiers = drm_modifiers_copy;
    }
 
-   if (!wsi_init_pthread_cond_monotonic(&chain->present_ids.list_advanced)) {
+   if (u_cnd_monotonic_init(&chain->present_ids.list_advanced) != thrd_success) {
       result = VK_ERROR_OUT_OF_HOST_MEMORY;
       goto fail_free_wl_chain;
    }
-   pthread_mutex_init(&chain->present_ids.lock, NULL);
+   mtx_init(&chain->present_ids.lock, mtx_plain);
 
    char *queue_name = vk_asprintf(pAllocator,
                                   VK_SYSTEM_ALLOCATION_SCOPE_OBJECT,

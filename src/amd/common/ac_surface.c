@@ -1791,11 +1791,10 @@ void ac_modifier_max_extent(const struct radeon_info *info,
    /* DCC is supported with any size. The maximum width per display pipe is 5760, but multiple
     * display pipes can be used to drive the display.
     */
-   // TODO: Gfx12
    *width = 16384;
    *height = 16384;
 
-   if (ac_modifier_has_dcc(modifier)) {
+   if (info->gfx_level < GFX12 && ac_modifier_has_dcc(modifier)) {
       bool independent_64B_blocks = AMD_FMT_MOD_GET(DCC_INDEPENDENT_64B, modifier);
 
       if (info->gfx_level >= GFX10 && !independent_64B_blocks) {
@@ -1834,6 +1833,7 @@ static bool gfx9_is_dcc_supported_by_DCN(const struct radeon_info *info,
    case GFX10:
    case GFX10_3:
    case GFX11:
+   case GFX11_5:
       /* DCN requires INDEPENDENT_128B_BLOCKS = 0 only on Navi1x. */
       if (info->gfx_level == GFX10 && surf->u.gfx9.color.dcc.independent_128B_blocks)
          return false;
@@ -1841,9 +1841,6 @@ static bool gfx9_is_dcc_supported_by_DCN(const struct radeon_info *info,
       return (!gfx10_DCN_requires_independent_64B_blocks(info, config) ||
               (surf->u.gfx9.color.dcc.independent_64B_blocks &&
                surf->u.gfx9.color.dcc.max_compressed_block_size == V_028C78_MAX_BLOCK_SIZE_64B));
-   case GFX11_5:
-      // TODO: clarify DCN support for 256B compressed block sizes and other modes with the DAL team
-      return true;
    default:
       unreachable("unhandled chip");
       return false;
@@ -2466,8 +2463,6 @@ static int gfx9_compute_surface(struct ac_addrlib *addrlib, const struct radeon_
          /* Don't change the DCC settings for imported buffers - they might differ. */
          if (!(surf->flags & RADEON_SURF_IMPORTED) &&
              (info->use_display_dcc_unaligned || info->use_display_dcc_with_retile_blit)) {
-            // TODO: clarify DCN support with the DAL team for gfx11.5
-
             /* Only Navi12/14 support independent 64B blocks in L2,
              * but without DCC image stores.
              */
@@ -3242,6 +3237,7 @@ static bool gfx12_compute_surface(struct ac_addrlib *addrlib, const struct radeo
       surf->u.gfx9.uses_custom_pitch = true;
    }
 
+   bool supports_display_dcc = info->drm_minor >= 58;
    surf->u.gfx9.swizzle_mode = AddrSurfInfoIn.swizzleMode;
    surf->u.gfx9.resource_type = (enum gfx9_resource_type)AddrSurfInfoIn.resourceType;
    surf->u.gfx9.gfx12_enable_dcc = ac_modifier_has_dcc(surf->modifier) ||
@@ -3250,9 +3246,8 @@ static bool gfx12_compute_surface(struct ac_addrlib *addrlib, const struct radeo
                                     /* Always enable compression for Z/S and MSAA color by default. */
                                     (surf->flags & RADEON_SURF_Z_OR_SBUFFER ||
                                      config->info.samples > 1 ||
-                                     /* TODO: enable display DCC after DAL is ready */
-                                     (!(surf->flags & RADEON_SURF_SCANOUT) &&
-                                     /* These two are not strictly necessary. */
+                                     ((supports_display_dcc || !(surf->flags & RADEON_SURF_SCANOUT)) &&
+                                      /* These two are not strictly necessary. */
                                       surf->u.gfx9.swizzle_mode != ADDR3_LINEAR &&
                                       surf->surf_size >= 4096)));
 
@@ -3260,8 +3255,7 @@ static bool gfx12_compute_surface(struct ac_addrlib *addrlib, const struct radeo
    surf->is_linear = surf->u.gfx9.swizzle_mode == ADDR3_LINEAR;
    surf->is_displayable = !(surf->flags & RADEON_SURF_Z_OR_SBUFFER) &&
                           surf->u.gfx9.resource_type != RADEON_RESOURCE_3D &&
-                          /* TODO: enable display DCC after DAL is ready */
-                          !surf->u.gfx9.gfx12_enable_dcc;
+                          (supports_display_dcc || !surf->u.gfx9.gfx12_enable_dcc);
    surf->thick_tiling = surf->u.gfx9.swizzle_mode >= ADDR3_4KB_3D;
 
    if (surf->flags & RADEON_SURF_Z_OR_SBUFFER) {
@@ -3278,7 +3272,6 @@ static bool gfx12_compute_surface(struct ac_addrlib *addrlib, const struct radeo
       } else if (!(surf->flags & RADEON_SURF_Z_OR_SBUFFER) &&
                  /* Don't change the DCC settings for imported buffers - they might differ. */
                  !(surf->flags & RADEON_SURF_IMPORTED)) {
-         /* TODO: decide what to set for scanout buffers after DAL is ready */
          surf->u.gfx9.color.dcc.max_compressed_block_size = V_028C78_MAX_BLOCK_SIZE_128B;
       }
    }

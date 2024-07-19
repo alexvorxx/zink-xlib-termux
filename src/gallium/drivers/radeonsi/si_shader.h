@@ -497,6 +497,7 @@ struct si_shader_info {
    bool uses_variable_block_size;
    bool uses_grid_size;
    bool uses_tg_size;
+   bool uses_atomic_ordered_add;
    bool writes_position;
    bool writes_psize;
    bool writes_clipvertex;
@@ -865,7 +866,10 @@ struct si_shader {
     * in use.
     */
    uint64_t gpu_address;
-   struct si_resource *scratch_bo;
+   /* Only used on GFX6-10 where the scratch address must be inserted into the shader binary.
+    * This is the scratch address that the current shader binary contains.
+    */
+   uint64_t scratch_va;
    union si_shader_key key;
    struct util_queue_fence ready;
    bool compilation_failed;

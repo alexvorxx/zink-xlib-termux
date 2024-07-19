@@ -16,8 +16,6 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
-#include "drm-uapi/i915_drm.h"
-
 #include "common/intel_gem.h"
 #include "dev/intel_device_info.h"
 #include "perf/intel_perf.h"
@@ -208,7 +206,7 @@ std::vector<PerfRecord> IntelDriver::parse_perf_records(const std::vector<uint8_
          // Report is next to the header
          const uint32_t *report = reinterpret_cast<const uint32_t *>(header + 1);
          uint64_t gpu_timestamp_ldw =
-            intel_perf_report_timestamp(selected_query, report);
+            intel_perf_report_timestamp(selected_query, &perf->devinfo, report);
 
          /* Our HW only provides us with the lower 32 bits of the 36bits
           * timestamp counter value. If we haven't captured the top bits yet,

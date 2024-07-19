@@ -184,17 +184,17 @@ namespace brw {
        * dispatch_width units (which is just enough space for one logical
        * component in this IR).
        */
-      fs_reg
+      brw_reg
       vgrf(enum brw_reg_type type, unsigned n = 1) const
       {
          const unsigned unit = reg_unit(shader->devinfo);
          assert(dispatch_width() <= 32);
 
          if (n > 0)
-            return fs_reg(VGRF, shader->alloc.allocate(
-                              DIV_ROUND_UP(n * brw_type_size_bytes(type) * dispatch_width(),
-                                           unit * REG_SIZE) * unit),
-                           type);
+            return brw_vgrf(shader->alloc.allocate(
+                               DIV_ROUND_UP(n * brw_type_size_bytes(type) * dispatch_width(),
+                                            unit * REG_SIZE) * unit),
+                            type);
          else
             return retype(null_reg_ud(), type);
       }
@@ -202,34 +202,34 @@ namespace brw {
       /**
        * Create a null register of floating type.
        */
-      fs_reg
+      brw_reg
       null_reg_f() const
       {
-         return fs_reg(retype(brw_null_reg(), BRW_TYPE_F));
+         return brw_reg(retype(brw_null_reg(), BRW_TYPE_F));
       }
 
-      fs_reg
+      brw_reg
       null_reg_df() const
       {
-         return fs_reg(retype(brw_null_reg(), BRW_TYPE_DF));
+         return brw_reg(retype(brw_null_reg(), BRW_TYPE_DF));
       }
 
       /**
        * Create a null register of signed integer type.
        */
-      fs_reg
+      brw_reg
       null_reg_d() const
       {
-         return fs_reg(retype(brw_null_reg(), BRW_TYPE_D));
+         return brw_reg(retype(brw_null_reg(), BRW_TYPE_D));
       }
 
       /**
        * Create a null register of unsigned integer type.
        */
-      fs_reg
+      brw_reg
       null_reg_ud() const
       {
-         return fs_reg(retype(brw_null_reg(), BRW_TYPE_UD));
+         return brw_reg(retype(brw_null_reg(), BRW_TYPE_UD));
       }
 
       /**
@@ -254,7 +254,7 @@ namespace brw {
        * Create and insert a nullary instruction into the program.
        */
       fs_inst *
-      emit(enum opcode opcode, const fs_reg &dst) const
+      emit(enum opcode opcode, const brw_reg &dst) const
       {
          return emit(fs_inst(opcode, dispatch_width(), dst));
       }
@@ -263,7 +263,7 @@ namespace brw {
        * Create and insert a unary instruction into the program.
        */
       fs_inst *
-      emit(enum opcode opcode, const fs_reg &dst, const fs_reg &src0) const
+      emit(enum opcode opcode, const brw_reg &dst, const brw_reg &src0) const
       {
          return emit(fs_inst(opcode, dispatch_width(), dst, src0));
       }
@@ -272,8 +272,8 @@ namespace brw {
        * Create and insert a binary instruction into the program.
        */
       fs_inst *
-      emit(enum opcode opcode, const fs_reg &dst, const fs_reg &src0,
-           const fs_reg &src1) const
+      emit(enum opcode opcode, const brw_reg &dst, const brw_reg &src0,
+           const brw_reg &src1) const
       {
          return emit(fs_inst(opcode, dispatch_width(), dst,
                                  src0, src1));
@@ -283,8 +283,8 @@ namespace brw {
        * Create and insert a ternary instruction into the program.
        */
       fs_inst *
-      emit(enum opcode opcode, const fs_reg &dst, const fs_reg &src0,
-           const fs_reg &src1, const fs_reg &src2) const
+      emit(enum opcode opcode, const brw_reg &dst, const brw_reg &src0,
+           const brw_reg &src1, const brw_reg &src2) const
       {
          switch (opcode) {
          case BRW_OPCODE_BFE:
@@ -307,7 +307,7 @@ namespace brw {
        * into the program.
        */
       fs_inst *
-      emit(enum opcode opcode, const fs_reg &dst, const fs_reg srcs[],
+      emit(enum opcode opcode, const brw_reg &dst, const brw_reg srcs[],
            unsigned n) const
       {
          /* Use the emit() methods for specific operand counts to ensure that
@@ -352,8 +352,8 @@ namespace brw {
        * Generally useful to get the minimum or maximum of two values.
        */
       fs_inst *
-      emit_minmax(const fs_reg &dst, const fs_reg &src0,
-                  const fs_reg &src1, brw_conditional_mod mod) const
+      emit_minmax(const brw_reg &dst, const brw_reg &src0,
+                  const brw_reg &src1, brw_conditional_mod mod) const
       {
          assert(mod == BRW_CONDITIONAL_GE || mod == BRW_CONDITIONAL_L);
 
@@ -367,8 +367,8 @@ namespace brw {
       /**
        * Copy any live channel from \p src to the first channel of the result.
        */
-      fs_reg
-      emit_uniformize(const fs_reg &src) const
+      brw_reg
+      emit_uniformize(const brw_reg &src) const
       {
          /* FIXME: We use a vector chan_index and dst to allow constant and
           * copy propagration to move result all the way into the consuming
@@ -378,37 +378,37 @@ namespace brw {
           * should go back to scalar destinations here.
           */
          const fs_builder ubld = exec_all();
-         const fs_reg chan_index = vgrf(BRW_TYPE_UD);
-         const fs_reg dst = vgrf(src.type);
+         const brw_reg chan_index = vgrf(BRW_TYPE_UD);
+         const brw_reg dst = vgrf(src.type);
 
          ubld.emit(SHADER_OPCODE_FIND_LIVE_CHANNEL, chan_index);
          ubld.emit(SHADER_OPCODE_BROADCAST, dst, src, component(chan_index, 0));
 
-         return fs_reg(component(dst, 0));
+         return brw_reg(component(dst, 0));
       }
 
-      fs_reg
-      move_to_vgrf(const fs_reg &src, unsigned num_components) const
+      brw_reg
+      move_to_vgrf(const brw_reg &src, unsigned num_components) const
       {
-         fs_reg *const src_comps = new fs_reg[num_components];
+         brw_reg *const src_comps = new brw_reg[num_components];
          for (unsigned i = 0; i < num_components; i++)
             src_comps[i] = offset(src, dispatch_width(), i);
 
-         const fs_reg dst = vgrf(src.type, num_components);
+         const brw_reg dst = vgrf(src.type, num_components);
          LOAD_PAYLOAD(dst, src_comps, num_components, 0);
 
          delete[] src_comps;
 
-         return fs_reg(dst);
+         return brw_reg(dst);
       }
 
       void
       emit_scan_step(enum opcode opcode, brw_conditional_mod mod,
-                     const fs_reg &tmp,
+                     const brw_reg &tmp,
                      unsigned left_offset, unsigned left_stride,
                      unsigned right_offset, unsigned right_stride) const
       {
-         fs_reg left, right;
+         brw_reg left, right;
          left = horiz_stride(horiz_offset(tmp, left_offset), left_stride);
          right = horiz_stride(horiz_offset(tmp, right_offset), right_stride);
          if ((tmp.type == BRW_TYPE_Q || tmp.type == BRW_TYPE_UQ) &&
@@ -430,13 +430,13 @@ namespace brw {
                /* We treat the bottom 32 bits as unsigned regardless of
                 * whether or not the integer as a whole is signed.
                 */
-               fs_reg right_low = subscript(right, BRW_TYPE_UD, 0);
-               fs_reg left_low = subscript(left, BRW_TYPE_UD, 0);
+               brw_reg right_low = subscript(right, BRW_TYPE_UD, 0);
+               brw_reg left_low = subscript(left, BRW_TYPE_UD, 0);
 
                /* The upper bits get the same sign as the 64-bit type */
                brw_reg_type type32 = brw_type_with_size(tmp.type, 32);
-               fs_reg right_high = subscript(right, type32, 1);
-               fs_reg left_high = subscript(left, type32, 1);
+               brw_reg right_high = subscript(right, type32, 1);
+               brw_reg left_high = subscript(left, type32, 1);
 
                /* Build up our comparison:
                 *
@@ -468,7 +468,7 @@ namespace brw {
       }
 
       void
-      emit_scan(enum opcode opcode, const fs_reg &tmp,
+      emit_scan(enum opcode opcode, const brw_reg &tmp,
                 unsigned cluster_size, brw_conditional_mod mod) const
       {
          assert(dispatch_width() >= 8);
@@ -479,8 +479,8 @@ namespace brw {
          if (dispatch_width() * brw_type_size_bytes(tmp.type) > 2 * REG_SIZE) {
             const unsigned half_width = dispatch_width() / 2;
             const fs_builder ubld = exec_all().group(half_width, 0);
-            fs_reg left = tmp;
-            fs_reg right = horiz_offset(tmp, half_width);
+            brw_reg left = tmp;
+            brw_reg right = horiz_offset(tmp, half_width);
             ubld.emit_scan(opcode, left, cluster_size, mod);
             ubld.emit_scan(opcode, right, cluster_size, mod);
             if (cluster_size > half_width) {
@@ -547,15 +547,15 @@ namespace brw {
        */
 #define _ALU1(prefix, op)                                \
       fs_inst *                                          \
-      op(const fs_reg &dst, const fs_reg &src0) const    \
+      op(const brw_reg &dst, const brw_reg &src0) const    \
       {                                                  \
          assert(_dispatch_width == 1 ||                  \
                 (dst.file >= VGRF && dst.stride != 0) || \
                 (dst.file < VGRF && dst.hstride != 0));  \
          return emit(prefix##op, dst, src0);             \
       }                                                  \
-      fs_reg                                             \
-      op(const fs_reg &src0, fs_inst **out = NULL) const \
+      brw_reg                                             \
+      op(const brw_reg &src0, fs_inst **out = NULL) const \
       {                                                  \
          fs_inst *inst = op(vgrf(src0.type), src0);      \
          if (out) *out = inst;                           \
@@ -565,12 +565,12 @@ namespace brw {
 #define VIRT1(op) _ALU1(SHADER_OPCODE_, op)
 
       fs_inst *
-      alu2(opcode op, const fs_reg &dst, const fs_reg &src0, const fs_reg &src1) const
+      alu2(opcode op, const brw_reg &dst, const brw_reg &src0, const brw_reg &src1) const
       {
          return emit(op, dst, src0, src1);
       }
-      fs_reg
-      alu2(opcode op, const fs_reg &src0, const fs_reg &src1, fs_inst **out = NULL) const
+      brw_reg
+      alu2(opcode op, const brw_reg &src0, const brw_reg &src1, fs_inst **out = NULL) const
       {
          enum brw_reg_type inferred_dst_type =
             brw_type_larger_of(src0.type, src1.type);
@@ -581,12 +581,12 @@ namespace brw {
 
 #define _ALU2(prefix, op)                                                    \
       fs_inst *                                                              \
-      op(const fs_reg &dst, const fs_reg &src0, const fs_reg &src1) const    \
+      op(const brw_reg &dst, const brw_reg &src0, const brw_reg &src1) const    \
       {                                                                      \
          return alu2(prefix##op, dst, src0, src1);                           \
       }                                                                      \
-      fs_reg                                                                 \
-      op(const fs_reg &src0, const fs_reg &src1, fs_inst **out = NULL) const \
+      brw_reg                                                                 \
+      op(const brw_reg &src0, const brw_reg &src1, fs_inst **out = NULL) const \
       {                                                                      \
          return alu2(prefix##op, src0, src1, out);                           \
       }
@@ -595,7 +595,7 @@ namespace brw {
 
 #define ALU2_ACC(op)                                                    \
       fs_inst *                                                     \
-      op(const fs_reg &dst, const fs_reg &src0, const fs_reg &src1) const \
+      op(const brw_reg &dst, const brw_reg &src0, const brw_reg &src1) const \
       {                                                                 \
          fs_inst *inst = emit(BRW_OPCODE_##op, dst, src0, src1);    \
          inst->writes_accumulator = true;                               \
@@ -604,8 +604,8 @@ namespace brw {
 
 #define ALU3(op)                                                        \
       fs_inst *                                                     \
-      op(const fs_reg &dst, const fs_reg &src0, const fs_reg &src1,  \
-         const fs_reg &src2) const                                     \
+      op(const brw_reg &dst, const brw_reg &src0, const brw_reg &src1,  \
+         const brw_reg &src2) const                                     \
       {                                                                 \
          return emit(BRW_OPCODE_##op, dst, src0, src1, src2);           \
       }
@@ -672,13 +672,13 @@ namespace brw {
       /** @} */
 
       fs_inst *
-      ADD(const fs_reg &dst, const fs_reg &src0, const fs_reg &src1) const
+      ADD(const brw_reg &dst, const brw_reg &src0, const brw_reg &src1) const
       {
          return alu2(BRW_OPCODE_ADD, dst, src0, src1);
       }
 
-      fs_reg
-      ADD(const fs_reg &src0, const fs_reg &src1, fs_inst **out = NULL) const
+      brw_reg
+      ADD(const brw_reg &src0, const brw_reg &src1, fs_inst **out = NULL) const
       {
          if (src1.file == IMM && src1.ud == 0 && !out)
             return src0;
@@ -692,7 +692,7 @@ namespace brw {
        * the flag register with the packed 16 bits of the result.
        */
       fs_inst *
-      CMP(const fs_reg &dst, const fs_reg &src0, const fs_reg &src1,
+      CMP(const brw_reg &dst, const brw_reg &src0, const brw_reg &src1,
           brw_conditional_mod condition) const
       {
          /* Take the instruction:
@@ -718,7 +718,7 @@ namespace brw {
        * CMPN: Behaves like CMP, but produces true if src1 is NaN.
        */
       fs_inst *
-      CMPN(const fs_reg &dst, const fs_reg &src0, const fs_reg &src1,
+      CMPN(const brw_reg &dst, const brw_reg &src0, const brw_reg &src1,
            brw_conditional_mod condition) const
       {
          /* Take the instruction:
@@ -753,20 +753,14 @@ namespace brw {
        * CSEL: dst = src2 <op> 0.0f ? src0 : src1
        */
       fs_inst *
-      CSEL(const fs_reg &dst, const fs_reg &src0, const fs_reg &src1,
-           const fs_reg &src2, brw_conditional_mod condition) const
+      CSEL(const brw_reg &dst, const brw_reg &src0, const brw_reg &src1,
+           const brw_reg &src2, brw_conditional_mod condition) const
       {
-         /* CSEL only operates on floats, so we can't do integer </<=/>=/>
-          * comparisons.  Zero/non-zero (== and !=) comparisons almost work.
-          * 0x80000000 fails because it is -0.0, and -0.0 == 0.0.
-          */
-         assert(src2.type == BRW_TYPE_F);
-
          return set_condmod(condition,
                             emit(BRW_OPCODE_CSEL,
-                                 retype(dst, BRW_TYPE_F),
-                                 retype(src0, BRW_TYPE_F),
-                                 retype(src1, BRW_TYPE_F),
+                                 retype(dst, src2.type),
+                                 retype(src0, src2.type),
+                                 retype(src1, src2.type),
                                  src2));
       }
 
@@ -774,8 +768,8 @@ namespace brw {
        * Emit a linear interpolation instruction.
        */
       fs_inst *
-      LRP(const fs_reg &dst, const fs_reg &x, const fs_reg &y,
-          const fs_reg &a) const
+      LRP(const brw_reg &dst, const brw_reg &x, const brw_reg &y,
+          const brw_reg &a) const
       {
          if (shader->devinfo->ver <= 10) {
             /* The LRP instruction actually does op1 * op0 + op2 * (1 - op0), so
@@ -785,14 +779,14 @@ namespace brw {
 
          } else {
             /* We can't use the LRP instruction.  Emit x*(1-a) + y*a. */
-            const fs_reg y_times_a = vgrf(dst.type);
-            const fs_reg one_minus_a = vgrf(dst.type);
-            const fs_reg x_times_one_minus_a = vgrf(dst.type);
+            const brw_reg y_times_a = vgrf(dst.type);
+            const brw_reg one_minus_a = vgrf(dst.type);
+            const brw_reg x_times_one_minus_a = vgrf(dst.type);
 
             MUL(y_times_a, y, a);
             ADD(one_minus_a, negate(a), brw_imm_f(1.0f));
-            MUL(x_times_one_minus_a, x, fs_reg(one_minus_a));
-            return ADD(dst, fs_reg(x_times_one_minus_a), fs_reg(y_times_a));
+            MUL(x_times_one_minus_a, x, brw_reg(one_minus_a));
+            return ADD(dst, brw_reg(x_times_one_minus_a), brw_reg(y_times_a));
          }
       }
 
@@ -800,7 +794,7 @@ namespace brw {
        * Collect a number of registers in a contiguous range of registers.
        */
       fs_inst *
-      LOAD_PAYLOAD(const fs_reg &dst, const fs_reg *src,
+      LOAD_PAYLOAD(const brw_reg &dst, const brw_reg *src,
                    unsigned sources, unsigned header_size) const
       {
          fs_inst *inst = emit(SHADER_OPCODE_LOAD_PAYLOAD, dst, src, sources);
@@ -815,7 +809,7 @@ namespace brw {
       }
 
       fs_inst *
-      VEC(const fs_reg &dst, const fs_reg *src, unsigned sources) const
+      VEC(const brw_reg &dst, const brw_reg *src, unsigned sources) const
       {
          return sources == 1 ? MOV(dst, src[0])
                              : LOAD_PAYLOAD(dst, src, sources, 0);
@@ -828,7 +822,7 @@ namespace brw {
       }
 
       fs_inst *
-      UNDEF(const fs_reg &dst) const
+      UNDEF(const brw_reg &dst) const
       {
          assert(dst.file == VGRF);
          assert(dst.offset % REG_SIZE == 0);
@@ -840,7 +834,7 @@ namespace brw {
       }
 
       fs_inst *
-      DPAS(const fs_reg &dst, const fs_reg &src0, const fs_reg &src1, const fs_reg &src2,
+      DPAS(const brw_reg &dst, const brw_reg &src0, const brw_reg &src1, const brw_reg &src2,
            unsigned sdepth, unsigned rcount) const
       {
          assert(_dispatch_width == 8 * reg_unit(shader->devinfo));
@@ -874,14 +868,14 @@ namespace brw {
        * Workaround for negation of UD registers.  See comment in
        * fs_generator::generate_code() for more details.
        */
-      fs_reg
-      fix_unsigned_negate(const fs_reg &src) const
+      brw_reg
+      fix_unsigned_negate(const brw_reg &src) const
       {
          if (src.type == BRW_TYPE_UD &&
              src.negate) {
-            fs_reg temp = vgrf(BRW_TYPE_UD);
+            brw_reg temp = vgrf(BRW_TYPE_UD);
             MOV(temp, src);
-            return fs_reg(temp);
+            return brw_reg(temp);
          } else {
             return src;
          }
@@ -891,8 +885,8 @@ namespace brw {
        * Workaround for source register modes not supported by the ternary
        * instruction encoding.
        */
-      fs_reg
-      fix_3src_operand(const fs_reg &src) const
+      brw_reg
+      fix_3src_operand(const brw_reg &src) const
       {
          switch (src.file) {
          case FIXED_GRF:
@@ -911,7 +905,7 @@ namespace brw {
             break;
          }
 
-         fs_reg expanded = vgrf(src.type);
+         brw_reg expanded = vgrf(src.type);
          MOV(expanded, src);
          return expanded;
       }
@@ -931,8 +925,8 @@ namespace brw {
    };
 }
 
-static inline fs_reg
-offset(const fs_reg &reg, const brw::fs_builder &bld, unsigned delta)
+static inline brw_reg
+offset(const brw_reg &reg, const brw::fs_builder &bld, unsigned delta)
 {
    return offset(reg, bld.dispatch_width(), delta);
 }

@@ -617,7 +617,7 @@ zink_bo_create(struct zink_screen *screen, uint64_t size, unsigned alignment, en
       bool reclaim_all = false;
       if (heap == ZINK_HEAP_DEVICE_LOCAL_VISIBLE && !screen->resizable_bar) {
          unsigned low_bound = 128 * 1024 * 1024; //128MB is a very small BAR
-         if (screen->info.driver_props.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY)
+         if (zink_driverid(screen) == VK_DRIVER_ID_NVIDIA_PROPRIETARY)
             low_bound *= 2; //nvidia has fat textures or something
          unsigned vk_heap_idx = screen->info.mem_props.memoryTypes[mem_type_idx].heapIndex;
          reclaim_all = screen->info.mem_props.memoryHeaps[vk_heap_idx].size <= low_bound;
@@ -1137,6 +1137,11 @@ zink_bo_commit(struct zink_context *ctx, struct zink_resource *res, unsigned lev
                            util_dynarray_append(&ctx->bs->tracked_semaphores, VkSemaphore, cur_sem);
                         else
                            ok = false;
+                        ok = sparse_backing_free(screen, backing[i]->bo, backing[i], backing_start[i], backing_size[i]);
+                        if (!ok) {
+                           /* Couldn't allocate tracking data structures, so we have to leak */
+                           fprintf(stderr, "zink: leaking sparse backing memory\n");
+                        }
                      }
                      goto out;
                   } else {

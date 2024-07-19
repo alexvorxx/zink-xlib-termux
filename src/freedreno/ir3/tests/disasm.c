@@ -35,6 +35,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "util/macros.h"
+#include "util/u_vector.h"
 
 #include "ir3.h"
 #include "ir3_assembler.h"
@@ -44,16 +45,19 @@
 
 /* clang-format off */
 /* Note: @anholt's 4xx disasm was done on an a418 Nexus 5x */
-#define INSTR_4XX(i, d, ...) { .gpu_id = 420, .instr = #i, .expected = d, __VA_ARGS__ }
-#define INSTR_5XX(i, d, ...) { .gpu_id = 540, .instr = #i, .expected = d, __VA_ARGS__ }
-#define INSTR_6XX(i, d, ...) { .gpu_id = 630, .instr = #i, .expected = d, __VA_ARGS__ }
-#define INSTR_7XX(i, d, ...) { .chip_id = 0x07030001, .instr = #i, .expected = d, __VA_ARGS__ }
+#define INSTR_4XX(i, d, ...) { .gpu_id = 420, .instr = #i, .instr_raw = 0, .expected = d, __VA_ARGS__ }
+#define INSTR_5XX(i, d, ...) { .gpu_id = 540, .instr = #i, .instr_raw = 0, .expected = d, __VA_ARGS__ }
+#define INSTR_6XX(i, d, ...) { .gpu_id = 630, .instr = #i, .instr_raw = 0, .expected = d, __VA_ARGS__ }
+#define INSTR_6XX_RAW(i, d, ...) { .gpu_id = 630, .instr = NULL, .instr_raw = i, .expected = d, __VA_ARGS__ }
+#define INSTR_7XX(i, d, ...) { .chip_id = 0x07030001, .instr = #i, .instr_raw = 0, .expected = d, __VA_ARGS__ }
+#define INSTR_7XX_RAW(i, d, ...) { .chip_id = 0x07030001, .instr = NULL, .instr_raw = i, .expected = d, __VA_ARGS__ }
 /* clang-format on */
 
 static const struct test {
    int gpu_id;
    int chip_id;
    const char *instr;
+   uint64_t instr_raw;
    const char *expected;
    /**
     * Do we expect asm parse fail (ie. for things not (yet) supported by
@@ -222,7 +226,7 @@ static const struct test {
    INSTR_6XX(c0ca0505_03800042, "stg.s32 g[r0.z+5], r8.y, 3"),
    INSTR_6XX(c0ca0500_03800042, "stg.s32 g[r0.z], r8.y, 3"),
    INSTR_6XX(c0ca0531_03800242, "stg.s32 g[r0.z+305], r8.y, 3"),
-   INSTR_5XX(c0ce0100_02800000, "stg.s8 g[r0.x], hr0.x, 2"),
+   INSTR_5XX(c0ce0100_02800000, "stg.u8_32 g[r0.x], r0.x, 2"),
    INSTR_5XX(c0c00100_02800000, "stg.f16 g[r0.x], hr0.x, 2"),
 
    /* Customely crafted */
@@ -479,6 +483,22 @@ static const struct test {
 };
 
 static void
+add_generated_tests(struct u_vector *all_tests, void *ctx) {
+   /* stib.b/ldib.b OFFSET_LO aliases what other instructions use for opcode */
+   for (int offset = 1; offset < 0x1f; offset++) {
+      char *stib = ralloc_asprintf(
+         ctx, "stib.b.untyped.1d.u32.4.imm.base0 r2.y, r5.z+%u, 4", offset);
+      *(struct test *)u_vector_add(all_tests) = (struct test)INSTR_6XX_RAW(
+         0xc026080916e77100ull + ((uint64_t)offset << 54), stib);
+
+      char *ldib = ralloc_asprintf(
+         ctx, "ldib.b.untyped.1d.u32.4.imm.base0 r0.z, r0.y+%u, 0", offset);
+      *(struct test *)u_vector_add(all_tests) = (struct test)INSTR_6XX_RAW(
+         0xc026000201e1b100ull + ((uint64_t)offset << 54), ldib);
+   }
+}
+
+static void
 trim(char *string)
 {
    for (int len = strlen(string); len > 0 && string[len - 1] == '\n'; len--)
@@ -498,12 +518,31 @@ main(int argc, char **argv)
       return 1;
    }
 
+   void *ctx = ralloc_context(NULL);
+
+   struct u_vector all_tests = { 0 };
+   u_vector_init(&all_tests, ARRAY_SIZE(tests), sizeof(struct test));
+   for (uint32_t i = 0; i < ARRAY_SIZE(tests); i++) {
+      *(struct test *) u_vector_add(&all_tests) = tests[i];
+   }
+
+   add_generated_tests(&all_tests, ctx);
+
    struct ir3_compiler *compilers[10] = {};
    struct fd_dev_id dev_ids[ARRAY_SIZE(compilers)];
 
-   for (int i = 0; i < ARRAY_SIZE(tests); i++) {
-      const struct test *test = &tests[i];
-      printf("Testing a%d %s: \"%s\"...\n", test->gpu_id, test->instr,
+   struct test *test;
+   u_vector_foreach (test, &all_tests) {
+      uint32_t code[2];
+      if (test->instr) {
+         code[0] = strtoll(&test->instr[9], NULL, 16);
+         code[1] = strtoll(&test->instr[0], NULL, 16);
+      } else {
+         code[0] = test->instr_raw;
+         code[1] = test->instr_raw >> 32;
+      }
+
+      printf("Testing a%d %08x_%08x: \"%s\"...\n", test->gpu_id, code[1], code[0],
              test->expected);
 
       struct fd_dev_id dev_id = {
@@ -520,10 +559,6 @@ main(int argc, char **argv)
        * Test disassembly:
        */
 
-      uint32_t code[2] = {
-         strtoll(&test->instr[9], NULL, 16),
-         strtoll(&test->instr[0], NULL, 16),
-      };
       ir3_isa_disasm(code, 8, fdisasm,
                      &(struct isa_decode_options){
                         .gpu_id = dev_info->chip * 100,
@@ -611,6 +646,8 @@ main(int argc, char **argv)
       ir3_compiler_destroy(compilers[i]);
    }
 
+   u_vector_finish(&all_tests);
+   ralloc_free(ctx);
    fclose(fdisasm);
    free(disasm_output);
 

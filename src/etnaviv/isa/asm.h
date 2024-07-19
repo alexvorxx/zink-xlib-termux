@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "etnaviv/isa/enums.h"
@@ -92,4 +93,12 @@ struct etna_inst {
    struct etna_inst_tex tex;               /* texture operand */
    struct etna_inst_src src[ETNA_NUM_SRC]; /* source operand */
    unsigned imm;                           /* takes place of src[2] for BRANCH/CALL */
+};
+
+struct etna_asm_result {
+   struct etna_inst *instr;
+   char *error;
+   size_t num_instr;
+   size_t capacity_instr;
+   bool success;
 };

@@ -160,7 +160,6 @@ _mesa_clear_shader_program_data(struct gl_context *ctx,
    shProg->data->UniformStorage = NULL;
    shProg->NumUniformRemapTable = 0;
    shProg->UniformRemapTable = NULL;
-   shProg->UniformHash = NULL;
 
    ralloc_free(shProg->data->InfoLog);
    shProg->data->InfoLog = ralloc_strdup(shProg->data, "");
@@ -308,6 +307,8 @@ standalone_create_shader_program(void)
    whole_program->FragDataBindings = new string_to_uint_map;
    whole_program->FragDataIndexBindings = new string_to_uint_map;
 
+   exec_list_make_empty(&whole_program->EmptyUniformLocations);
+
    return whole_program;
 }
 
@@ -322,7 +323,6 @@ standalone_destroy_shader_program(struct gl_shader_program *whole_program)
    delete whole_program->AttributeBindings;
    delete whole_program->FragDataBindings;
    delete whole_program->FragDataIndexBindings;
-   delete whole_program->UniformHash;
 
    ralloc_free(whole_program);
 }

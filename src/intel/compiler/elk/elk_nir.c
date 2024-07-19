@@ -1001,7 +1001,7 @@ elk_preprocess_nir(const struct elk_compiler *compiler, nir_shader *nir,
     * messages.
     */
    OPT(nir_lower_array_deref_of_vec,
-       nir_var_mem_ubo | nir_var_mem_ssbo,
+       nir_var_mem_ubo | nir_var_mem_ssbo, NULL,
        nir_lower_direct_array_deref_of_vec_load);
 
    /* Get rid of split copies */

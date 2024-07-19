@@ -14,8 +14,11 @@
 #include "intel_perf_common.h"
 #include "perf/intel_perf.h"
 #include "perf/intel_perf_private.h"
+#include "util/compiler.h"
 
 #include "drm-uapi/i915_drm.h"
+
+#include "perf/intel_perf_private.h"
 
 #define FILE_DEBUG_FLAG DEBUG_PERFMON
 
@@ -175,11 +178,17 @@ i915_get_sseu(int drm_fd, struct drm_i915_gem_context_param_sseu *sseu)
 bool
 i915_oa_metrics_available(struct intel_perf_config *perf, int fd, bool use_register_snapshots)
 {
+   int version = i915_perf_version(fd);
    bool i915_perf_oa_available = false;
    struct stat sb;
 
-   perf->i915_query_supported = i915_query_perf_config_supported(perf, fd);
-   perf->i915_perf_version = i915_perf_version(fd);
+   if (i915_query_perf_config_supported(perf, fd))
+      perf->features_supported |= INTEL_PERF_FEATURE_QUERY_PERF;
+
+   if (version >= 4)
+      perf->features_supported |= INTEL_PERF_FEATURE_GLOBAL_SSEU;
+   if (version >= 3)
+      perf->features_supported |= INTEL_PERF_FEATURE_HOLD_PREEMPTION;
 
    /* Record the default SSEU configuration. */
    perf->sseu = rzalloc(perf, struct drm_i915_gem_context_param_sseu);
@@ -212,12 +221,15 @@ i915_oa_metrics_available(struct intel_perf_config *perf, int fd, bool use_regis
 }
 
 int
-i915_perf_stream_read_samples(int perf_stream_fd, uint8_t *buffer,
+i915_perf_stream_read_samples(struct intel_perf_config *perf_config,
+                              int perf_stream_fd, uint8_t *buffer,
                               size_t buffer_len)
 {
+   const size_t sample_header_size = perf_config->oa_sample_size +
+                                     sizeof(struct intel_perf_record_header);
    int len;
 
-   if (buffer_len < INTEL_PERF_OA_HEADER_SAMPLE_SIZE)
+   if (buffer_len < sample_header_size)
       return -ENOSPC;
 
    do {
@@ -231,4 +243,53 @@ i915_perf_stream_read_samples(int perf_stream_fd, uint8_t *buffer,
     * definition matches
     */
    return len;
+}
+
+uint64_t
+i915_add_config(struct intel_perf_config *perf, int fd,
+                const struct intel_perf_registers *config,
+                const char *guid)
+{
+   struct drm_i915_perf_oa_config i915_config = { 0, };
+
+   memcpy(i915_config.uuid, guid, sizeof(i915_config.uuid));
+
+   i915_config.n_mux_regs = config->n_mux_regs;
+   i915_config.mux_regs_ptr = to_const_user_pointer(config->mux_regs);
+
+   i915_config.n_boolean_regs = config->n_b_counter_regs;
+   i915_config.boolean_regs_ptr = to_const_user_pointer(config->b_counter_regs);
+
+   i915_config.n_flex_regs = config->n_flex_regs;
+   i915_config.flex_regs_ptr = to_const_user_pointer(config->flex_regs);
+
+   int ret = intel_ioctl(fd, DRM_IOCTL_I915_PERF_ADD_CONFIG, &i915_config);
+   return ret > 0 ? ret : 0;
+}
+
+int
+i915_remove_config(struct intel_perf_config *perf, int fd, uint64_t config_id)
+{
+   return intel_ioctl(fd, DRM_IOCTL_I915_PERF_REMOVE_CONFIG, &config_id);
+}
+
+bool
+i915_has_dynamic_config_support(struct intel_perf_config *perf, int fd)
+{
+   return i915_remove_config(perf, fd, UINT64_MAX) < 0 && errno == ENOENT;
+}
+
+int
+i915_perf_stream_set_state(int perf_stream_fd, bool enable)
+{
+   unsigned long uapi = enable ? I915_PERF_IOCTL_ENABLE : I915_PERF_IOCTL_DISABLE;
+
+   return intel_ioctl(perf_stream_fd, uapi, 0);
+}
+
+int
+i915_perf_stream_set_metrics_id(int perf_stream_fd, uint64_t metrics_set_id)
+{
+   return intel_ioctl(perf_stream_fd, I915_PERF_IOCTL_CONFIG,
+                      (void *)(uintptr_t)metrics_set_id);
 }

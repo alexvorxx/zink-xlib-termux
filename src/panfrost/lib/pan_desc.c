@@ -50,6 +50,10 @@ mod_to_block_fmt(uint64_t mod)
       if (drm_is_afbc(mod) && (mod & AFBC_FORMAT_MOD_TILED))
          return MALI_BLOCK_FORMAT_AFBC_TILED;
 #endif
+#if PAN_ARCH >= 10
+      if (drm_is_afrc(mod))
+         return 0; /* Reserved field for AFRC state */
+#endif
 
       unreachable("Unsupported modifer");
    }
@@ -413,10 +417,11 @@ pan_rt_init_format(const struct pan_image_view *rt,
 
    struct pan_blendable_format fmt =
       *GENX(panfrost_blendable_format_from_pipe_format)(rt->format);
+   enum mali_color_format writeback_format;
 
    if (fmt.internal) {
       cfg->internal_format = fmt.internal;
-      cfg->writeback_format = fmt.writeback;
+      writeback_format = fmt.writeback;
       panfrost_invert_swizzle(desc->swizzle, swizzle);
    } else {
       /* Construct RAW internal/writeback, where internal is
@@ -428,9 +433,19 @@ pan_rt_init_format(const struct pan_image_view *rt,
       assert(offset <= 4);
 
       cfg->internal_format = MALI_COLOR_BUFFER_INTERNAL_FORMAT_RAW8 + offset;
-
-      cfg->writeback_format = pan_mfbd_raw_format(bits);
+      writeback_format = pan_mfbd_raw_format(bits);
    }
+
+#if PAN_ARCH >= 10
+   const struct pan_image *image = pan_image_view_get_rt_image(rt);
+
+   if (drm_is_afrc(image->layout.modifier))
+      cfg->afrc.writeback_format = writeback_format;
+   else
+      cfg->writeback_format = writeback_format;
+#else
+   cfg->writeback_format = writeback_format;
+#endif
 
    cfg->swizzle = panfrost_translate_swizzle_4(swizzle);
 }
@@ -462,7 +477,9 @@ pan_prepare_rt(const struct pan_fb_info *fb, unsigned layer_idx,
 
    const struct pan_image *image = pan_image_view_get_rt_image(rt);
 
-   cfg->write_enable = true;
+   if (!drm_is_afrc(image->layout.modifier))
+      cfg->write_enable = true;
+
    cfg->dithering_enable = true;
 
    unsigned level = rt->first_level;
@@ -521,6 +538,21 @@ pan_prepare_rt(const struct pan_fb_info *fb, unsigned layer_idx,
 
       if (image->layout.modifier & AFBC_FORMAT_MOD_YTR)
          cfg->afbc.yuv_transform_enable = true;
+#endif
+#if PAN_ARCH >= 10
+   } else if (drm_is_afrc(image->layout.modifier)) {
+      struct pan_afrc_format_info finfo =
+         panfrost_afrc_get_format_info(image->layout.format);
+
+      cfg->writeback_mode = MALI_WRITEBACK_MODE_AFRC_RGB;
+      cfg->afrc.block_size =
+         GENX(pan_afrc_block_size)(image->layout.modifier, 0);
+      cfg->afrc.format =
+         GENX(pan_afrc_format)(finfo, image->layout.modifier, 0);
+
+      cfg->rgb.base = surf.data;
+      cfg->rgb.row_stride = row_stride;
+      cfg->rgb.surface_stride = layer_stride;
 #endif
    } else {
       assert(image->layout.modifier == DRM_FORMAT_MOD_LINEAR ||

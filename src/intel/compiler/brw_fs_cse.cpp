@@ -66,6 +66,7 @@ is_expression(const fs_visitor *v, const fs_inst *const inst)
    case BRW_OPCODE_FBH:
    case BRW_OPCODE_FBL:
    case BRW_OPCODE_CBIT:
+   case BRW_OPCODE_ADD3:
    case BRW_OPCODE_RNDU:
    case BRW_OPCODE_RNDD:
    case BRW_OPCODE_RNDE:
@@ -161,8 +162,8 @@ local_only(const fs_inst *inst)
 static bool
 operands_match(const fs_inst *a, const fs_inst *b, bool *negate)
 {
-   fs_reg *xs = a->src;
-   fs_reg *ys = b->src;
+   brw_reg *xs = a->src;
+   brw_reg *ys = b->src;
 
    if (a->opcode == BRW_OPCODE_MAD) {
       return xs[0].equals(ys[0]) &&
@@ -208,6 +209,13 @@ operands_match(const fs_inst *a, const fs_inst *b, bool *negate)
          }
       }
       return match;
+   } else if (a->sources == 3) {
+      return (xs[0].equals(ys[0]) && xs[1].equals(ys[1]) && xs[2].equals(ys[2])) ||
+             (xs[0].equals(ys[0]) && xs[1].equals(ys[2]) && xs[2].equals(ys[1])) ||
+             (xs[0].equals(ys[1]) && xs[1].equals(ys[0]) && xs[2].equals(ys[2])) ||
+             (xs[0].equals(ys[1]) && xs[1].equals(ys[2]) && xs[2].equals(ys[1])) ||
+             (xs[0].equals(ys[2]) && xs[1].equals(ys[0]) && xs[2].equals(ys[1])) ||
+             (xs[0].equals(ys[2]) && xs[1].equals(ys[1]) && xs[2].equals(ys[0]));
    } else {
       return (xs[0].equals(ys[0]) && xs[1].equals(ys[1])) ||
              (xs[1].equals(ys[0]) && xs[0].equals(ys[1]));
@@ -243,7 +251,7 @@ instructions_match(fs_inst *a, fs_inst *b, bool *negate)
 #define HASH(hash, data) XXH32(&(data), sizeof(data), hash)
 
 uint32_t
-hash_reg(uint32_t hash, const fs_reg &r)
+hash_reg(uint32_t hash, const brw_reg &r)
 {
    struct {
       uint64_t u64;
@@ -306,7 +314,7 @@ hash_inst(const void *v)
       /* Canonicalize negations on either source (or both) and commutatively
        * combine the hashes for both sources.
        */
-      fs_reg src[2] = { inst->src[0], inst->src[1] };
+      brw_reg src[2] = { inst->src[0], inst->src[1] };
       uint32_t src_hash[2];
 
       for (int i = 0; i < 2; i++) {
@@ -319,10 +327,11 @@ hash_inst(const void *v)
 
       hash = src_hash[0] * src_hash[1];
    } else if (inst->is_commutative()) {
-      /* Commutatively combine both sources */
+      /* Commutatively combine the sources */
       uint32_t hash0 = hash_reg(hash, inst->src[0]);
       uint32_t hash1 = hash_reg(hash, inst->src[1]);
-      hash = hash0 * hash1;
+      uint32_t hash2 = inst->sources > 2 ? hash_reg(hash, inst->src[2]) : 1;
+      hash = hash0 * hash1 * hash2;
    } else {
       /* Just hash all the sources */
       for (int i = 0; i < inst->sources; i++)
@@ -374,8 +383,8 @@ remap_sources(fs_visitor &s, const brw::def_analysis &defs,
                if (def_block->end_ip_delta)
                   s.cfg->adjust_block_ips();
 
-               fs_reg neg(VGRF, new_nr, BRW_TYPE_F);
-               fs_reg tmp = dbld.MOV(negate(neg));
+               brw_reg neg = brw_vgrf(new_nr, BRW_TYPE_F);
+               brw_reg tmp = dbld.MOV(negate(neg));
                inst->src[i].nr = tmp.nr;
                remap_table[old_nr] = tmp.nr;
             } else {

@@ -766,3 +766,37 @@ ac_alpha_is_on_msb(const struct radeon_info *info, enum pipe_format format)
 
    return comp_swap != V_028C70_SWAP_STD_REV && comp_swap != V_028C70_SWAP_ALT_REV;
 }
+
+/* GFX6-8:
+ * - no integer format support
+ * - no depth format support (depth formats without shadow samplers are supported,
+ *   but that's not enough)
+ * - only single-channel formats are supported
+ * - limitations of early chips (GFX6 only): no R9G9B9E5 support
+ *
+ * GFX9+:
+ * - all formats are supported
+ */
+bool
+ac_is_reduction_mode_supported(const struct radeon_info *info, enum pipe_format format,
+                               bool shadow_samplers)
+{
+   const struct util_format_description *desc = util_format_description(format);
+
+   if (info->gfx_level <= GFX8) {
+      /* old HW limitations */
+      if (info->gfx_level == GFX6 && format == PIPE_FORMAT_R9G9B9E5_FLOAT)
+         return false;
+
+      /* reject if more than one channel */
+      if (desc->nr_channels > 1)
+         return false;
+
+      /* no integer or depth format support */
+      if (util_format_is_pure_integer(format) ||
+          (shadow_samplers && util_format_has_depth(desc)))
+         return false;
+   }
+
+   return true;
+}

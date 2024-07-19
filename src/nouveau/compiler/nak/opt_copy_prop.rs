@@ -37,8 +37,8 @@ struct CopyEntry {
 
 struct PrmtEntry {
     bi: usize,
+    sel: PrmtSel,
     srcs: [Src; 2],
-    selection: u16,
 }
 
 enum CopyPropEntry {
@@ -73,21 +73,15 @@ impl CopyPropPass {
         &mut self,
         bi: usize,
         dst: SSAValue,
+        sel: PrmtSel,
         srcs: [Src; 2],
-        selection: u16,
     ) {
         assert!(
             srcs[0].src_ref.get_reg().is_none()
                 && srcs[1].src_ref.get_reg().is_none()
         );
-        self.ssa_map.insert(
-            dst,
-            CopyPropEntry::Prmt(PrmtEntry {
-                bi,
-                srcs,
-                selection,
-            }),
-        );
+        self.ssa_map
+            .insert(dst, CopyPropEntry::Prmt(PrmtEntry { bi, sel, srcs }));
     }
 
     fn add_fp64_copy(&mut self, bi: usize, dst: &SSARef, src: Src) {
@@ -277,25 +271,22 @@ impl CopyPropPass {
                     let mut combined = [0_u8; 4];
 
                     for i in 0..4 {
-                        let val = ((entry.selection >> (swizzle_prmt[i] * 4))
-                            & 0xF) as u8;
+                        let prmt_byte = entry.sel.get(swizzle_prmt[i].into());
 
                         // If we have a sign extension, we cannot simplify it.
-                        if val & 8 != 0 {
+                        if prmt_byte.msb() {
                             return;
                         }
-
-                        let target_src_idx = val / 4;
 
                         // Ensure we are using the same source, we cannot
                         // combine multiple sources.
                         if entry_src_idx.is_none() {
-                            entry_src_idx = Some(target_src_idx);
-                        } else if entry_src_idx != Some(target_src_idx) {
+                            entry_src_idx = Some(prmt_byte.src());
+                        } else if entry_src_idx != Some(prmt_byte.src()) {
                             return;
                         }
 
-                        combined[i] = val & 0x3;
+                        combined[i] = prmt_byte.byte().try_into().unwrap();
                     }
 
                     let entry_src_idx = usize::from(entry_src_idx.unwrap());
@@ -597,43 +588,15 @@ impl CopyPropPass {
             Op::Prmt(prmt) => {
                 let dst = prmt.dst.as_ssa().unwrap();
                 assert!(dst.comps() == 1);
-                if prmt.mode != PrmtMode::Index {
-                    return;
-                }
-                let SrcRef::Imm32(sel) = prmt.sel.src_ref else {
-                    return;
-                };
-
-                if sel == 0x3210 {
-                    self.add_copy(bi, dst[0], SrcType::GPR, prmt.srcs[0]);
-                } else if sel == 0x7654 {
-                    self.add_copy(bi, dst[0], SrcType::GPR, prmt.srcs[1]);
-                } else {
-                    let mut is_imm = true;
-                    let mut imm = 0_u32;
-                    for d in 0..4 {
-                        let s = ((sel >> d * 4) & 0x7) as usize;
-                        let sign = (sel >> d * 4) & 0x8 != 0;
-                        if let Some(u) = prmt.srcs[s / 4].as_u32() {
-                            let mut sb = (u >> (s * 8)) as u8;
-                            if sign {
-                                sb = ((sb as i8) >> 7) as u8;
-                            }
-                            imm |= (sb as u32) << (d * 8);
-                        } else {
-                            is_imm = false;
-                            break;
-                        }
-                    }
-                    if is_imm {
+                if let Some(sel) = prmt.get_sel() {
+                    if let Some(imm) = prmt.as_u32() {
                         self.add_copy(bi, dst[0], SrcType::GPR, imm.into());
+                    } else if sel == PrmtSel(0x3210) {
+                        self.add_copy(bi, dst[0], SrcType::GPR, prmt.srcs[0]);
+                    } else if sel == PrmtSel(0x7654) {
+                        self.add_copy(bi, dst[0], SrcType::GPR, prmt.srcs[1]);
                     } else {
-                        self.add_prmt(
-                            bi,
-                            dst[0],
-                            prmt.srcs,
-                            sel.try_into().unwrap(),
-                        );
+                        self.add_prmt(bi, dst[0], sel, prmt.srcs);
                     }
                 }
             }
@@ -722,7 +685,7 @@ impl CopyPropPass {
     }
 }
 
-impl Shader {
+impl Shader<'_> {
     pub fn opt_copy_prop(&mut self) {
         for f in &mut self.functions {
             CopyPropPass::new().run(f);

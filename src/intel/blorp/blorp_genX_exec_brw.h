@@ -866,18 +866,43 @@ blorp_emit_ps_config(struct blorp_batch *batch,
    }
 
    blorp_emit(batch, GENX(3DSTATE_PS_EXTRA), psx) {
-      if (prog_data) {
-         psx.PixelShaderValid = true;
-#if GFX_VER < 20
-         psx.AttributeEnable = prog_data->num_varying_inputs > 0;
-#endif
-         psx.PixelShaderIsPerSample = prog_data->persample_dispatch;
-         psx.PixelShaderComputedDepthMode = prog_data->computed_depth_mode;
-         psx.PixelShaderComputesStencil = prog_data->computed_stencil;
-      }
-
       if (params->src.enabled)
          psx.PixelShaderKillsPixel = true;
+
+      if (prog_data) {
+         psx.PixelShaderValid = true;
+         psx.PixelShaderComputedDepthMode = prog_data->computed_depth_mode;
+         psx.PixelShaderComputesStencil = prog_data->computed_stencil;
+         psx.PixelShaderIsPerSample = prog_data->persample_dispatch;
+#if GFX_VER < 20
+         psx.AttributeEnable = prog_data->num_varying_inputs > 0;
+#else
+         /* Bspec 57340 (r59562):
+          *
+          *   For MSAA fast clear, it (clear shader) must be in per-pixel
+          *   dispatch mode.
+          *
+          * Bspec 56424 (r58933):
+          *
+          *   Bit 6 of Bit Group 0: Pixel Shader Is Per Sample
+          *   If this bit is DISABLED, the dispatch rate is determined by the
+          *   value of Pixel Shader Is Per Coarse Pixel.
+          *
+          *   Bit 4 of Bit Group 0: Pixel Shader Is Per Coarse Pixel
+          *   If Pixel Shader Is Per Sample is DISABLED and this bit is
+          *   DISABLED, the pixel shader is dispatched at the per pixel
+          *   shading rate.
+          *
+          * The below assertion ensures the MSAA clear shader is in per-pixel
+          * dispatch mode.
+          */
+         if (params->fast_clear_op == ISL_AUX_OP_FAST_CLEAR &&
+             params->num_samples > 1) {
+            assert(!psx.PixelShaderIsPerSample &&
+                   !psx.PixelShaderIsPerCoarsePixel);
+         }
+#endif
+      }
    }
 }
 

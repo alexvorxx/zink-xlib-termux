@@ -238,7 +238,7 @@ impl LowerCopySwap {
     }
 
     fn run(&mut self, s: &mut Shader) {
-        let sm = s.info.sm;
+        let sm = s.sm;
         s.map_instrs(|instr: Box<Instr>, _| -> MappedInstrs {
             match instr.op {
                 Op::R2UR(r2ur) => {
@@ -283,7 +283,7 @@ impl LowerCopySwap {
     }
 }
 
-impl Shader {
+impl Shader<'_> {
     pub fn lower_copy_swap(&mut self) {
         let mut pass = LowerCopySwap::new(self.info.slm_size);
         pass.run(self);

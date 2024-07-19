@@ -545,6 +545,11 @@ intrinsic("write_invocation_amd", src_comp=[0, 0, 1], dest_comp=0, bit_sizes=src
 intrinsic("mbcnt_amd", src_comp=[1, 1], dest_comp=1, bit_sizes=[32], flags=[CAN_ELIMINATE])
 # Compiled to v_permlane16_b32. src = [ value, lanesel_lo, lanesel_hi ]
 intrinsic("lane_permute_16_amd", src_comp=[1, 1, 1], dest_comp=1, bit_sizes=[32], flags=[CAN_ELIMINATE])
+# subgroup shuffle up/down with cluster size 16.
+# base in [-15, -1]: DPP_ROW_SR
+# base in [  1, 15]: DPP_ROW_SL, otherwise invalid.
+# Returns zero for invocations that try to read out of bounds
+intrinsic("dpp16_shift_amd", src_comp=[0], dest_comp=0, bit_sizes=src0, indices=[BASE], flags=[CAN_ELIMINATE])
 
 # Basic Geometry Shader intrinsics.
 #
@@ -1402,6 +1407,11 @@ intrinsic("inclusive_scan_clusters_ir3", dest_comp=1, src_comp=[1],
 intrinsic("exclusive_scan_clusters_ir3", dest_comp=1, src_comp=[1, 1],
           bit_sizes=src0, indices=[REDUCTION_OP])
 
+# IR3-specific intrinsics for prefetching descriptors in preambles.
+intrinsic("prefetch_sam_ir3", [1, 1], flags=[CAN_REORDER])
+intrinsic("prefetch_tex_ir3", [1], flags=[CAN_REORDER])
+intrinsic("prefetch_ubo_ir3", [1], flags=[CAN_REORDER])
+
 # Intrinsics used by the Midgard/Bifrost blend pipeline. These are defined
 # within a blend shader to read/write the raw value from the tile buffer,
 # without applying any format conversion in the process. If the shader needs
@@ -1707,23 +1717,26 @@ system_value("ordered_id_amd", 1)
 # WRITE_MASK = mask for counter channel to update
 intrinsic("ordered_xfb_counter_add_gfx11_amd", dest_comp=0, src_comp=[1, 0], indices=[WRITE_MASK], bit_sizes=[32])
 
-# Add dwords_written[] to global streamout offsets.
+# Execute the atomic ordered add loop. This does what ds_ordered_count did in previous generations.
+# This is implemented with inline assembly to get the most optimal code.
+#
+# Inputs:
+#   exec = one lane per counter (use nir_push_if, streamout should always enable 4 lanes)
+#   src[0] = 64-bit SGPR atomic base address (streamout should use nir_load_xfb_state_address_gfx12_amd)
+#   src[1] = 32-bit VGPR voffset (streamout should set local_invocation_index * 8)
+#   src[2] = 32-bit SGPR ordered_id (use nir_load_ordered_id_amd for streamout, compute shaders
+#            should generated it manually)
+#   src[3] = 64-bit VGPR atomic src, use pack_64_2x32_split(ordered_id, value), streamout should do:
+#            pack_64_2x32_split(ordered_id, "dwords written per workgroup" for each buffer)
+#
+# dst = 32-bit VGPR of the previous value of 32-bit value in memory, returned for all enabled lanes
+
+# Example - streamout: It's used to add dwords_written[] to global streamout offsets.
 # * Exactly 4 lanes must be active, one for each buffer binding.
 # * Disabled buffers must set dwords_written=0 for their lane, but the lane
 #   must be enabled.
-# * This is implemented with inline assembly, which is why some parameters
-#   appear trivial or redundant.
 #
-# Inputs:
-#   exec = 0xf (set by the caller using nir_push_if)
-#   src[0] = 64-bit SGPR atomic base address (use nir_load_xfb_state_address_gfx12_amd)
-#   src[1] = 32-bit VGPR voffset, set in 4 lanes (always local_invocation_index * 8)
-#   src[2] = 32-bit SGPR ordered_id (use nir_load_ordered_id_amd)
-#   src[3] = 64-bit VGPR atomic src, set in 4 lanes
-#            (always pack_64_2x32_split(ordered_id, "dwords written per workgroup" for each buffer))
-#
-# dst = 32-bit VGPR of the previous value of dwords_writtenN in memory, returned in 4 lanes
-intrinsic("ordered_xfb_counter_add_gfx12_amd", dest_comp=1, src_comp=[1, 1, 1, 1], bit_sizes=[32])
+intrinsic("ordered_add_loop_gfx12_amd", dest_comp=1, src_comp=[1, 1, 1, 1], bit_sizes=[32])
 
 # Subtract from global streamout buffer offsets. Used to fix up the offsets
 # when we overflow streamout buffers.

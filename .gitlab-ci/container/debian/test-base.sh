@@ -28,6 +28,7 @@ EPHEMERAL=(
     ccache
     cmake
     "clang-${LLVM_VERSION}"
+    dpkg-dev
     flex
     glslang-tools
     g++

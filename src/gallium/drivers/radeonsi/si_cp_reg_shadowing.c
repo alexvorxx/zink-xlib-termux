@@ -65,7 +65,7 @@ void si_init_cp_reg_shadowing(struct si_context *sctx)
       struct si_pm4_state *shadowing_preamble = si_pm4_create_sized(sctx->screen, 256, false);
 
       ac_create_shadowing_ib_preamble(&sctx->screen->info,
-                                      (pm4_cmd_add_fn)ac_pm4_cmd_add, shadowing_preamble,
+                                      (pm4_cmd_add_fn)ac_pm4_cmd_add, &shadowing_preamble->base,
                                       sctx->shadowing.registers->gpu_address, sctx->screen->dpbb_allowed);
 
       /* Initialize shadowed registers as follows. */

@@ -1119,7 +1119,7 @@ brw_preprocess_nir(const struct brw_compiler *compiler, nir_shader *nir,
     * messages.
     */
    OPT(nir_lower_array_deref_of_vec,
-       nir_var_mem_ubo | nir_var_mem_ssbo,
+       nir_var_mem_ubo | nir_var_mem_ssbo, NULL,
        nir_lower_direct_array_deref_of_vec_load);
 
    /* Clamp load_per_vertex_input of the TCS stage so that we do not generate

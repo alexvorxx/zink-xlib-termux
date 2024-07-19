@@ -705,6 +705,7 @@ visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
    case nir_intrinsic_write_invocation_amd:
    case nir_intrinsic_mbcnt_amd:
    case nir_intrinsic_lane_permute_16_amd:
+   case nir_intrinsic_dpp16_shift_amd:
    case nir_intrinsic_elect:
    case nir_intrinsic_elect_any_ir3:
    case nir_intrinsic_load_tlb_color_brcm:
@@ -721,7 +722,7 @@ visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
    case nir_intrinsic_load_topology_id_intel:
    case nir_intrinsic_load_scratch_base_ptr:
    case nir_intrinsic_ordered_xfb_counter_add_gfx11_amd:
-   case nir_intrinsic_ordered_xfb_counter_add_gfx12_amd:
+   case nir_intrinsic_ordered_add_loop_gfx12_amd:
    case nir_intrinsic_xfb_counter_sub_gfx11_amd:
    case nir_intrinsic_unit_test_divergent_amd:
    case nir_intrinsic_load_stack:

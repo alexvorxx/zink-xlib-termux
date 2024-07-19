@@ -1324,7 +1324,8 @@ static void amdgpu_buffer_set_metadata(struct radeon_winsys *rws,
                                        struct radeon_surf *surf)
 {
    struct amdgpu_winsys *aws = amdgpu_winsys(rws);
-   struct amdgpu_bo_real *bo = get_real_bo(amdgpu_winsys_bo(_buf));
+   struct amdgpu_winsys_bo *bo = amdgpu_winsys_bo(_buf);
+   struct amdgpu_bo_real *real = is_real_bo(bo) ? get_real_bo(bo) : get_slab_entry_real_bo(bo);
    struct amdgpu_bo_metadata metadata = {0};
 
    ac_surface_compute_bo_metadata(&aws->info, surf, &metadata.tiling_info);
@@ -1332,7 +1333,7 @@ static void amdgpu_buffer_set_metadata(struct radeon_winsys *rws,
    metadata.size_metadata = md->size_metadata;
    memcpy(metadata.umd_metadata, md->metadata, sizeof(md->metadata));
 
-   amdgpu_bo_set_metadata(bo->bo_handle, &metadata);
+   amdgpu_bo_set_metadata(real->bo_handle, &metadata);
 }
 
 struct pb_buffer_lean *

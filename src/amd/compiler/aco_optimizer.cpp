@@ -81,13 +81,12 @@ enum Label {
    label_f2f32 = 1ull << 37,
    label_f2f16 = 1ull << 38,
    label_split = 1ull << 39,
-   label_subgroup_invocation = 1ull << 40,
 };
 
 static constexpr uint64_t instr_usedef_labels =
    label_vec | label_mul | label_add_sub | label_vop3p | label_bitwise | label_uniform_bitwise |
    label_minmax | label_vopc | label_usedef | label_extract | label_dpp16 | label_dpp8 |
-   label_f2f32 | label_subgroup_invocation;
+   label_f2f32;
 static constexpr uint64_t instr_mod_labels =
    label_omod2 | label_omod4 | label_omod5 | label_clamp | label_insert | label_f2f16;
 
@@ -452,14 +451,6 @@ struct ssa_info {
    }
 
    bool is_split() { return label & label_split; }
-
-   void set_subgroup_invocation(Instruction* label_instr)
-   {
-      add_label(label_subgroup_invocation);
-      instr = label_instr;
-   }
-
-   bool is_subgroup_invocation() { return label & label_subgroup_invocation; }
 };
 
 struct opt_ctx {
@@ -617,6 +608,8 @@ alu_can_accept_constant(const aco_ptr<Instruction>& instr, unsigned operand)
       return false;
 
    switch (instr->opcode) {
+   case aco_opcode::s_fmac_f16:
+   case aco_opcode::s_fmac_f32:
    case aco_opcode::v_mac_f32:
    case aco_opcode::v_writelane_b32:
    case aco_opcode::v_writelane_b32_e64:
@@ -668,7 +661,7 @@ valu_can_accept_vgpr(aco_ptr<Instruction>& instr, unsigned operand)
        instr->opcode == aco_opcode::v_readlane_b32 ||
        instr->opcode == aco_opcode::v_readlane_b32_e64)
       return operand == 0;
-   return true;
+   return instr_info.classes[(int)instr->opcode] != instr_class::valu_pseudo_scalar_trans;
 }
 
 /* check constant bus and literal limitations */
@@ -1040,7 +1033,8 @@ can_apply_extract(opt_ctx& ctx, aco_ptr<Instruction>& instr, unsigned idx, ssa_i
    } else if (instr->opcode == aco_opcode::v_mul_u32_u24 && ctx.program->gfx_level >= GFX10 &&
               !instr->usesModifiers() && sel.size() == 2 && !sel.sign_extend() &&
               (instr->operands[!idx].is16bit() ||
-               instr->operands[!idx].constantValue() <= UINT16_MAX)) {
+               (instr->operands[!idx].isConstant() &&
+                instr->operands[!idx].constantValue() <= UINT16_MAX))) {
       return true;
    } else if (idx < 2 && can_use_SDWA(ctx.program->gfx_level, instr, true) &&
               (tmp.type() == RegType::vgpr || ctx.program->gfx_level >= GFX9)) {
@@ -1049,6 +1043,13 @@ can_apply_extract(opt_ctx& ctx, aco_ptr<Instruction>& instr, unsigned idx, ssa_i
       return true;
    } else if (instr->isVALU() && sel.size() == 2 && !instr->valu().opsel[idx] &&
               can_use_opsel(ctx.program->gfx_level, instr->opcode, idx)) {
+      return true;
+   } else if (instr->opcode == aco_opcode::s_pack_ll_b32_b16 && sel.size() == 2 &&
+              (idx == 1 || ctx.program->gfx_level >= GFX11 || !sel.offset())) {
+      return true;
+   } else if (sel.size() == 2 &&
+              ((instr->opcode == aco_opcode::s_pack_lh_b32_b16 && idx == 0) ||
+               (instr->opcode == aco_opcode::s_pack_hl_b32_b16 && idx == 1))) {
       return true;
    } else if (instr->opcode == aco_opcode::p_extract) {
       SubdwordSel instrSel = parse_extract(instr.get());
@@ -1124,6 +1125,13 @@ apply_extract(opt_ctx& ctx, aco_ptr<Instruction>& instr, unsigned idx, ssa_info&
              !info.instr->operands[0].isOfType(RegType::vgpr))
             instr->format = asVOP3(instr->format);
       }
+   } else if (instr->opcode == aco_opcode::s_pack_ll_b32_b16) {
+      if (sel.offset())
+         instr->opcode = idx ? aco_opcode::s_pack_lh_b32_b16 : aco_opcode::s_pack_hl_b32_b16;
+   } else if (instr->opcode == aco_opcode::s_pack_lh_b32_b16 ||
+              instr->opcode == aco_opcode::s_pack_hl_b32_b16) {
+      if (sel.offset())
+         instr->opcode = aco_opcode::s_pack_hh_b32_b16;
    } else if (instr->opcode == aco_opcode::p_extract) {
       SubdwordSel instrSel = parse_extract(instr.get());
 
@@ -1708,36 +1716,39 @@ label_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
       break;
    }
    case aco_opcode::p_extract_vector: { /* mov */
-      ssa_info& info = ctx.info[instr->operands[0].tempId()];
       const unsigned index = instr->operands[1].constantValue();
-      const unsigned dst_offset = index * instr->definitions[0].bytes();
 
-      if (info.is_vec()) {
-         /* check if we index directly into a vector element */
-         Instruction* vec = info.instr;
-         unsigned offset = 0;
+      if (instr->operands[0].isTemp()) {
+         ssa_info& info = ctx.info[instr->operands[0].tempId()];
+         const unsigned dst_offset = index * instr->definitions[0].bytes();
 
-         for (const Operand& op : vec->operands) {
-            if (offset < dst_offset) {
-               offset += op.bytes();
-               continue;
-            } else if (offset != dst_offset || op.bytes() != instr->definitions[0].bytes()) {
+         if (info.is_vec()) {
+            /* check if we index directly into a vector element */
+            Instruction* vec = info.instr;
+            unsigned offset = 0;
+
+            for (const Operand& op : vec->operands) {
+               if (offset < dst_offset) {
+                  offset += op.bytes();
+                  continue;
+               } else if (offset != dst_offset || op.bytes() != instr->definitions[0].bytes()) {
+                  break;
+               }
+               instr->operands[0] = op;
                break;
             }
-            instr->operands[0] = op;
-            break;
+         } else if (info.is_constant_or_literal(32)) {
+            /* propagate constants */
+            uint32_t mask = u_bit_consecutive(0, instr->definitions[0].bytes() * 8u);
+            uint32_t val = (info.val >> (dst_offset * 8u)) & mask;
+            instr->operands[0] =
+               Operand::get_const(ctx.program->gfx_level, val, instr->definitions[0].bytes());
+            ;
          }
-      } else if (info.is_constant_or_literal(32)) {
-         /* propagate constants */
-         uint32_t mask = u_bit_consecutive(0, instr->definitions[0].bytes() * 8u);
-         uint32_t val = (info.val >> (dst_offset * 8u)) & mask;
-         instr->operands[0] =
-            Operand::get_const(ctx.program->gfx_level, val, instr->definitions[0].bytes());
-         ;
       }
 
       if (instr->operands[0].bytes() != instr->definitions[0].bytes()) {
-         if (instr->operands[0].size() != 1)
+         if (instr->operands[0].size() != 1 || !instr->operands[0].isTemp())
             break;
 
          if (index == 0)
@@ -2007,7 +2018,7 @@ label_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
          ctx.info[instr->definitions[0].tempId()].set_canonicalized();
       break;
    case aco_opcode::p_extract: {
-      if (instr->definitions[0].bytes() == 4) {
+      if (instr->definitions[0].bytes() == 4 && instr->operands[0].isTemp()) {
          ctx.info[instr->definitions[0].tempId()].set_extract(instr.get());
          if (instr->operands[0].regClass() == v1 && parse_insert(instr.get()))
             ctx.info[instr->operands[0].tempId()].set_insert(instr.get());
@@ -2015,7 +2026,7 @@ label_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
       break;
    }
    case aco_opcode::p_insert: {
-      if (instr->operands[0].bytes() == 4) {
+      if (instr->operands[0].bytes() == 4 && instr->operands[0].isTemp()) {
          if (instr->operands[0].regClass() == v1)
             ctx.info[instr->operands[0].tempId()].set_insert(instr.get());
          if (parse_extract(instr.get()))
@@ -2029,27 +2040,6 @@ label_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
    case aco_opcode::ds_read_u16:
    case aco_opcode::ds_read_u16_d16: {
       ctx.info[instr->definitions[0].tempId()].set_usedef(instr.get());
-      break;
-   }
-   case aco_opcode::v_mbcnt_lo_u32_b32: {
-      if (instr->operands[0].constantEquals(-1) && instr->operands[1].constantEquals(0)) {
-         if (ctx.program->wave_size == 32)
-            ctx.info[instr->definitions[0].tempId()].set_subgroup_invocation(instr.get());
-         else
-            ctx.info[instr->definitions[0].tempId()].set_usedef(instr.get());
-      }
-      break;
-   }
-   case aco_opcode::v_mbcnt_hi_u32_b32:
-   case aco_opcode::v_mbcnt_hi_u32_b32_e64: {
-      if (instr->operands[0].constantEquals(-1) && instr->operands[1].isTemp() &&
-          ctx.info[instr->operands[1].tempId()].is_usedef()) {
-         Instruction* usedef_instr = ctx.info[instr->operands[1].tempId()].instr;
-         if (usedef_instr->opcode == aco_opcode::v_mbcnt_lo_u32_b32 &&
-             usedef_instr->operands[0].constantEquals(-1) &&
-             usedef_instr->operands[1].constantEquals(0))
-            ctx.info[instr->definitions[0].tempId()].set_subgroup_invocation(instr.get());
-      }
       break;
    }
    case aco_opcode::v_cvt_f16_f32: {
@@ -2117,8 +2107,9 @@ follow_operand(opt_ctx& ctx, Operand op, bool ignore_uses = false)
    Instruction* instr = ctx.info[op.tempId()].instr;
 
    if (instr->definitions.size() == 2) {
-      assert(instr->definitions[0].isTemp() && instr->definitions[0].tempId() == op.tempId());
-      if (instr->definitions[1].isTemp() && ctx.uses[instr->definitions[1].tempId()])
+      unsigned idx = ctx.info[op.tempId()].label & label_split ? 1 : 0;
+      assert(instr->definitions[idx].isTemp() && instr->definitions[idx].tempId() == op.tempId());
+      if (instr->definitions[!idx].isTemp() && ctx.uses[instr->definitions[!idx].tempId()])
          return nullptr;
    }
 
@@ -2128,87 +2119,6 @@ follow_operand(opt_ctx& ctx, Operand op, bool ignore_uses = false)
    }
 
    return instr;
-}
-
-/* Optimize v_cmp of constant with subgroup invocation to a constant mask.
- * Ideally, we can trade v_cmp for a constant (or literal).
- * In a less ideal case, we trade v_cmp for a SALU instruction, which is still a win.
- */
-bool
-optimize_cmp_subgroup_invocation(opt_ctx& ctx, aco_ptr<Instruction>& instr)
-{
-   /* This optimization only applies to VOPC with 2 operands. */
-   if (instr->operands.size() != 2)
-      return false;
-
-   /* Find the constant operand or return early if there isn't one. */
-   const int const_op_idx = instr->operands[0].isConstant()   ? 0
-                            : instr->operands[1].isConstant() ? 1
-                                                              : -1;
-   if (const_op_idx == -1)
-      return false;
-
-   /* Find the operand that has the subgroup invocation. */
-   const int mbcnt_op_idx = 1 - const_op_idx;
-   const Operand mbcnt_op = instr->operands[mbcnt_op_idx];
-   if (!mbcnt_op.isTemp() || !ctx.info[mbcnt_op.tempId()].is_subgroup_invocation())
-      return false;
-
-   /* Adjust opcode so we don't have to care about const_op_idx below. */
-   const aco_opcode op = const_op_idx == 0 ? get_vcmp_swapped(instr->opcode) : instr->opcode;
-   const unsigned wave_size = ctx.program->wave_size;
-   const unsigned val = instr->operands[const_op_idx].constantValue();
-
-   /* Find suitable constant bitmask corresponding to the value. */
-   unsigned first_bit = 0, num_bits = 0;
-   switch (op) {
-   case aco_opcode::v_cmp_eq_u32:
-   case aco_opcode::v_cmp_eq_i32:
-      first_bit = val;
-      num_bits = val >= wave_size ? 0 : 1;
-      break;
-   case aco_opcode::v_cmp_le_u32:
-   case aco_opcode::v_cmp_le_i32:
-      first_bit = 0;
-      num_bits = val >= wave_size ? wave_size : (val + 1);
-      break;
-   case aco_opcode::v_cmp_lt_u32:
-   case aco_opcode::v_cmp_lt_i32:
-      first_bit = 0;
-      num_bits = val >= wave_size ? wave_size : val;
-      break;
-   case aco_opcode::v_cmp_ge_u32:
-   case aco_opcode::v_cmp_ge_i32:
-      first_bit = val;
-      num_bits = val >= wave_size ? 0 : (wave_size - val);
-      break;
-   case aco_opcode::v_cmp_gt_u32:
-   case aco_opcode::v_cmp_gt_i32:
-      first_bit = val + 1;
-      num_bits = val >= wave_size ? 0 : (wave_size - val - 1);
-      break;
-   default: return false;
-   }
-
-   Instruction* cpy = NULL;
-   const uint64_t mask = BITFIELD64_RANGE(first_bit, num_bits);
-   if (!Operand::is_constant_representable(mask, wave_size / 8, true, false)) {
-      /* Mask can't be represented as a 64-bit constant or literal, create a vector */
-      cpy = create_instruction(aco_opcode::p_create_vector, Format::PSEUDO, 2, 1);
-      cpy->operands[0] = Operand::c32(mask);
-      cpy->operands[1] = Operand::c32(mask >> 32);
-   } else {
-      /* Copy mask as a literal constant. */
-      cpy = create_instruction(aco_opcode::p_parallelcopy, Format::PSEUDO, 1, 1);
-      cpy->operands[0] = wave_size == 32 ? Operand::c32((uint32_t)mask) : Operand::c64(mask);
-   }
-
-   cpy->definitions[0] = instr->definitions[0];
-   ctx.info[instr->definitions[0].tempId()].label = 0;
-   decrease_uses(ctx, ctx.info[mbcnt_op.tempId()].instr);
-   instr.reset(cpy);
-
-   return true;
 }
 
 bool
@@ -3784,7 +3694,7 @@ combine_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
    if (instr->definitions.empty() || is_dead(ctx.uses, instr.get()))
       return;
 
-   if (instr->isVALU()) {
+   if (instr->isVALU() || instr->isSALU()) {
       /* Apply SDWA. Do this after label_instruction() so it can remove
        * label_extract if not all instructions can take SDWA. */
       for (unsigned i = 0; i < instr->operands.size(); i++) {
@@ -3811,7 +3721,9 @@ combine_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
             instr->operands[i].setTemp(info.instr->operands[0].getTemp());
          }
       }
+   }
 
+   if (instr->isVALU()) {
       if (can_apply_sgprs(ctx, instr))
          apply_sgprs(ctx, instr);
       combine_mad_mix(ctx, instr);
@@ -3837,11 +3749,6 @@ combine_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
       }
 
       apply_ds_extract(ctx, instr);
-   }
-
-   if (instr->isVOPC()) {
-      if (optimize_cmp_subgroup_invocation(ctx, instr))
-         return;
    }
 
    /* TODO: There are still some peephole optimizations that could be done:
@@ -4432,11 +4339,11 @@ select_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
             if (op.isTemp())
                ctx.uses[op.tempId()]++;
 
-            aco_ptr<Instruction> extract{
-               create_instruction(aco_opcode::p_create_vector, Format::PSEUDO, 1, 1)};
-            extract->operands[0] = op;
-            extract->definitions[0] = instr->definitions[idx];
-            instr = std::move(extract);
+            aco_ptr<Instruction> copy{
+               create_instruction(aco_opcode::p_parallelcopy, Format::PSEUDO, 1, 1)};
+            copy->operands[0] = op;
+            copy->definitions[0] = instr->definitions[idx];
+            instr = std::move(copy);
 
             done = true;
          }

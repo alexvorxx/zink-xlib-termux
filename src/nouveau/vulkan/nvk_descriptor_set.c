@@ -12,8 +12,7 @@
 #include "nvk_image_view.h"
 #include "nvk_physical_device.h"
 #include "nvk_sampler.h"
-
-#include "nouveau_bo.h"
+#include "nvkmd/nvkmd.h"
 
 static inline uint32_t
 align_u32(uint32_t v, uint32_t a)
@@ -472,10 +471,8 @@ nvk_destroy_descriptor_pool(struct nvk_device *dev,
 
    util_vma_heap_finish(&pool->heap);
 
-   if (pool->bo) {
-      nouveau_ws_bo_unmap(pool->bo, pool->mapped_ptr);
-      nouveau_ws_bo_destroy(pool->bo);
-   }
+   if (pool->mem != NULL)
+      nvkmd_mem_unref(pool->mem);
 
    vk_object_free(&dev->vk, pAllocator, pool);
 }
@@ -489,6 +486,7 @@ nvk_CreateDescriptorPool(VkDevice _device,
    VK_FROM_HANDLE(nvk_device, dev, _device);
    struct nvk_physical_device *pdev = nvk_device_physical(dev);
    struct nvk_descriptor_pool *pool;
+   VkResult result;
 
    pool = vk_object_zalloc(&dev->vk, pAllocator, sizeof(*pool),
                            VK_OBJECT_TYPE_DESCRIPTOR_POOL);
@@ -515,7 +513,7 @@ nvk_CreateDescriptorPool(VkDevice _device,
       max_align = MAX2(max_align, alignment);
    }
 
-   uint64_t bo_size = 0;
+   uint64_t mem_size = 0;
    for (unsigned i = 0; i < pCreateInfo->poolSizeCount; ++i) {
       const VkMutableDescriptorTypeListEXT *type_list = NULL;
       if (pCreateInfo->pPoolSizes[i].type == VK_DESCRIPTOR_TYPE_MUTABLE_EXT &&
@@ -526,7 +524,7 @@ nvk_CreateDescriptorPool(VkDevice _device,
       nvk_descriptor_stride_align_for_type(pdev,
                                            pCreateInfo->pPoolSizes[i].type,
                                            type_list, &stride, &alignment);
-      bo_size += MAX2(stride, max_align) *
+      mem_size += MAX2(stride, max_align) *
                  pCreateInfo->pPoolSizes[i].descriptorCount;
    }
 
@@ -538,23 +536,22 @@ nvk_CreateDescriptorPool(VkDevice _device,
     * conservative here.)  Allocate enough extra space that we can chop it
     * into maxSets pieces and align each one of them to 32B.
     */
-   bo_size += nvk_min_cbuf_alignment(&pdev->info) * pCreateInfo->maxSets;
+   mem_size += nvk_min_cbuf_alignment(&pdev->info) * pCreateInfo->maxSets;
 
-   if (bo_size) {
-      uint32_t flags = NOUVEAU_WS_BO_GART | NOUVEAU_WS_BO_NO_SHARE;
-      pool->bo = nouveau_ws_bo_new_mapped(dev->ws_dev, bo_size, 0, flags,
-                                          NOUVEAU_WS_BO_WR,
-                                          (void **)&pool->mapped_ptr);
-      if (!pool->bo) {
+   if (mem_size) {
+      result = nvkmd_dev_alloc_mapped_mem(dev->nvkmd, &dev->vk.base,
+                                          mem_size, 0, NVKMD_MEM_LOCAL,
+                                          NVKMD_MEM_MAP_WR, &pool->mem);
+      if (result != VK_SUCCESS) {
          nvk_destroy_descriptor_pool(dev, pAllocator, pool);
-         return vk_error(dev, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+         return result;
       }
 
       /* The BO may be larger thanks to GPU page alignment.  We may as well
        * make that extra space available to the client.
        */
-      assert(pool->bo->size >= bo_size);
-      util_vma_heap_init(&pool->heap, pool->bo->offset, pool->bo->size);
+      assert(pool->mem->size_B >= mem_size);
+      util_vma_heap_init(&pool->heap, pool->mem->va->addr, pool->mem->size_B);
    } else {
       util_vma_heap_init(&pool->heap, 0, 0);
    }
@@ -578,12 +575,12 @@ nvk_descriptor_pool_alloc(struct nvk_descriptor_pool *pool,
    if (addr == 0)
       return VK_ERROR_FRAGMENTED_POOL;
 
-   assert(addr >= pool->bo->offset);
-   assert(addr + size <= pool->bo->offset + pool->bo->size);
-   uint64_t offset = addr - pool->bo->offset;
+   assert(addr >= pool->mem->va->addr);
+   assert(addr + size <= pool->mem->va->addr + pool->mem->size_B);
+   uint64_t offset = addr - pool->mem->va->addr;
 
    *addr_out = addr;
-   *map_out = pool->mapped_ptr + offset;
+   *map_out = pool->mem->map + offset;
 
    return VK_SUCCESS;
 }
@@ -593,8 +590,8 @@ nvk_descriptor_pool_free(struct nvk_descriptor_pool *pool,
                          uint64_t addr, uint64_t size)
 {
    assert(size > 0);
-   assert(addr >= pool->bo->offset);
-   assert(addr + size <= pool->bo->offset + pool->bo->size);
+   assert(addr >= pool->mem->va->addr);
+   assert(addr + size <= pool->mem->va->addr + pool->mem->size_B);
    util_vma_heap_free(&pool->heap, addr, size);
 }
 

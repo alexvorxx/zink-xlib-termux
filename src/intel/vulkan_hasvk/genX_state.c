@@ -106,6 +106,8 @@ void
 genX(init_physical_device_state)(ASSERTED struct anv_physical_device *pdevice)
 {
    assert(pdevice->info.verx10 == GFX_VERx10);
+
+   pdevice->cmd_emit_timestamp = genX(cmd_emit_timestamp);
 }
 
 VkResult

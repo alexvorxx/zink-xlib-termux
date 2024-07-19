@@ -132,8 +132,11 @@ static nir_loop *
 get_innermost_loop(nir_cf_node *node)
 {
    for (; node != NULL; node = node->parent) {
-      if (node->type == nir_cf_node_loop)
-         return (nir_loop *)node;
+      if (node->type == nir_cf_node_loop) {
+         nir_loop *loop = nir_cf_node_as_loop(node);
+         if (nir_loop_first_block(loop)->predecessors->entries > 1)
+            return loop;
+      }
    }
    return NULL;
 }
@@ -171,7 +174,8 @@ adjust_block_for_loops(nir_block *use_block, nir_block *def_block,
       }
 
       nir_cf_node *next = nir_cf_node_next(&cur_block->cf_node);
-      if (next && next->type == nir_cf_node_loop) {
+      if (next && next->type == nir_cf_node_loop &&
+          nir_block_cf_tree_next(cur_block)->predecessors->entries > 1) {
          nir_loop *following_loop = nir_cf_node_as_loop(next);
          if (loop_contains_block(following_loop, use_block)) {
             use_block = cur_block;

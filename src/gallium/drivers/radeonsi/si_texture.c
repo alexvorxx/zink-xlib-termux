@@ -617,7 +617,8 @@ static void si_set_tex_bo_metadata(struct si_screen *sscreen, struct si_texture 
    bool is_array = util_texture_is_array(res->target);
    uint32_t desc[8];
 
-   sscreen->make_texture_descriptor(sscreen, tex, true, res->target, res->format, swizzle, 0,
+   sscreen->make_texture_descriptor(sscreen, tex, true, res->target,
+                                    tex->is_depth ? tex->db_render_format : res->format, swizzle, 0,
                                     res->last_level, 0, is_array ? res->array_size - 1 : 0,
                                     res->width0, res->height0, res->depth0, true, desc, NULL);
    si_set_mutable_tex_desc_fields(sscreen, tex, &tex->surface.u.legacy.level[0], 0, 0,
@@ -1106,6 +1107,12 @@ static struct si_texture *si_texture_create_object(struct pipe_screen *screen,
          tex->can_sample_z = true;
          tex->can_sample_s = true;
       }
+
+      /* Always set BO metadata - required for programming DCC fields for GFX12 SDMA in the kernel.
+       * If the texture is suballocated, this will overwrite the metadata for all suballocations,
+       * but there is nothing we can do about that.
+       */
+      si_set_tex_bo_metadata(sscreen, tex);
       return tex;
    }
 
@@ -1581,13 +1588,15 @@ si_get_dmabuf_modifier_planes(struct pipe_screen *pscreen, uint64_t modifier,
 {
    unsigned planes = util_format_get_num_planes(format);
 
-   if (IS_AMD_FMT_MOD(modifier) && planes == 1) {
-      if (AMD_FMT_MOD_GET(DCC_RETILE, modifier))
-         return 3;
-      else if (AMD_FMT_MOD_GET(DCC, modifier))
-         return 2;
-      else
-         return 1;
+   if (AMD_FMT_MOD_GET(TILE_VERSION, modifier) < AMD_FMT_MOD_TILE_VER_GFX12) {
+      if (IS_AMD_FMT_MOD(modifier) && planes == 1) {
+         if (AMD_FMT_MOD_GET(DCC_RETILE, modifier))
+            return 3;
+         else if (AMD_FMT_MOD_GET(DCC, modifier))
+            return 2;
+         else
+            return 1;
+      }
    }
 
    return planes;

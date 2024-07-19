@@ -1245,7 +1245,7 @@ etna_compile_shader(struct etna_shader_variant *v)
    uint32_t *code = MALLOC(c->inst_ptr * 16);
    for (unsigned i = 0; i < c->inst_ptr; i++) {
       struct etna_inst *inst = &c->code[i];
-      if (inst->opcode == ISA_OPC_BRANCH)
+      if (inst->opcode == ISA_OPC_BRANCH || inst->opcode == ISA_OPC_BRANCH_UNARY || inst->opcode == ISA_OPC_BRANCH_BINARY)
          inst->imm = block_ptr[inst->imm];
 
       etna_assemble(&code[i * 4], inst, specs->has_no_oneconst_limit);

@@ -31,9 +31,8 @@ tcs_instance_id(nir_builder *b)
 static nir_def *
 tcs_unrolled_id(nir_builder *b)
 {
-   nir_def *stride = nir_channel(b, nir_load_num_workgroups(b), 0);
-
-   return nir_iadd(b, nir_imul(b, tcs_instance_id(b), stride), tcs_patch_id(b));
+   return libagx_tcs_unrolled_id(b, nir_load_tess_param_buffer_agx(b),
+                                 nir_load_workgroup_id(b));
 }
 
 uint64_t

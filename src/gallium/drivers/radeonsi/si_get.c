@@ -139,7 +139,6 @@ static int si_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_STRING_MARKER:
    case PIPE_CAP_CULL_DISTANCE:
    case PIPE_CAP_SHADER_ARRAY_COMPONENTS:
-   case PIPE_CAP_SHADER_CAN_READ_OUTPUTS:
    case PIPE_CAP_STREAM_OUTPUT_PAUSE_RESUME:
    case PIPE_CAP_STREAM_OUTPUT_INTERLEAVE_BUFFERS:
    case PIPE_CAP_DOUBLES:
@@ -183,10 +182,15 @@ static int si_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_ALLOW_GLTHREAD_BUFFER_SUBDATA_OPT: /* TODO: remove if it's slow */
    case PIPE_CAP_NULL_TEXTURES:
    case PIPE_CAP_HAS_CONST_BW:
-   case PIPE_CAP_FENCE_SIGNAL:
-   case PIPE_CAP_NATIVE_FENCE_FD:
    case PIPE_CAP_CL_GL_SHARING:
       return 1;
+
+   /* Tahiti and Verde only: reduction mode is unsupported due to a bug
+    * (it might work sometimes, but that's not enough)
+    */
+   case PIPE_CAP_SAMPLER_REDUCTION_MINMAX:
+   case PIPE_CAP_SAMPLER_REDUCTION_MINMAX_ARB:
+      return !(sscreen->info.family == CHIP_TAHITI || sscreen->info.family == CHIP_VERDE);
 
    case PIPE_CAP_TEXTURE_TRANSFER_MODES:
       return PIPE_TEXTURE_TRANSFER_BLIT | PIPE_TEXTURE_TRANSFER_COMPUTE;
@@ -302,8 +306,14 @@ static int si_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
              PIPE_CONTEXT_PRIORITY_MEDIUM |
              PIPE_CONTEXT_PRIORITY_HIGH;
 
+   case PIPE_CAP_FENCE_SIGNAL:
+      return sscreen->info.has_syncobj;
+
    case PIPE_CAP_CONSTBUF0_FLAGS:
       return SI_RESOURCE_FLAG_32BIT;
+
+   case PIPE_CAP_NATIVE_FENCE_FD:
+      return sscreen->info.has_fence_to_handle;
 
    case PIPE_CAP_DRAW_PARAMETERS:
    case PIPE_CAP_MULTI_DRAW_INDIRECT:
@@ -822,9 +832,6 @@ static int si_get_video_param(struct pipe_screen *screen, enum pipe_video_profil
             return 1;
          else
             return 0;
-      case PIPE_VIDEO_CAP_EFC_SUPPORTED:
-         return ((sscreen->info.family > CHIP_RENOIR) &&
-                 !(sscreen->debug_flags & DBG(NO_EFC)));
 
       case PIPE_VIDEO_CAP_ENC_MAX_REFERENCES_PER_FRAME:
          if (sscreen->info.vcn_ip_version >= VCN_3_0_0) {
@@ -1108,6 +1115,54 @@ static bool si_vid_is_format_supported(struct pipe_screen *screen, enum pipe_for
       return format == PIPE_FORMAT_NV12;
 
    return vl_video_buffer_is_format_supported(screen, format, profile, entrypoint);
+}
+
+static bool si_vid_is_target_buffer_supported(struct pipe_screen *screen,
+                                              enum pipe_format format,
+                                              struct pipe_video_buffer *target,
+                                              enum pipe_video_profile profile,
+                                              enum pipe_video_entrypoint entrypoint)
+{
+   struct si_screen *sscreen = (struct si_screen *)screen;
+   struct si_texture *tex = (struct si_texture *)((struct vl_video_buffer *)target)->resources[0];
+   const bool is_dcc = tex->surface.meta_offset;
+   const bool is_format_conversion = format != target->buffer_format;
+
+   switch (entrypoint) {
+   case PIPE_VIDEO_ENTRYPOINT_BITSTREAM:
+      return !is_dcc && !is_format_conversion;
+
+   case PIPE_VIDEO_ENTRYPOINT_ENCODE:
+      /* EFC */
+      if (is_format_conversion) {
+         const bool input_8bit =
+            target->buffer_format == PIPE_FORMAT_B8G8R8A8_UNORM ||
+            target->buffer_format == PIPE_FORMAT_B8G8R8X8_UNORM ||
+            target->buffer_format == PIPE_FORMAT_R8G8B8A8_UNORM ||
+            target->buffer_format == PIPE_FORMAT_R8G8B8X8_UNORM;
+         const bool input_10bit =
+            target->buffer_format == PIPE_FORMAT_B10G10R10A2_UNORM ||
+            target->buffer_format == PIPE_FORMAT_B10G10R10X2_UNORM ||
+            target->buffer_format == PIPE_FORMAT_R10G10B10A2_UNORM ||
+            target->buffer_format == PIPE_FORMAT_R10G10B10X2_UNORM;
+
+         if (sscreen->info.family <= CHIP_RENOIR ||
+             sscreen->debug_flags & DBG(NO_EFC))
+            return false;
+
+         if (input_8bit)
+            return format == PIPE_FORMAT_NV12;
+         else if (input_10bit)
+            return format == PIPE_FORMAT_NV12 || format == PIPE_FORMAT_P010;
+         else
+            return false;
+      }
+
+      return !is_dcc;
+
+   default:
+      return !is_format_conversion;
+   }
 }
 
 static unsigned get_max_threads_per_block(struct si_screen *screen, enum pipe_shader_ir ir_type)
@@ -1542,6 +1597,7 @@ void si_init_screen_get_functions(struct si_screen *sscreen)
        sscreen->info.ip[AMD_IP_VPE].num_queues) {
       sscreen->b.get_video_param = si_get_video_param;
       sscreen->b.is_video_format_supported = si_vid_is_format_supported;
+      sscreen->b.is_video_target_buffer_supported = si_vid_is_target_buffer_supported;
    } else {
       sscreen->b.get_video_param = si_get_video_param_no_video_hw;
       sscreen->b.is_video_format_supported = vl_video_buffer_is_format_supported;

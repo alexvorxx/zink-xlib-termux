@@ -68,17 +68,6 @@ struct tu_image_view
 VK_DEFINE_NONDISP_HANDLE_CASTS(tu_image_view, vk.base, VkImageView,
                                VK_OBJECT_TYPE_IMAGE_VIEW);
 
-struct tu_buffer_view
-{
-   struct vk_object_base base;
-
-   uint32_t descriptor[A6XX_TEX_CONST_DWORDS];
-
-   struct tu_buffer *buffer;
-};
-VK_DEFINE_NONDISP_HANDLE_CASTS(tu_buffer_view, base, VkBufferView,
-                               VK_OBJECT_TYPE_BUFFER_VIEW)
-
 uint32_t tu6_plane_count(VkFormat format);
 enum pipe_format tu6_plane_format(VkFormat format, uint32_t plane);
 
@@ -115,11 +104,6 @@ ubwc_possible(struct tu_device *device,
               const struct fd_dev_info *info,
               VkSampleCountFlagBits samples,
               bool use_z24uint_s8uint);
-
-void
-tu_buffer_view_init(struct tu_buffer_view *view,
-                    struct tu_device *device,
-                    const VkBufferViewCreateInfo *pCreateInfo);
 
 struct tu_frag_area {
    float width;

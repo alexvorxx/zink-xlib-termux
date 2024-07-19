@@ -749,13 +749,8 @@ anv_cmd_buffer_alloc_dynamic_state(struct anv_cmd_buffer *cmd_buffer,
 {
    if (size == 0)
       return ANV_STATE_NULL;
-   assert(cmd_buffer->state.current_db_mode !=
-          ANV_CMD_DESCRIPTOR_BUFFER_MODE_UNKNOWN);
    struct anv_state state =
-      anv_state_stream_alloc(cmd_buffer->state.current_db_mode ==
-                             ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER ?
-                             &cmd_buffer->dynamic_state_db_stream :
-                             &cmd_buffer->dynamic_state_stream,
+      anv_state_stream_alloc(&cmd_buffer->dynamic_state_stream,
                              size, alignment);
    if (state.map == NULL)
       anv_batch_set_error(&cmd_buffer->batch, VK_ERROR_OUT_OF_DEVICE_MEMORY);

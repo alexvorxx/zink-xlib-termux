@@ -501,28 +501,16 @@ nir_visitor::visit(ir_variable *ir)
 
    var->interface_type = ir->get_interface_type();
 
-   /* For UBO and SSBO variables, we need explicit types */
    if (var->data.mode & (nir_var_mem_ubo | nir_var_mem_ssbo)) {
-      const glsl_type *explicit_ifc_type =
-         glsl_get_explicit_interface_type(ir->get_interface_type(), supports_std430);
-
-      var->interface_type = explicit_ifc_type;
-
-      if (glsl_type_is_interface(glsl_without_array(ir->type))) {
-         /* If the type contains the interface, wrap the explicit type in the
-          * right number of arrays.
-          */
-         var->type = glsl_type_wrap_in_arrays(explicit_ifc_type, ir->type);
-      } else {
-         /* Otherwise, this variable is one entry in the interface */
+      if (!glsl_type_is_interface(glsl_without_array(ir->type))) {
+         /* This variable is one entry in the interface */
          UNUSED bool found = false;
-         for (unsigned i = 0; i < explicit_ifc_type->length; i++) {
+         for (unsigned i = 0; i < ir->get_interface_type()->length; i++) {
             const glsl_struct_field *field =
-               &explicit_ifc_type->fields.structure[i];
+               &ir->get_interface_type()->fields.structure[i];
             if (strcmp(ir->name, field->name) != 0)
                continue;
 
-            var->type = field->type;
             if (field->memory_read_only)
                mem_access |= ACCESS_NON_WRITEABLE;
             if (field->memory_write_only)
@@ -1743,9 +1731,6 @@ nir_visitor::visit(ir_expression *ir)
       ir_dereference *deref = ir->operands[0]->as_dereference();
       ir_swizzle *swizzle = NULL;
       if (!deref) {
-         /* the api does not allow a swizzle here, but the varying packing code
-          * may have pushed one into here.
-          */
          swizzle = ir->operands[0]->as_swizzle();
          assert(swizzle);
          deref = swizzle->val->as_dereference();

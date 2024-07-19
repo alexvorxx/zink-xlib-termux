@@ -954,9 +954,6 @@ struct gl_constants
 
    bool HasFBFetch;
 
-   /** Whether the backend supports reading from outputs */
-   bool SupportsReadingOutputs;
-
    bool CombinedClipCullDistanceArrays;
 
    bool PointSizeFixed;

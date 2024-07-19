@@ -15,29 +15,29 @@ struct si_shader_profile si_shader_profiles[] =
 {
    {
       /* Plot3D */
-      {0x485320cd, 0x87a9ba05, 0x24a60e4f, 0x25aa19f7, 0xf5287451},
+      {0x38c94662, 0x7b634109, 0x50f8254a, 0x0f4986a9, 0x11e59716, 0x3081e1a2, 0xbb2a0c59, 0xc29e853a},
       SI_PROFILE_VS_NO_BINNING,
    },
    {
       /* Viewperf/Energy */
-      {0x17118671, 0xd0102e0c, 0x947f3592, 0xb2057e7b, 0x4da5d9b0},
+      {0x3279654e, 0xf51c358d, 0xc526e175, 0xd198eb26, 0x75c36c86, 0xd796398b, 0xc99b5e92, 0xddc31503},
       SI_PROFILE_NO_OPT_UNIFORM_VARYINGS,    /* Uniform propagation regresses performance. */
    },
    {
       /* Viewperf/Medical */
-      {0x4dce4331, 0x38f778d5, 0x1b75a717, 0x3e454fb9, 0xeb1527f0},
+      {0x4a041ad8, 0xe105a058, 0x2e9f7a38, 0xef4d1c2f, 0xb8aee798, 0x821f166b, 0x17b42668, 0xa4d1cc0a},
       SI_PROFILE_GFX9_GFX10_PS_NO_BINNING,
    },
    {
       /* Viewperf/Medical, a shader with a divergent loop doesn't benefit from Wave32,
        * probably due to interpolation performance.
        */
-      {0x29f0f4a0, 0x0672258d, 0x47ccdcfd, 0x31e67dcc, 0xdcb1fda8},
+      {0xa9c7e2c2, 0x3e01de01, 0x886cab63, 0x24327678, 0xe247c394, 0x2ecc4bf9, 0xc196d978, 0x2ba7a89c},
       SI_PROFILE_GFX10_WAVE64,
    },
    {
       /* Viewperf/Creo */
-      {0x1f288a73, 0xba46cce5, 0xbf68e6c6, 0x58543651, 0xca3c8efd},
+      {0x182bd6b3, 0x5e8fba11, 0xa7b74071, 0xc69f6153, 0xc57aef8c, 0x9076492a, 0x53dc83ee, 0x921fb114},
       SI_PROFILE_CLAMP_DIV_BY_ZERO,
    },
 };
@@ -501,6 +501,11 @@ static void scan_instruction(const struct nir_shader *nir, struct si_shader_info
           !nir_src_is_const(intr->src[0]))
          info->uses_indirect_descriptor = true;
 
+      if (nir_intrinsic_has_atomic_op(intr)) {
+         if (nir_intrinsic_atomic_op(intr) == nir_atomic_op_ordered_add_gfx12_amd)
+            info->uses_atomic_ordered_add = true;
+      }
+
       switch (intr->intrinsic) {
       case nir_intrinsic_store_ssbo:
          if (!nir_src_is_const(intr->src[1]))
@@ -608,6 +613,9 @@ static void scan_instruction(const struct nir_shader *nir, struct si_shader_info
       case nir_intrinsic_interp_deref_at_sample:
       case nir_intrinsic_interp_deref_at_offset:
          unreachable("these opcodes should have been lowered");
+         break;
+      case nir_intrinsic_ordered_add_loop_gfx12_amd:
+         info->uses_atomic_ordered_add = true;
          break;
       default:
          break;

@@ -80,8 +80,6 @@ struct vn_physical_device {
    bool sparse_binding_disabled;
 
    VkPhysicalDeviceMemoryProperties memory_properties;
-   uint32_t coherent_uncached;
-   uint32_t incoherent_cached;
 
    struct {
       VkExternalMemoryHandleTypeFlagBits renderer_handle_type;

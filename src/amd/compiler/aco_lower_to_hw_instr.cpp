@@ -1275,7 +1275,9 @@ copy_constant(lower_context* ctx, Builder& bld, Definition dst, Operand op)
    if (dst.regClass().type() == RegType::sgpr)
       return copy_constant_sgpr(bld, dst, op.constantValue64());
 
-   if (dst.bytes() == 4 && op.isLiteral()) {
+   bool dual_issue_mov = ctx->program->gfx_level >= GFX11 && ctx->program->wave_size == 64 &&
+                         ctx->program->workgroup_size > 32;
+   if (dst.bytes() == 4 && op.isLiteral() && !dual_issue_mov) {
       uint32_t imm = op.constantValue();
       Operand rev_op = Operand::get_const(ctx->program->gfx_level, util_bitreverse(imm), 4);
       if (!rev_op.isLiteral()) {
@@ -2497,14 +2499,17 @@ lower_to_hw_instr(Program* program)
                bool signext = !instr->operands[3].constantEquals(0);
 
                if (dst.regClass() == s1) {
-                  if (offset == (32 - bits)) {
-                     bld.sop2(signext ? aco_opcode::s_ashr_i32 : aco_opcode::s_lshr_b32, dst,
-                              bld.def(s1, scc), op, Operand::c32(offset));
-                  } else if (offset == 0 && signext && (bits == 8 || bits == 16)) {
+                  if (offset == 0 && signext && (bits == 8 || bits == 16)) {
                      bld.sop1(bits == 8 ? aco_opcode::s_sext_i32_i8 : aco_opcode::s_sext_i32_i16,
                               dst, op);
                   } else if (ctx.program->gfx_level >= GFX9 && offset == 0 && bits == 16) {
                      bld.sop2(aco_opcode::s_pack_ll_b32_b16, dst, op, Operand::zero());
+                  } else if (ctx.program->gfx_level >= GFX9 && offset == 16 && bits == 16 &&
+                             !signext) {
+                     bld.sop2(aco_opcode::s_pack_hh_b32_b16, dst, op, Operand::zero());
+                  } else if (offset == (32 - bits)) {
+                     bld.sop2(signext ? aco_opcode::s_ashr_i32 : aco_opcode::s_lshr_b32, dst,
+                              bld.def(s1, scc), op, Operand::c32(offset));
                   } else {
                      bld.sop2(signext ? aco_opcode::s_bfe_i32 : aco_opcode::s_bfe_u32, dst,
                               bld.def(s1, scc), op, Operand::c32((bits << 16) | offset));
@@ -2574,7 +2579,11 @@ lower_to_hw_instr(Program* program)
 
                bool has_sdwa = program->gfx_level >= GFX8 && program->gfx_level < GFX11;
                if (dst.regClass() == s1) {
-                  if (offset == (32 - bits)) {
+                  if (ctx.program->gfx_level >= GFX9 && offset == 0 && bits == 16) {
+                     bld.sop2(aco_opcode::s_pack_ll_b32_b16, dst, op, Operand::zero());
+                  } else if (ctx.program->gfx_level >= GFX9 && offset == 16 && bits == 16) {
+                     bld.sop2(aco_opcode::s_pack_ll_b32_b16, dst, Operand::zero(), op);
+                  } else if (offset == (32 - bits)) {
                      bld.sop2(aco_opcode::s_lshl_b32, dst, bld.def(s1, scc), op,
                               Operand::c32(offset));
                   } else if (offset == 0) {
@@ -2947,14 +2956,18 @@ lower_to_hw_instr(Program* program)
             } else if (emit_s_barrier) {
                bld.sopp(aco_opcode::s_barrier);
             }
-         } else if (instr->opcode == aco_opcode::p_cvt_f16_f32_rtne) {
+         } else if (instr->opcode == aco_opcode::p_v_cvt_f16_f32_rtne ||
+                    instr->opcode == aco_opcode::p_s_cvt_f16_f32_rtne) {
             float_mode new_mode = block->fp_mode;
             new_mode.round16_64 = fp_round_ne;
             bool set_round = new_mode.round != block->fp_mode.round;
 
             emit_set_mode(bld, new_mode, set_round, false);
 
-            instr->opcode = aco_opcode::v_cvt_f16_f32;
+            if (instr->opcode == aco_opcode::p_v_cvt_f16_f32_rtne)
+               instr->opcode = aco_opcode::v_cvt_f16_f32;
+            else
+               instr->opcode = aco_opcode::s_cvt_f16_f32;
             ctx.instructions.emplace_back(std::move(instr));
 
             emit_set_mode(bld, block->fp_mode, set_round, false);

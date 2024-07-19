@@ -489,14 +489,11 @@ lower_abi_instr(nir_builder *b, nir_intrinsic_instr *intrin, void *state)
       replacement = nir_ilt_imm(b, prim_mask, 0);
       break;
    }
-   case nir_intrinsic_load_poly_line_smooth_enabled:
-      if (s->gfx_state->dynamic_line_rast_mode) {
-         nir_def *line_rast_mode = GET_SGPR_FIELD_NIR(s->args->ps_state, PS_STATE_LINE_RAST_MODE);
-         replacement = nir_ieq_imm(b, line_rast_mode, VK_LINE_RASTERIZATION_MODE_RECTANGULAR_SMOOTH_KHR);
-      } else {
-         replacement = nir_imm_bool(b, s->gfx_state->rs.line_smooth_enabled);
-      }
+   case nir_intrinsic_load_poly_line_smooth_enabled: {
+      nir_def *line_rast_mode = GET_SGPR_FIELD_NIR(s->args->ps_state, PS_STATE_LINE_RAST_MODE);
+      replacement = nir_ieq_imm(b, line_rast_mode, VK_LINE_RASTERIZATION_MODE_RECTANGULAR_SMOOTH_KHR);
       break;
+   }
    case nir_intrinsic_load_initial_edgeflags_amd:
       replacement = nir_imm_int(b, 0);
       break;

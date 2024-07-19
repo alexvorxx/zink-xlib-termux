@@ -1388,7 +1388,7 @@ ntq_emit_alu(struct v3d_compile *c, nir_alu_instr *instr)
                 break;
 
         case nir_op_fneg:
-                result = vir_XOR(c, src[0], vir_uniform_ui(c, 1 << 31));
+                result = vir_XOR(c, src[0], vir_uniform_ui(c, UINT32_C(1) << 31));
                 break;
         case nir_op_ineg:
                 result = vir_NEG(c, src[0]);
@@ -1792,6 +1792,12 @@ ntq_emit_alu(struct v3d_compile *c, nir_alu_instr *instr)
 
         case nir_op_f2snorm_16_v3d:
                 result = vir_FTOSNORM16(c, src[0]);
+                break;
+
+        case nir_op_fsat:
+                assert(c->devinfo->ver >= 71);
+                result = vir_FMOV(c, src[0]);
+                vir_set_unpack(c->defs[result.index], 0, V3D71_QPU_UNPACK_SAT);
                 break;
 
         default:

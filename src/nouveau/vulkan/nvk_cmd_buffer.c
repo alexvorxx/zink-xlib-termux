@@ -14,11 +14,10 @@
 #include "nvk_mme.h"
 #include "nvk_physical_device.h"
 #include "nvk_shader.h"
+#include "nvkmd/nvkmd.h"
 
 #include "vk_pipeline_layout.h"
 #include "vk_synchronization.h"
-
-#include "nouveau_context.h"
 
 #include "nv_push_cl906f.h"
 #include "nv_push_cl90b5.h"
@@ -48,8 +47,8 @@ nvk_destroy_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer)
    nvk_descriptor_state_fini(cmd, &cmd->state.gfx.descriptors);
    nvk_descriptor_state_fini(cmd, &cmd->state.cs.descriptors);
 
-   nvk_cmd_pool_free_bo_list(pool, &cmd->bos);
-   nvk_cmd_pool_free_bo_list(pool, &cmd->gart_bos);
+   nvk_cmd_pool_free_mem_list(pool, &cmd->owned_mem);
+   nvk_cmd_pool_free_mem_list(pool, &cmd->owned_gart_mem);
    util_dynarray_fini(&cmd->pushes);
    vk_command_buffer_finish(&cmd->vk);
    vk_free(&pool->vk.alloc, cmd);
@@ -81,8 +80,8 @@ nvk_create_cmd_buffer(struct vk_command_pool *vk_pool,
    cmd->vk.dynamic_graphics_state.ms.sample_locations =
       &cmd->state.gfx._dynamic_sl;
 
-   list_inithead(&cmd->bos);
-   list_inithead(&cmd->gart_bos);
+   list_inithead(&cmd->owned_mem);
+   list_inithead(&cmd->owned_gart_mem);
    util_dynarray_init(&cmd->pushes, NULL);
 
    *cmd_buffer_out = &cmd->vk;
@@ -103,11 +102,11 @@ nvk_reset_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer,
    nvk_descriptor_state_fini(cmd, &cmd->state.gfx.descriptors);
    nvk_descriptor_state_fini(cmd, &cmd->state.cs.descriptors);
 
-   nvk_cmd_pool_free_bo_list(pool, &cmd->bos);
-   nvk_cmd_pool_free_gart_bo_list(pool, &cmd->gart_bos);
-   cmd->upload_bo = NULL;
-   cmd->push_bo = NULL;
-   cmd->push_bo_limit = NULL;
+   nvk_cmd_pool_free_mem_list(pool, &cmd->owned_mem);
+   nvk_cmd_pool_free_gart_mem_list(pool, &cmd->owned_gart_mem);
+   cmd->upload_mem = NULL;
+   cmd->push_mem = NULL;
+   cmd->push_mem_limit = NULL;
    cmd->push = (struct nv_push) {0};
 
    util_dynarray_clear(&cmd->pushes);
@@ -125,16 +124,18 @@ const struct vk_command_buffer_ops nvk_cmd_buffer_ops = {
 static uint32_t push_runout[NVK_CMD_BUFFER_MAX_PUSH];
 
 static VkResult
-nvk_cmd_buffer_alloc_bo(struct nvk_cmd_buffer *cmd, bool force_gart, struct nvk_cmd_bo **bo_out)
+nvk_cmd_buffer_alloc_mem(struct nvk_cmd_buffer *cmd, bool force_gart,
+                         struct nvk_cmd_mem **mem_out)
 {
-   VkResult result = nvk_cmd_pool_alloc_bo(nvk_cmd_buffer_pool(cmd), force_gart, bo_out);
+   VkResult result = nvk_cmd_pool_alloc_mem(nvk_cmd_buffer_pool(cmd),
+                                            force_gart, mem_out);
    if (result != VK_SUCCESS)
       return result;
 
    if (force_gart)
-      list_addtail(&(*bo_out)->link, &cmd->gart_bos);
+      list_addtail(&(*mem_out)->link, &cmd->owned_gart_mem);
    else
-      list_addtail(&(*bo_out)->link, &cmd->bos);
+      list_addtail(&(*mem_out)->link, &cmd->owned_mem);
 
    return VK_SUCCESS;
 }
@@ -142,13 +143,13 @@ nvk_cmd_buffer_alloc_bo(struct nvk_cmd_buffer *cmd, bool force_gart, struct nvk_
 static void
 nvk_cmd_buffer_flush_push(struct nvk_cmd_buffer *cmd)
 {
-   if (likely(cmd->push_bo != NULL)) {
-      const uint32_t bo_offset =
-         (char *)cmd->push.start - (char *)cmd->push_bo->map;
+   if (likely(cmd->push_mem != NULL)) {
+      const uint32_t mem_offset =
+         (char *)cmd->push.start - (char *)cmd->push_mem->mem->map;
 
       struct nvk_cmd_push push = {
          .map = cmd->push.start,
-         .addr = cmd->push_bo->bo->offset + bo_offset,
+         .addr = cmd->push_mem->mem->va->addr + mem_offset,
          .range = nv_push_dw_count(&cmd->push) * 4,
       };
       util_dynarray_append(&cmd->pushes, struct nvk_cmd_push, push);
@@ -162,16 +163,16 @@ nvk_cmd_buffer_new_push(struct nvk_cmd_buffer *cmd)
 {
    nvk_cmd_buffer_flush_push(cmd);
 
-   VkResult result = nvk_cmd_buffer_alloc_bo(cmd, false, &cmd->push_bo);
+   VkResult result = nvk_cmd_buffer_alloc_mem(cmd, false, &cmd->push_mem);
    if (unlikely(result != VK_SUCCESS)) {
-      STATIC_ASSERT(NVK_CMD_BUFFER_MAX_PUSH <= NVK_CMD_BO_SIZE / 4);
-      cmd->push_bo = NULL;
+      STATIC_ASSERT(NVK_CMD_BUFFER_MAX_PUSH <= NVK_CMD_MEM_SIZE / 4);
+      cmd->push_mem = NULL;
       nv_push_init(&cmd->push, push_runout, 0);
-      cmd->push_bo_limit = &push_runout[NVK_CMD_BUFFER_MAX_PUSH];
+      cmd->push_mem_limit = &push_runout[NVK_CMD_BUFFER_MAX_PUSH];
    } else {
-      nv_push_init(&cmd->push, cmd->push_bo->map, 0);
-      cmd->push_bo_limit =
-         (uint32_t *)((char *)cmd->push_bo->map + NVK_CMD_BO_SIZE);
+      nv_push_init(&cmd->push, cmd->push_mem->mem->map, 0);
+      cmd->push_mem_limit =
+         (uint32_t *)((char *)cmd->push_mem->mem->map + NVK_CMD_MEM_SIZE);
    }
 }
 
@@ -196,29 +197,29 @@ nvk_cmd_buffer_upload_alloc(struct nvk_cmd_buffer *cmd,
                             uint64_t *addr, void **ptr)
 {
    assert(size % 4 == 0);
-   assert(size <= NVK_CMD_BO_SIZE);
+   assert(size <= NVK_CMD_MEM_SIZE);
 
    uint32_t offset = cmd->upload_offset;
    if (alignment > 0)
       offset = align(offset, alignment);
 
-   assert(offset <= NVK_CMD_BO_SIZE);
-   if (cmd->upload_bo != NULL && size <= NVK_CMD_BO_SIZE - offset) {
-      *addr = cmd->upload_bo->bo->offset + offset;
-      *ptr = (char *)cmd->upload_bo->map + offset;
+   assert(offset <= NVK_CMD_MEM_SIZE);
+   if (cmd->upload_mem != NULL && size <= NVK_CMD_MEM_SIZE - offset) {
+      *addr = cmd->upload_mem->mem->va->addr + offset;
+      *ptr = (char *)cmd->upload_mem->mem->map + offset;
 
       cmd->upload_offset = offset + size;
 
       return VK_SUCCESS;
    }
 
-   struct nvk_cmd_bo *bo;
-   VkResult result = nvk_cmd_buffer_alloc_bo(cmd, false, &bo);
+   struct nvk_cmd_mem *mem;
+   VkResult result = nvk_cmd_buffer_alloc_mem(cmd, false, &mem);
    if (unlikely(result != VK_SUCCESS))
       return result;
 
-   *addr = bo->bo->offset;
-   *ptr = bo->map;
+   *addr = mem->mem->va->addr;
+   *ptr = mem->mem->map;
 
    /* Pick whichever of the current upload BO and the new BO will have more
     * room left to be the BO for the next upload.  If our upload size is
@@ -226,8 +227,8 @@ nvk_cmd_buffer_upload_alloc(struct nvk_cmd_buffer *cmd,
     * upload BO on this one allocation and continuing on the current upload
     * BO.
     */
-   if (cmd->upload_bo == NULL || size < cmd->upload_offset) {
-      cmd->upload_bo = bo;
+   if (cmd->upload_mem == NULL || size < cmd->upload_offset) {
+      cmd->upload_mem = mem;
       cmd->upload_offset = size;
    }
 
@@ -258,21 +259,21 @@ nvk_cmd_buffer_cond_render_alloc(struct nvk_cmd_buffer *cmd,
    uint32_t offset = cmd->cond_render_gart_offset;
    uint32_t size = 64;
 
-   assert(offset <= NVK_CMD_BO_SIZE);
-   if (cmd->cond_render_gart_bo != NULL && size <= NVK_CMD_BO_SIZE - offset) {
-      *addr = cmd->cond_render_gart_bo->bo->offset + offset;
+   assert(offset <= NVK_CMD_MEM_SIZE);
+   if (cmd->cond_render_gart_mem != NULL && size <= NVK_CMD_MEM_SIZE - offset) {
+      *addr = cmd->cond_render_gart_mem->mem->va->addr + offset;
 
       cmd->cond_render_gart_offset = offset + size;
 
       return VK_SUCCESS;
    }
 
-   struct nvk_cmd_bo *bo;
-   VkResult result = nvk_cmd_buffer_alloc_bo(cmd, true, &bo);
+   struct nvk_cmd_mem *mem;
+   VkResult result = nvk_cmd_buffer_alloc_mem(cmd, true, &mem);
    if (unlikely(result != VK_SUCCESS))
       return result;
 
-   *addr = bo->bo->offset;
+   *addr = mem->mem->va->addr;
 
    /* Pick whichever of the current upload BO and the new BO will have more
     * room left to be the BO for the next upload.  If our upload size is
@@ -280,8 +281,8 @@ nvk_cmd_buffer_cond_render_alloc(struct nvk_cmd_buffer *cmd,
     * upload BO on this one allocation and continuing on the current upload
     * BO.
     */
-   if (cmd->cond_render_gart_bo == NULL || size < cmd->cond_render_gart_offset) {
-      cmd->cond_render_gart_bo = bo;
+   if (cmd->cond_render_gart_mem == NULL || size < cmd->cond_render_gart_offset) {
+      cmd->cond_render_gart_mem = mem;
       cmd->cond_render_gart_offset = size;
    }
 

@@ -182,7 +182,7 @@ impl Function {
     }
 }
 
-impl Shader {
+impl Shader<'_> {
     pub fn opt_dce(&mut self) {
         for f in &mut self.functions {
             f.opt_dce();

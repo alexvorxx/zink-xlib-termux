@@ -530,7 +530,7 @@ zink_create_sampler_state(struct pipe_context *pctx,
    sci.borderColor = get_border_color(&state->border_color, is_integer, need_custom);
    if (sci.borderColor > VK_BORDER_COLOR_INT_OPAQUE_WHITE && need_custom) {
       if (!screen->info.border_color_feats.customBorderColorWithoutFormat &&
-          screen->info.driver_props.driverID != VK_DRIVER_ID_MESA_TURNIP) {
+          zink_driverid(screen) != VK_DRIVER_ID_MESA_TURNIP) {
          static bool warned = false;
          warn_missing_feature(warned, "customBorderColorWithoutFormat");
       }
@@ -5145,6 +5145,7 @@ zink_context_replace_buffer_storage(struct pipe_context *pctx, struct pipe_resou
    /* don't be too creative */
    zink_resource_object_reference(screen, &d->obj, s->obj);
    d->valid_buffer_range = s->valid_buffer_range;
+   s->real_buffer_range = &d->valid_buffer_range;
    zink_resource_copies_reset(d);
    /* force counter buffer reset */
    d->so_valid = false;

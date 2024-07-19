@@ -190,8 +190,8 @@ panfrost_create_sampler_state(struct pipe_context *pctx,
    struct panfrost_sampler_state *so = CALLOC_STRUCT(panfrost_sampler_state);
    so->base = *cso;
 
-#if PAN_ARCH == 7
-   /* On v7, pan_texture.c composes the API swizzle with a bijective
+#if PAN_ARCH == 7 || PAN_ARCH >= 10
+   /* On v7 and v10+, pan_texture.c composes the API swizzle with a bijective
     * swizzle derived from the format, to allow more formats than the
     * hardware otherwise supports. When packing border colours, we need to
     * undo this bijection, by swizzling with its inverse.
@@ -3050,6 +3050,14 @@ panfrost_launch_grid_on_batch(struct pipe_context *pipe,
 {
    struct panfrost_context *ctx = pan_context(pipe);
 
+   util_dynarray_foreach(&ctx->global_buffers, struct pipe_resource *, res) {
+      if (!*res)
+         continue;
+
+      struct panfrost_resource *buffer = pan_resource(*res);
+      panfrost_batch_write_rsrc(batch, buffer, PIPE_SHADER_COMPUTE);
+   }
+
    if (info->indirect && !PAN_GPU_INDIRECTS) {
       struct pipe_transfer *transfer;
       uint32_t *params =
@@ -3442,8 +3450,8 @@ panfrost_create_sampler_view(struct pipe_context *pctx,
    struct panfrost_sampler_view *so =
       rzalloc(pctx, struct panfrost_sampler_view);
 
-   pan_legalize_afbc_format(ctx, pan_resource(texture), template->format,
-                            false, false);
+   pan_legalize_format(ctx, pan_resource(texture), template->format, false,
+                       false);
 
    pipe_reference(NULL, &texture->reference);
 

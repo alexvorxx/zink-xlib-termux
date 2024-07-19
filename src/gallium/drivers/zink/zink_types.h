@@ -1313,6 +1313,7 @@ struct zink_resource {
    union {
       struct {
          struct util_range valid_buffer_range;
+         struct util_range *real_buffer_range; //only set on tc replace_buffer src
          uint32_t vbo_bind_mask : PIPE_MAX_ATTRIBS;
          uint8_t ubo_bind_count[2];
          uint8_t ssbo_bind_count[2];
@@ -1574,6 +1575,7 @@ struct zink_screen {
       bool can_do_invalid_linear_modifier;
       bool io_opt;
       bool inconsistent_interpolation;
+      bool can_2d_view_sparse;
       unsigned z16_unscaled_bias;
       unsigned z24_unscaled_bias;
    } driver_workarounds;

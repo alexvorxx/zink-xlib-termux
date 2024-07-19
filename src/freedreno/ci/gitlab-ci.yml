@@ -15,9 +15,12 @@ a306_piglit:
     - .baremetal-deqp-test
     - .a306-test
     - .google-freedreno-manual-rules
+  timeout: 40m
   variables:
     DEQP_SUITE: freedreno-a306-piglit
     HWCI_START_WESTON: 1
+    JOB_TIMEOUT: 40
+    TEST_PHASE_TIMEOUT: 40
 
 # Something happened and now this hangchecks and doesn't recover.  Unkown when
 # it started.

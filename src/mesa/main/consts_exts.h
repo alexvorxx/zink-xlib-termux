@@ -189,6 +189,7 @@ struct gl_extensions
    GLboolean EXT_shader_samples_identical;
    GLboolean EXT_sRGB;
    GLboolean EXT_stencil_two_side;
+   GLboolean EXT_shadow_samplers;
    GLboolean EXT_texture_array;
    GLboolean EXT_texture_buffer_object;
    GLboolean EXT_texture_compression_latc;
@@ -314,10 +315,6 @@ struct gl_shader_compiler_options
    /** Driver-selectable options: */
    GLboolean EmitNoCont;                  /**< Emit CONT opcode? */
    GLboolean EmitNoMainReturn;            /**< Emit CONT/RET opcodes? */
-   GLboolean LowerCombinedClipCullDistance; /** Lower gl_ClipDistance and
-                                              * gl_CullDistance together from
-                                              * float[8] to vec4[2]
-                                              **/
    GLbitfield LowerBuiltinVariablesXfb;   /**< Which builtin variables should
                                            * be lowered for transform feedback
                                            **/
@@ -957,9 +954,6 @@ struct gl_constants
 
    bool HasFBFetch;
 
-   /** Whether the backend supports reading from outputs */
-   bool SupportsReadingOutputs;
-
    bool CombinedClipCullDistanceArrays;
 
    bool PointSizeFixed;
@@ -985,9 +979,6 @@ struct gl_constants
     * full NV extension with arbitrary restart indices.
     */
    bool PrimitiveRestartFixedIndex;
-
-   /** GL_ARB_gl_spirv */
-   struct spirv_supported_capabilities SpirVCapabilities;
 
    /** GL_ARB_spirv_extensions */
    struct spirv_supported_extensions *SpirVExtensions;

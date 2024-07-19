@@ -1,25 +1,8 @@
 /*
  * Copyright 2010 Jerome Glisse <glisse@freedesktop.org>
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * on the rights to use, copy, modify, merge, publish, distribute, sub
- * license, and/or sell copies of the Software, and to permit persons to whom
- * the Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHOR(S) AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
- * USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
+
 #include "r600_formats.h"
 #include "r600_shader.h"
 #include "r600_query.h"
@@ -2137,7 +2120,8 @@ static void evergreen_emit_vertex_buffers(struct r600_context *rctx,
 {
 	struct radeon_cmdbuf *cs = &rctx->b.gfx.cs;
 	struct r600_fetch_shader *shader = (struct r600_fetch_shader*)rctx->vertex_fetch_shader.cso;
-	uint32_t dirty_mask = state->dirty_mask & shader->buffer_mask;
+	uint32_t buffer_mask = shader ? shader->buffer_mask : ~0;
+	uint32_t dirty_mask = state->dirty_mask & buffer_mask;
 
 	while (dirty_mask) {
 		struct pipe_vertex_buffer *vb;
@@ -2176,7 +2160,7 @@ static void evergreen_emit_vertex_buffers(struct r600_context *rctx,
 		radeon_emit(cs, radeon_add_to_buffer_list(&rctx->b, &rctx->b.gfx, rbuffer,
 						      RADEON_USAGE_READ | RADEON_PRIO_VERTEX_BUFFER));
 	}
-	state->dirty_mask &= ~shader->buffer_mask;
+	state->dirty_mask &= ~buffer_mask;
 }
 
 static void evergreen_fs_emit_vertex_buffers(struct r600_context *rctx, struct r600_atom * atom)

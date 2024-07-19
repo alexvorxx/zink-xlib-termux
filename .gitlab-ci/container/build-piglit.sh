@@ -4,11 +4,11 @@ set -ex
 
 # When changing this file, you need to bump the following
 # .gitlab-ci/image-tags.yml tags:
-# DEBIAN_X86_64_TEST_GL_TAG
-# DEBIAN_X86_64_TEST_VK_TAG
+# DEBIAN_TEST_GL_TAG
+# DEBIAN_TEST_VK_TAG
 # KERNEL_ROOTFS_TAG
 
-REV="1e631479c0b477006dd7561c55e06269d2878d8d"
+REV="582f5490a124c27c26d3a452fee03a8c85fa9a5c"
 
 git clone https://gitlab.freedesktop.org/mesa/piglit.git --single-branch --no-checkout /piglit
 pushd /piglit

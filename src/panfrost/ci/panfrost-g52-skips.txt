@@ -20,11 +20,6 @@ dEQP-VK.api.object_management.max_concurrent.query_pool
 # not implemented
 dEQP-VK.api.copy_and_blit.core.resolve_image.*
 
-# Image copies seem to be broken in general: 8/16bpp are worse affected, but
-# even 32bpp formats are failing when doing any kind of conversion or
-# reinterpretation (channel size or order, uint/sint/unorm/snorm/srgb, etc)
-dEQP-VK.api.copy_and_blit.core.image_to_image.all_formats.color..*
-
 # Causes a GPU timeout
 spec@!opengl 1.1@longprim
 
@@ -52,8 +47,6 @@ spec@arb_texture_rectangle@tex-miplevel-selection gl2:texture() 2drectshadow
 spec@arb_texture_rectangle@tex-miplevel-selection gl2:textureproj 2drect
 spec@arb_texture_rectangle@tex-miplevel-selection gl2:textureproj 2drect_projvec4
 spec@arb_texture_rectangle@tex-miplevel-selection gl2:textureproj 2drectshadow
-spec@arb_texture_view@sampling-2d-array-as-cubemap-array
-spec@arb_texture_view@sampling-2d-array-as-cubemap
 spec@ext_transform_feedback@immediate-reuse-index-buffer
 spec@ext_transform_feedback@immediate-reuse-uniform-buffer
 spec@glsl-1.30@execution@tex-miplevel-selection texture() 2drect
@@ -76,5 +69,10 @@ spec@glsl-1.30@execution@tex-miplevel-selection textureprojgradoffset 2drectshad
 spec@glsl-1.30@execution@tex-miplevel-selection textureprojoffset 2drect
 spec@glsl-1.30@execution@tex-miplevel-selection textureprojoffset 2drect_projvec4
 spec@glsl-1.30@execution@tex-miplevel-selection textureprojoffset 2drectshadow
-spec@oes_texture_view@sampling-2d-array-as-cubemap
 spec@!opengl 1.0@rasterpos
+spec@!opengl es 3.0@gles-3.0-transform-feedback-uniform-buffer-object
+
+# uprev Piglit in Mesa
+spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch
+shaders@glsl-bug-110796
+

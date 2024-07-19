@@ -21,7 +21,8 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include "panvk_private.h"
+#include "panvk_entrypoints.h"
+#include "panvk_macros.h"
 
 VKAPI_ATTR VkResult VKAPI_CALL
 panvk_CreateQueryPool(VkDevice _device,

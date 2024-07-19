@@ -72,7 +72,7 @@
 #include <elf.h>
 #endif
 
-#if DETECT_OS_UNIX
+#if DETECT_OS_POSIX
 #include <unistd.h>
 #endif
 
@@ -198,7 +198,7 @@ check_os_altivec_support(void)
    } else {
       bool enable_altivec = true;    /* Default: enable  if available, and if not overridden */
       bool enable_vsx = true;
-#ifdef DEBUG
+#if MESA_DEBUG
       /* Disabling Altivec code generation is not the same as disabling VSX code generation,
        * which can be done simply by passing -mattr=-vsx to the LLVM compiler; cf.
        * lp_build_create_jit_compiler_for_module().
@@ -638,7 +638,7 @@ void check_cpu_caps_override(void)
    if (debug_get_bool_option("GALLIUM_NOSSE", false)) {
       util_cpu_caps.has_sse = 0;
    }
-#ifdef DEBUG
+#if MESA_DEBUG
    /* For simulating less capable machines */
    if (debug_get_bool_option("LP_FORCE_SSE2", false)) {
       util_cpu_caps.has_sse3 = 0;
@@ -736,7 +736,7 @@ _util_cpu_detect_once(void)
       GetSystemInfo(&system_info);
       available_cpus = MAX2(1, system_info.dwNumberOfProcessors);
    }
-#elif DETECT_OS_UNIX
+#elif DETECT_OS_POSIX
 #  if defined(HAS_SCHED_GETAFFINITY)
    {
       /* sched_setaffinity() can be used to further restrict the number of
@@ -804,7 +804,7 @@ _util_cpu_detect_once(void)
       total_cpus = ncpu;
    }
 #  endif /* DETECT_OS_BSD */
-#endif /* DETECT_OS_UNIX */
+#endif /* DETECT_OS_POSIX */
 
    util_cpu_caps.nr_cpus = MAX2(1, available_cpus);
    total_cpus = MAX2(total_cpus, util_cpu_caps.nr_cpus);

@@ -48,10 +48,12 @@
 #include "crocus_context.h"
 #include "crocus_defines.h"
 #include "crocus_fence.h"
+#include "crocus_perf.h"
 #include "crocus_pipe.h"
 #include "crocus_resource.h"
 #include "crocus_screen.h"
 #include "intel/compiler/elk/elk_compiler.h"
+#include "intel/common/intel_debug_identifier.h"
 #include "intel/common/intel_gem.h"
 #include "intel/common/intel_l3_config.h"
 #include "intel/common/intel_uuid.h"
@@ -182,7 +184,6 @@ crocus_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_TEXTURE_GATHER_SM5:
    case PIPE_CAP_SHADER_ARRAY_COMPONENTS:
    case PIPE_CAP_GLSL_TESS_LEVELS_AS_INPUTS:
-   case PIPE_CAP_NIR_COMPACT_ARRAYS:
    case PIPE_CAP_FS_POSITION_IS_SYSVAL:
    case PIPE_CAP_FS_FACE_IS_INTEGER_SYSVAL:
    case PIPE_CAP_INVALIDATE_BUFFER:
@@ -625,6 +626,7 @@ crocus_get_timestamp(struct pipe_screen *pscreen)
 void
 crocus_screen_destroy(struct crocus_screen *screen)
 {
+   intel_perf_free(screen->perf_cfg);
    u_transfer_helper_destroy(screen->base.transfer_helper);
    crocus_bufmgr_unref(screen->bufmgr);
    disk_cache_destroy(screen->disk_cache);

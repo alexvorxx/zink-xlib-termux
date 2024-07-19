@@ -153,7 +153,7 @@ OpenGL
    LD_LIBRARY_PATH="$MESA_INSTALLDIR/lib64" glxinfo
 
 You may need to use ``lib`` instead of ``lib64`` on some systems or a full
-library specifier on debian.  Look inside ``installdir`` for the directory that
+library specifier on Debian.  Look inside ``installdir`` for the directory that
 contains ``libGL.so`` and use that one.
 
 Vulkan
@@ -161,7 +161,7 @@ Vulkan
 
 .. code-block:: sh
 
-   VK_ICD_FILENAMES="$MESA_INSTALLDIR/share/vulkan/icd/my_icd.json" vulkaninfo
+   VK_DRIVER_FILES="$MESA_INSTALLDIR/share/vulkan/icd/my_icd.json" vulkaninfo
 
 where ``my_icd.json`` is replaced with the actual ICD json file name.  This
 will depend on your driver.  For instance, the 64-bit Lavapipe driver ICD file

@@ -1,25 +1,7 @@
 /*
  * Copyright © 2021 Valve Corporation
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
- * IN THE SOFTWARE.
- *
+ * SPDX-License-Identifier: MIT
  */
 
 #include "aco_builder.h"
@@ -332,9 +314,6 @@ try_optimize_scc_nocompare(pr_opt_ctx& ctx, aco_ptr<Instruction>& instr)
       if (instr->operands[0].isConstant())
          std::swap(instr->operands[0], instr->operands[1]);
 
-      if (ctx.uses[instr->operands[0].tempId()] > 1)
-         return;
-
       /* Find the writer instruction of Operand 0. */
       Idx wr_idx = last_writer_idx(ctx, instr->operands[0]);
       if (!wr_idx.found())
@@ -412,10 +391,10 @@ try_optimize_scc_nocompare(pr_opt_ctx& ctx, aco_ptr<Instruction>& instr)
           * This means that the original instruction will be eliminated.
           */
          if (wr_instr->format == Format::SOP2) {
-            instr.reset(create_instruction<SOP2_instruction>(pulled_opcode, Format::SOP2, 2, 2));
+            instr.reset(create_instruction(pulled_opcode, Format::SOP2, 2, 2));
             instr->operands[1] = wr_instr->operands[1];
          } else if (wr_instr->format == Format::SOP1) {
-            instr.reset(create_instruction<SOP1_instruction>(pulled_opcode, Format::SOP1, 1, 2));
+            instr.reset(create_instruction(pulled_opcode, Format::SOP1, 1, 2));
          }
          instr->definitions[0] = wr_instr->definitions[0];
          instr->definitions[1] = scc_def;
@@ -526,7 +505,7 @@ try_eliminate_scc_copy(pr_opt_ctx& ctx, aco_ptr<Instruction>& instr)
    Idx producer_idx = {wr_idx.block, wr_instr->pass_flags};
    Instruction* producer_instr = ctx.get(producer_idx);
 
-   if (!producer_instr)
+   if (!producer_instr || !producer_instr->isSALU())
       return;
 
    /* Verify that the operands of the producer instruction haven't been overwritten. */
@@ -544,20 +523,10 @@ try_eliminate_scc_copy(pr_opt_ctx& ctx, aco_ptr<Instruction>& instr)
    }
 
    /* Duplicate the original producer of the SCC */
-   if (producer_instr->isSOP1())
-      instr.reset(create_instruction<SOP1_instruction>(producer_instr->opcode, Format::SOP1,
-                                                       producer_instr->operands.size(),
-                                                       producer_instr->definitions.size()));
-   else if (producer_instr->isSOP2())
-      instr.reset(create_instruction<SOP2_instruction>(producer_instr->opcode, Format::SOP2,
-                                                       producer_instr->operands.size(),
-                                                       producer_instr->definitions.size()));
-   else if (producer_instr->isSOPC())
-      instr.reset(create_instruction<SOPC_instruction>(producer_instr->opcode, Format::SOPC,
-                                                       producer_instr->operands.size(),
-                                                       producer_instr->definitions.size()));
-   else
-      return;
+   instr.reset(create_instruction(producer_instr->opcode, producer_instr->format,
+                                  producer_instr->operands.size(),
+                                  producer_instr->definitions.size()));
+   instr->salu().imm = producer_instr->salu().imm;
 
    /* The copy is no longer needed. */
    if (--ctx.uses[wr_instr->definitions[0].tempId()] == 0)

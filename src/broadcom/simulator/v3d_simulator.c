@@ -854,7 +854,7 @@ v3d_write_performance_query_result(int fd,
 {
 	struct v3d_simulator_file *file = v3d_get_simulator_file_for_fd(fd);
 	struct v3d_simulator_perfmon *perfmon;
-	uint64_t counter_values[V3D_PERFCNT_NUM];
+	uint64_t counter_values[sim_state.perfcnt_total];
 
 	for (uint32_t i = 0; i < copy->nperfmons; i++) {
 		mtx_lock(&sim_state.submit_lock);
@@ -1074,7 +1074,9 @@ v3d_simulator_ioctl(int fd, unsigned long request, void *args)
                 return 0;
 
         case DRM_IOCTL_V3D_GET_PARAM:
-                return v3d_X_simulator(get_param_ioctl)(sim_state.v3d, args);
+                return v3d_X_simulator(get_param_ioctl)(sim_state.v3d,
+                                                        sim_state.perfcnt_total,
+                                                        args);
 
         case DRM_IOCTL_GEM_CLOSE:
                 return v3d_simulator_gem_close_ioctl(fd, args);
@@ -1096,6 +1098,10 @@ v3d_simulator_ioctl(int fd, unsigned long request, void *args)
 
         case DRM_IOCTL_V3D_PERFMON_GET_VALUES:
                 return v3d_simulator_perfmon_get_values_ioctl(fd, args);
+
+        case DRM_IOCTL_V3D_PERFMON_GET_COUNTER:
+                return v3d_X_simulator(perfmon_get_counter_ioctl)(sim_state.perfcnt_total,
+                                                                  args);
 
         case DRM_IOCTL_GEM_OPEN:
         case DRM_IOCTL_GEM_FLINK:

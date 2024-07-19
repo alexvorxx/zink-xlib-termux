@@ -16,7 +16,7 @@
       when: on_success
 
 .zink-common-manual-rules:
-  retry: !reference [.scheduled_pipeline-rules, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
     - !reference [.gl-manual-rules, rules]
@@ -31,6 +31,14 @@
     - !reference [.lavapipe-rules, rules]
     - !reference [.zink-common-rules, rules]
 
+.zink-venus-lvp-rules:
+  stage: layered-backends
+  rules:
+    - !reference [.test, rules]
+    - !reference [.lavapipe-rules, rules]
+    - !reference [.venus-rules, rules]
+    - !reference [.zink-common-rules, rules]
+
 .zink-anv-rules:
   stage: layered-backends
   rules:
@@ -40,7 +48,7 @@
 
 .zink-anv-manual-rules:
   stage: layered-backends
-  retry: !reference [.scheduled_pipeline-rules, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
     - !reference [.anv-manual-rules, rules]
@@ -54,7 +62,22 @@
     - !reference [.anv-rules, rules]
     - !reference [.zink-common-rules, rules]
 
-.zink-turnip-rules:
+.zink-nvk-rules:
+  stage: layered-backends
+  rules:
+    - !reference [.test, rules]
+    - !reference [.nvk-valve-rules, rules]
+    - !reference [.zink-common-rules, rules]
+
+.zink-nvk-manual-rules:
+  stage: layered-backends
+  extends: .no-auto-retry
+  rules:
+    - !reference [.test, rules]
+    - !reference [.nvk-valve-manual-rules, rules]
+    - !reference [.zink-common-manual-rules, rules]
+
+.zink-turnip-collabora-rules:
   stage: layered-backends
   rules:
     - !reference [.test, rules]
@@ -63,12 +86,19 @@
   variables:
     ZINK_DEBUG: optimal_keys
 
-.zink-turnip-manual-rules:
+.zink-turnip-collabora-manual-rules:
   stage: layered-backends
-  retry: !reference [.scheduled_pipeline-rules, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
     - !reference [.collabora-turnip-manual-rules, rules]
+    - !reference [.zink-common-manual-rules, rules]
+
+.zink-turnip-valve-manual-rules:
+  stage: layered-backends
+  extends: .no-auto-retry
+  rules:
+    - !reference [.valve-freedreno-turnip-manual-rules, rules]
     - !reference [.zink-common-manual-rules, rules]
 
 .zink-radv-rules:
@@ -80,7 +110,7 @@
 
 .zink-radv-manual-rules:
   stage: layered-backends
-  retry: !reference [.scheduled_pipeline-rules, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
     - !reference [.radv-valve-manual-rules, rules]
@@ -94,6 +124,7 @@
   variables:
     MESA_LOADER_DRIVER_OVERRIDE: "zink"
     FLAKES_CHANNEL: "#zink-ci"
+    MESA_VK_ABORT_ON_DEVICE_LOSS: 0
 
 .zink-trace-test:
   extends:
@@ -119,6 +150,22 @@
     # Fix non-conformant llvmpipe filter defaults
     GALLIVM_PERF: "no_quad_lod"
 
+.zink-venus-lvp-test:
+  extends:
+    - .zink-venus-lvp-rules
+    - .zink-test
+  variables:
+    LIBGL_ALWAYS_SOFTWARE: "true"
+    LVP_POISON_MEMORY: "1"
+    GPU_VERSION: zink-venus-lvp
+    # Fix non-conformant llvmpipe filter defaults
+    GALLIVM_PERF: "no_quad_lod"
+    VK_DRIVER: virtio
+    GALLIUM_DRIVER: "zink"
+    CROSVM_GALLIUM_DRIVER: "llvmpipe"
+    CROSVM_VK_DRIVER: "lvp"
+    CROSVM_GPU_ARGS: "vulkan=true,gles=false,backend=virglrenderer,egl=true,surfaceless=true,fixed-blob-mapping=false"
+
 .zink-anv-test:
   extends:
     - .lava-acer-cp514-2h-1160g7-volteer:x86_64
@@ -129,18 +176,38 @@
     VK_DRIVER: intel
     GPU_VERSION: zink-anv-tgl
 
+.zink-nvk-test-valve:
+  extends:
+    - .b2c-x86_64-test-gl
+    - .nvk-vkcts
+    - .zink-test
+  variables:
+    DEQP_SUITE: zink-nvk
+    # Disable reporting, since DUTs don't have internet access
+    FLAKES_CHANNEL: ""
+
+.tu-zink-test-valve:
+  extends:
+    - .zink-test
+    - .b2c-arm64-test-gl
+  variables:
+    VK_DRIVER: freedreno
+    HWCI_TEST_SCRIPT: ./install/deqp-runner.sh
+    # Disable reporting, since DUTs don't have internet access
+    FLAKES_CHANNEL: ""
+
 .radv-zink-test-valve:
   timeout: 30m
   extends:
     - .zink-test
     - .test-radv
-    - .b2c-test-gl
+    - .b2c-x86_64-test-gl
   variables:
     DEQP_SUITE: zink-radv
     HWCI_TEST_SCRIPT: ./install/deqp-runner.sh
     B2C_KERNEL_URL: https://fs.mupuf.org/linux-6.6-b2c-radv-ci # 6.6
-    B2C_JOB_SUCCESS_REGEX: 'Execution is over, pipeline status: 0'
     B2C_TIMEOUT_OVERALL_MINUTES: 20
 
     # Disable reporting, since DUTs don't have internet access
     FLAKES_CHANNEL: ""
+

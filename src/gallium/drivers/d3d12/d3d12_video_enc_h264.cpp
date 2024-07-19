@@ -351,7 +351,13 @@ d3d12_video_encoder_update_current_frame_pic_params_info_h264(struct d3d12_video
 
    bUsedAsReference = !h264Pic->not_referenced;
 
-   picParams.pH264PicData->pic_parameter_set_id = pH264BitstreamBuilder->get_active_pps_id();
+   if (pD3D12Enc->m_currentEncodeCapabilities.m_encoderCodecSpecificConfigCaps.m_H264CodecCaps.SupportFlags &
+       D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT_H264_FLAG_NUM_REF_IDX_ACTIVE_OVERRIDE_FLAG_SLICE_SUPPORT)
+   {
+      picParams.pH264PicData->Flags |= D3D12_VIDEO_ENCODER_PICTURE_CONTROL_CODEC_DATA_H264_FLAG_REQUEST_NUM_REF_IDX_ACTIVE_OVERRIDE_FLAG_SLICE;
+   }
+
+   picParams.pH264PicData->pic_parameter_set_id = pH264BitstreamBuilder->get_active_pps().pic_parameter_set_id;
    picParams.pH264PicData->idr_pic_id = h264Pic->idr_pic_id;
    picParams.pH264PicData->FrameType = d3d12_video_encoder_convert_frame_type_h264(h264Pic->picture_type);
    picParams.pH264PicData->PictureOrderCountNumber = h264Pic->pic_order_cnt;
@@ -823,8 +829,8 @@ d3d12_video_encoder_convert_h264_codec_configuration(struct d3d12_video_encoder 
    capCodecConfigData.CodecSupportLimits.pH264Support = &pD3D12Enc->m_currentEncodeCapabilities.m_encoderCodecSpecificConfigCaps.m_H264CodecCaps;
    capCodecConfigData.CodecSupportLimits.DataSize = sizeof(pD3D12Enc->m_currentEncodeCapabilities.m_encoderCodecSpecificConfigCaps.m_H264CodecCaps);
 
-   if(FAILED(pD3D12Enc->m_spD3D12VideoDevice->CheckFeatureSupport(D3D12_FEATURE_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT, &capCodecConfigData, sizeof(capCodecConfigData))
-      || !capCodecConfigData.IsSupported))
+   if(FAILED(pD3D12Enc->m_spD3D12VideoDevice->CheckFeatureSupport(D3D12_FEATURE_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT, &capCodecConfigData, sizeof(capCodecConfigData)))
+      || !capCodecConfigData.IsSupported)
    {
          debug_printf("D3D12_FEATURE_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT call failed.");
          is_supported = false;
@@ -1117,6 +1123,31 @@ d3d12_video_encoder_compare_slice_config_h264_hevc(
                   sizeof(D3D12_VIDEO_ENCODER_PICTURE_CONTROL_SUBREGIONS_LAYOUT_DATA_SLICES)) == 0);
 }
 
+static inline bool
+d3d12_video_encoder_needs_new_pps_h264(struct d3d12_video_encoder *pD3D12Enc,
+                                       bool writeNewSPS,
+                                       H264_PPS &tentative_pps,
+                                       const H264_PPS &active_pps)
+{
+   bool bUseSliceL0L1Override = (pD3D12Enc->m_currentEncodeConfig.m_encoderPicParamsDesc.m_H264PicData.Flags &
+                                 D3D12_VIDEO_ENCODER_PICTURE_CONTROL_CODEC_DATA_H264_FLAG_REQUEST_NUM_REF_IDX_ACTIVE_OVERRIDE_FLAG_SLICE);
+
+   bool bDifferentL0L1Lists = !bUseSliceL0L1Override &&
+         ((tentative_pps.num_ref_idx_l0_active_minus1 != active_pps.num_ref_idx_l0_active_minus1) ||
+         (tentative_pps.num_ref_idx_l1_active_minus1 != active_pps.num_ref_idx_l1_active_minus1));
+
+   bool bDidPPSChange =
+      ((tentative_pps.constrained_intra_pred_flag != active_pps.constrained_intra_pred_flag) ||
+       (tentative_pps.entropy_coding_mode_flag != active_pps.entropy_coding_mode_flag) ||
+       bDifferentL0L1Lists ||
+       (tentative_pps.pic_order_present_flag != active_pps.pic_order_present_flag) ||
+       (tentative_pps.pic_parameter_set_id != active_pps.pic_parameter_set_id) ||
+       (tentative_pps.seq_parameter_set_id != active_pps.seq_parameter_set_id) ||
+       (tentative_pps.transform_8x8_mode_flag != active_pps.transform_8x8_mode_flag));
+
+   return writeNewSPS || bDidPPSChange;
+}
+
 uint32_t
 d3d12_video_encoder_build_codec_headers_h264(struct d3d12_video_encoder *pD3D12Enc,
                                              std::vector<uint64_t> &pWrittenCodecUnitsSizes)
@@ -1149,41 +1180,40 @@ d3d12_video_encoder_build_codec_headers_h264(struct d3d12_video_encoder *pD3D12E
                       // Also on input format dirty flag for new SPS, VUI etc
                       || (pD3D12Enc->m_currentEncodeConfig.m_ConfigDirtyFlags & d3d12_video_encoder_config_dirty_flag_sequence_info);
 
-   uint32_t active_seq_parameter_set_id = pH264BitstreamBuilder->get_active_sps_id();
+   uint32_t active_seq_parameter_set_id = pH264BitstreamBuilder->get_active_sps().seq_parameter_set_id;
 
    size_t writtenSPSBytesCount = 0;
    if (writeNewSPS) {
-      pH264BitstreamBuilder->build_sps(pD3D12Enc->m_currentEncodeConfig.m_encoderCodecSpecificSequenceStateDescH264,
-                                       pD3D12Enc->base.profile,
-                                       *levelDesc.pH264LevelSetting,
-                                       pD3D12Enc->m_currentEncodeConfig.m_encodeFormatInfo.Format,
-                                       *codecConfigDesc.pH264Config,
-                                       pD3D12Enc->m_currentEncodeConfig.m_encoderGOPConfigDesc.m_H264GroupOfPictures,
-                                       active_seq_parameter_set_id,
-                                       MaxDPBCapacity,   // max_num_ref_frames
-                                       pD3D12Enc->m_currentEncodeConfig.m_currentResolution,
-                                       pD3D12Enc->m_currentEncodeConfig.m_FrameCroppingCodecConfig,
-                                       pD3D12Enc->m_BitstreamHeadersBuffer,
-                                       pD3D12Enc->m_BitstreamHeadersBuffer.begin() + writtenAUDBytesCount,
-                                       writtenSPSBytesCount);
+      H264_SPS sps = pH264BitstreamBuilder->build_sps(pD3D12Enc->m_currentEncodeConfig.m_encoderCodecSpecificSequenceStateDescH264,
+                                                      pD3D12Enc->base.profile,
+                                                      *levelDesc.pH264LevelSetting,
+                                                      pD3D12Enc->m_currentEncodeConfig.m_encodeFormatInfo.Format,
+                                                      *codecConfigDesc.pH264Config,
+                                                      pD3D12Enc->m_currentEncodeConfig.m_encoderGOPConfigDesc.m_H264GroupOfPictures,
+                                                      active_seq_parameter_set_id,
+                                                      MaxDPBCapacity,   // max_num_ref_frames
+                                                      pD3D12Enc->m_currentEncodeConfig.m_currentResolution,
+                                                      pD3D12Enc->m_currentEncodeConfig.m_FrameCroppingCodecConfig,
+                                                      pD3D12Enc->m_BitstreamHeadersBuffer,
+                                                      pD3D12Enc->m_BitstreamHeadersBuffer.begin() + writtenAUDBytesCount,
+                                                      writtenSPSBytesCount);
+      pH264BitstreamBuilder->set_active_sps(sps);
       pWrittenCodecUnitsSizes.push_back(writtenSPSBytesCount);
    }
 
    size_t writtenPPSBytesCount = 0;
-   pH264BitstreamBuilder->build_pps(pD3D12Enc->base.profile,
-                                    *codecConfigDesc.pH264Config,
-                                    *currentPicParams.pH264PicData,
-                                    currentPicParams.pH264PicData->pic_parameter_set_id,
-                                    active_seq_parameter_set_id,
-                                    pD3D12Enc->m_StagingHeadersBuffer,
-                                    pD3D12Enc->m_StagingHeadersBuffer.begin(),
-                                    writtenPPSBytesCount);
+   H264_PPS tentative_pps = pH264BitstreamBuilder->build_pps(pD3D12Enc->base.profile,
+                                                             *codecConfigDesc.pH264Config,
+                                                             *currentPicParams.pH264PicData,
+                                                             currentPicParams.pH264PicData->pic_parameter_set_id,
+                                                             active_seq_parameter_set_id,
+                                                             pD3D12Enc->m_StagingHeadersBuffer,
+                                                             pD3D12Enc->m_StagingHeadersBuffer.begin(),
+                                                             writtenPPSBytesCount);
 
-   std::vector<uint8_t>& active_pps = pH264BitstreamBuilder->get_active_pps();
-   if (writeNewSPS ||
-      (writtenPPSBytesCount != active_pps.size()) ||
-       memcmp(pD3D12Enc->m_StagingHeadersBuffer.data(), active_pps.data(), writtenPPSBytesCount)) {
-      active_pps = pD3D12Enc->m_StagingHeadersBuffer;
+   const H264_PPS &active_pps = pH264BitstreamBuilder->get_active_pps();
+   if (d3d12_video_encoder_needs_new_pps_h264(pD3D12Enc, writeNewSPS, tentative_pps, active_pps)) {
+      pH264BitstreamBuilder->set_active_pps(tentative_pps);
       pD3D12Enc->m_BitstreamHeadersBuffer.resize(writtenAUDBytesCount + writtenSPSBytesCount + writtenPPSBytesCount);
       memcpy(&pD3D12Enc->m_BitstreamHeadersBuffer.data()[writtenAUDBytesCount + writtenSPSBytesCount], pD3D12Enc->m_StagingHeadersBuffer.data(), writtenPPSBytesCount);
       pWrittenCodecUnitsSizes.push_back(writtenPPSBytesCount);

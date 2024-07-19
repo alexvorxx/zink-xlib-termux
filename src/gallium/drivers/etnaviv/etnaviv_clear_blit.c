@@ -127,7 +127,7 @@ etna_blit(struct pipe_context *pctx, const struct pipe_blit_info *blit_info)
    }
 
    etna_blit_save_state(ctx, info.render_condition_enable);
-   util_blitter_blit(ctx->blitter, &info);
+   util_blitter_blit(ctx->blitter, &info, NULL);
 
 success:
    if (info.dst.resource->bind & PIPE_BIND_SAMPLER_VIEW)
@@ -229,9 +229,9 @@ etna_copy_resource(struct pipe_context *pctx, struct pipe_resource *dst,
 
       blit.src.level = blit.dst.level = level;
       blit.src.box.width = blit.dst.box.width =
-         MIN2(src_priv->levels[level].padded_width, dst_priv->levels[level].padded_width);
+         MIN2(src_priv->levels[level].width, dst_priv->levels[level].width);
       blit.src.box.height = blit.dst.box.height =
-         MIN2(src_priv->levels[level].padded_height, dst_priv->levels[level].padded_height);
+         MIN2(src_priv->levels[level].height, dst_priv->levels[level].height);
       unsigned depth = MIN2(src_priv->levels[level].depth, dst_priv->levels[level].depth);
       if (dst->array_size > 1) {
          assert(depth == 1); /* no array of 3d texture */

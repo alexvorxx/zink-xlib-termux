@@ -8,6 +8,7 @@
 #include "compiler/clc/clc.h"
 #include "compiler/glsl_types.h"
 #include "compiler/spirv/nir_spirv.h"
+#include "compiler/spirv/spirv_info.h"
 #include "util/build_id.h"
 #include "util/disk_cache.h"
 #include "util/macros.h"
@@ -23,38 +24,43 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include "util/u_math.h"
 #include <sys/mman.h>
 
-struct spirv_to_nir_options spirv_options = {
-   .environment = NIR_SPIRV_OPENCL,
-   .caps =
-      {
-         .address = true,
-         .float16 = true,
-         .float64 = true,
-         .groups = true,
-         .image_write_without_format = true,
-         .int8 = true,
-         .int16 = true,
-         .int64 = true,
-         .int64_atomics = false,
-         .kernel = true,
-         .linkage = true,
-         .float_controls = true,
-         .generic_pointers = true,
-         .storage_8bit = true,
-         .storage_16bit = true,
-         .subgroup_arithmetic = true,
-         .subgroup_basic = true,
-         .subgroup_ballot = true,
-         .subgroup_dispatch = true,
-         .subgroup_quad = true,
-         .subgroup_shuffle = true,
-         .subgroup_vote = true,
+static const struct spirv_capabilities spirv_caps = {
+   .Addresses = true,
+   .Float16 = true,
+   .Float64 = true,
+   .Groups = true,
+   .StorageImageWriteWithoutFormat = true,
+   .Int8 = true,
+   .Int16 = true,
+   .Int64 = true,
+   .Int64Atomics = true,
+   .Kernel = true,
+   .Linkage = true, /* We receive linked kernel from clc */
+   .DenormFlushToZero = true,
+   .DenormPreserve = true,
+   .SignedZeroInfNanPreserve = true,
+   .RoundingModeRTE = true,
+   .RoundingModeRTZ = true,
+   .GenericPointer = true,
+   .GroupNonUniform = true,
+   .GroupNonUniformArithmetic = true,
+   .GroupNonUniformClustered = true,
+   .GroupNonUniformBallot = true,
+   .GroupNonUniformQuad = true,
+   .GroupNonUniformShuffle = true,
+   .GroupNonUniformVote = true,
+   .SubgroupDispatch = true,
 
-         .intel_subgroup_shuffle = true,
-         .intel_subgroup_buffer_block_io = true,
-      },
+   .SubgroupShuffleINTEL = true,
+   .SubgroupBufferBlockIOINTEL = true,
+};
+
+static const struct spirv_to_nir_options spirv_options = {
+   .environment = NIR_SPIRV_OPENCL,
+   .capabilities = &spirv_caps,
    .shared_addr_format = nir_address_format_62bit_generic,
    .global_addr_format = nir_address_format_62bit_generic,
    .temp_addr_format = nir_address_format_62bit_generic,
@@ -110,6 +116,11 @@ lower_builtins(nir_builder *b, nir_instr *instr, void *data)
       b->cursor = nir_instr_remove(&call->instr);
       nir_store_deref(b, nir_src_as_deref(call->params[0]),
                       nir_load_helper_arg_hi_agx(b, 1, 32), 1);
+      return true;
+   } else if (strcmp(func->name, "ballot") == 0) {
+      b->cursor = nir_instr_remove(&call->instr);
+      nir_store_deref(b, nir_src_as_deref(call->params[0]),
+                      nir_ballot(b, 1, 32, call->params[1].ssa), 1);
       return true;
    } else if (strcmp(func->name, "nir_fence_helper_exit_agx") == 0) {
       b->cursor = nir_instr_remove(&call->instr);
@@ -259,7 +270,6 @@ static void
 print_u32_data(FILE *fp, const char *prefix, const char *arr_name,
                const uint32_t *data, size_t len)
 {
-   assert(len % 4 == 0);
    fprintf(fp, "static const uint32_t %s_%s[] = {", prefix, arr_name);
    for (unsigned i = 0; i < (len / 4); i++) {
       if (i % 4 == 0)
@@ -267,6 +277,18 @@ print_u32_data(FILE *fp, const char *prefix, const char *arr_name,
 
       fprintf(fp, " 0x%08" PRIx32 ",", data[i]);
    }
+
+   if (len % 4) {
+      const uint8_t *data_u8 = (const uint8_t *)data;
+      uint32_t last = 0;
+      unsigned last_offs = ROUND_DOWN_TO(len, 4);
+      for (unsigned i = 0; i < len % 4; ++i) {
+         last |= (uint32_t)data_u8[last_offs + i] << (i * 8);
+      }
+
+      fprintf(fp, " 0x%08" PRIx32 ",", last);
+   }
+
    fprintf(fp, "\n};\n");
 }
 
@@ -491,12 +513,9 @@ main(int argc, char **argv)
    fprintf(fp, " #include <stdint.h>\n");
 
    /* Compile SPIR-V to NIR */
-   nir_shader *nir = compile(NULL, final_spirv.data, final_spirv.size);
+   nir_shader *nir = compile(mem_ctx, final_spirv.data, final_spirv.size);
 
    {
-      struct util_dynarray binary;
-      util_dynarray_init(&binary, NULL);
-
       nir_builder b = nir_builder_init_simple_shader(
          MESA_SHADER_COMPUTE, &agx_nir_options, "Helper shader");
 
@@ -505,24 +524,18 @@ main(int argc, char **argv)
 
       nir_call(&b, nir_function_clone(b.shader, func));
 
-      UNUSED struct agx_uncompiled_shader_info info;
-      UNUSED struct agx_shader_info compiled_info;
+      struct agx_shader_part compiled;
       struct agx_shader_key key = {
          .libagx = nir,
          .is_helper = true,
       };
 
-      agx_preprocess_nir(b.shader, nir, false, &info);
-      agx_compile_shader_nir(b.shader, &key, NULL, &binary, &compiled_info);
+      agx_preprocess_nir(b.shader, nir);
+      agx_compile_shader_nir(b.shader, &key, NULL, &compiled);
 
-      /* Pad out */
-      uint8_t zero = 0;
-      while (binary.size % 4) {
-         util_dynarray_append(&binary, uint8_t, zero);
-      }
-
-      print_u32_data(fp, "libagx_g13", "helper", binary.data, binary.size);
-      util_dynarray_fini(&binary);
+      print_u32_data(fp, "libagx_g13", "helper", compiled.binary,
+                     compiled.binary_size);
+      free(compiled.binary);
       ralloc_free(b.shader);
 
       /* Remove the NIR function, it's compiled, we don't need it at runtime */
@@ -544,6 +557,11 @@ main(int argc, char **argv)
    if (fp != stdout)
       fclose(fp);
 
+   util_dynarray_foreach(&spirv_objs, struct clc_binary, p) {
+      clc_free_spirv(p);
+   }
+
+   clc_free_spirv(&final_spirv);
    ralloc_free(mem_ctx);
 
    return 0;

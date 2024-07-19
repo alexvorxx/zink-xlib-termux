@@ -88,8 +88,6 @@ struct vn_command_buffer {
    enum vn_command_buffer_state state;
    struct vn_cs_encoder cs;
 
-   uint32_t draw_cmd_batched;
-
    struct vn_command_buffer_builder builder;
 
    struct vn_query_feedback_cmd *linked_qfb_cmd;

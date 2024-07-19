@@ -71,7 +71,7 @@ struct panfrost_vtable {
    void (*context_populate_vtbl)(struct pipe_context *pipe);
 
    /* Initialize/cleanup a Gallium context */
-   void (*context_init)(struct panfrost_context *ctx);
+   int (*context_init)(struct panfrost_context *ctx);
    void (*context_cleanup)(struct panfrost_context *ctx);
 
    /* Device-dependent initialization/cleanup of a panfrost_batch */
@@ -118,6 +118,13 @@ struct panfrost_screen {
    struct disk_cache *disk_cache;
    unsigned max_afbc_packing_ratio;
    bool force_afbc_packing;
+   int force_afrc_rate;
+
+   struct {
+      unsigned chunk_size;
+      unsigned initial_chunks;
+      unsigned max_chunks;
+   } csf_tiler_heap;
 };
 
 static inline struct panfrost_screen *
@@ -142,13 +149,11 @@ void panfrost_cmdstream_screen_init_v7(struct panfrost_screen *screen);
 void panfrost_cmdstream_screen_init_v9(struct panfrost_screen *screen);
 void panfrost_cmdstream_screen_init_v10(struct panfrost_screen *screen);
 
-#define perf_debug(dev, ...)                                                   \
+#define perf_debug(ctx, ...)                                                   \
    do {                                                                        \
-      if (unlikely((dev)->debug & PAN_DBG_PERF))                               \
+      if (unlikely(pan_device((ctx)->base.screen)->debug & PAN_DBG_PERF))      \
          mesa_logw(__VA_ARGS__);                                               \
+      util_debug_message(&ctx->base.debug, PERF_INFO, __VA_ARGS__);            \
    } while (0)
-
-#define perf_debug_ctx(ctx, ...)                                               \
-   perf_debug(pan_device((ctx)->base.screen), __VA_ARGS__);
 
 #endif /* PAN_SCREEN_H */

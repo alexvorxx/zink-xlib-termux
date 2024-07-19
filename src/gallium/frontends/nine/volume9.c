@@ -172,7 +172,7 @@ static inline void
 NineVolume9_MarkContainerDirty( struct NineVolume9 *This )
 {
     struct NineBaseTexture9 *tex;
-#if defined(DEBUG) || !defined(NDEBUG)
+#if MESA_DEBUG || !defined(NDEBUG)
     /* This is always contained by a NineVolumeTexture9. */
     GUID id = IID_IDirect3DVolumeTexture9;
     REFIID ref = &id;

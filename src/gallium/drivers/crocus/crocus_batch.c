@@ -1014,7 +1014,7 @@ _crocus_batch_flush(struct crocus_batch *batch, const char *file, int line)
    }
 
    if (ret < 0) {
-#ifdef DEBUG
+#if MESA_DEBUG
       const bool color = INTEL_DEBUG(DEBUG_COLOR);
       fprintf(stderr, "%scrocus: Failed to submit batchbuffer: %-80s%s\n",
               color ? "\e[1;41m" : "", strerror(-ret), color ? "\e[0m" : "");

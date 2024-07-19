@@ -66,7 +66,7 @@ struct panfrost_resource {
       bool crc;
 
       /* Has anything been written to this slice? */
-      BITSET_DECLARE(data, MAX_MIP_LEVELS);
+      BITSET_DECLARE(data, PAN_MAX_MIP_LEVELS);
    } valid;
 
    /* Whether the modifier can be changed */
@@ -194,10 +194,10 @@ void pan_resource_modifier_convert(struct panfrost_context *ctx,
                                    uint64_t modifier, bool copy_resource,
                                    const char *reason);
 
-void pan_legalize_afbc_format(struct panfrost_context *ctx,
-                              struct panfrost_resource *rsrc,
-                              enum pipe_format format, bool write,
-                              bool discard);
+void pan_legalize_format(struct panfrost_context *ctx,
+                         struct panfrost_resource *rsrc,
+                         enum pipe_format format, bool write,
+                         bool discard);
 void pan_dump_resource(struct panfrost_context *ctx,
                        struct panfrost_resource *rsc);
 

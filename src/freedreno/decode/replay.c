@@ -393,10 +393,10 @@ device_dump_wrbuf(struct device *dev)
       uint64_t offset = wrbuf->iova - buf->iova;
       uint64_t size = MIN2(wrbuf->size, buf->size - offset);
       if (size != wrbuf->size) {
-         fprintf(stderr, "Warning: Clamping buffer %s as it's smaller than expected (0x%lx < 0x%lx)\n", wrbuf->name, size, wrbuf->size);
+         fprintf(stderr, "Warning: Clamping buffer %s as it's smaller than expected (0x%" PRIx64 " < 0x%" PRIx64 ")\n", wrbuf->name, size, wrbuf->size);
       }
 
-      printf("Dumping %s (0x%lx - 0x%lx)\n", wrbuf->name, wrbuf->iova, wrbuf->iova + size);
+      printf("Dumping %s (0x%" PRIx64 " - 0x%" PRIx64 ")\n", wrbuf->name, wrbuf->iova, wrbuf->iova + size);
 
       fwrite(buf->map + offset, size, 1, f);
 
@@ -527,7 +527,7 @@ device_submit_cmdstreams(struct device *dev)
 
       struct drm_msm_gem_submit_cmd *submit_cmd = &cmds[idx];
       submit_cmd->type = MSM_SUBMIT_CMD_BUF;
-      submit_cmd->submit_idx = bo_idx;
+      submit_cmd->submit_idx = dev->has_set_iova ? bo_idx : 0;
       if (dev->has_set_iova) {
          submit_cmd->submit_offset = cmd->iova - cmdstream_buf->iova;
       } else {
@@ -1259,11 +1259,8 @@ override_cmdstream(struct device *dev, struct cmdstream *cs,
    /* Find a free space for the new cmdstreams and resources we will use
     * when overriding existing cmdstream.
     */
-   /* TODO: should the size be configurable? */
-   uint64_t hole_size = 32 * 1024 * 1024;
-   dev->vma.alloc_high = true;
-   uint64_t hole_iova = util_vma_heap_alloc(&dev->vma, hole_size, 4096);
-   dev->vma.alloc_high = false;
+   uint64_t hole_size = util_vma_heap_get_max_free_continuous_size(&dev->vma);
+   uint64_t hole_iova = util_vma_heap_alloc(&dev->vma, hole_size, 1);
    util_vma_heap_free(&dev->vma, hole_iova, hole_size);
 
    char cmd[2048];

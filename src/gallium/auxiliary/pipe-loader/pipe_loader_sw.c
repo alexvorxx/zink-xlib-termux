@@ -136,7 +136,7 @@ pipe_loader_sw_probe_init_common(struct pipe_loader_sw_device *sdev)
    if (!sdev->dd)
       return false;
 #else
-   const char *search_dir = getenv("GALLIUM_PIPE_SEARCH_DIR");
+   const char *search_dir = os_get_option("GALLIUM_PIPE_SEARCH_DIR");
    if (search_dir == NULL)
       search_dir = PIPE_SEARCH_DIR;
 
@@ -171,7 +171,7 @@ pipe_loader_vk_probe_init_common(struct pipe_loader_sw_device *sdev)
    if (!sdev->dd)
       return false;
 #else
-   const char *search_dir = getenv("GALLIUM_PIPE_SEARCH_DIR");
+   const char *search_dir = os_get_option("GALLIUM_PIPE_SEARCH_DIR");
    if (search_dir == NULL)
       search_dir = PIPE_SEARCH_DIR;
 
@@ -234,7 +234,7 @@ fail:
 }
 #ifdef HAVE_ZINK
 bool
-pipe_loader_vk_probe_dri(struct pipe_loader_device **devs, const struct drisw_loader_funcs *drisw_lf)
+pipe_loader_vk_probe_dri(struct pipe_loader_device **devs)
 {
    struct pipe_loader_sw_device *sdev = CALLOC_STRUCT(pipe_loader_sw_device);
    int i;
@@ -247,7 +247,7 @@ pipe_loader_vk_probe_dri(struct pipe_loader_device **devs, const struct drisw_lo
 
    for (i = 0; sdev->dd->winsys[i].name; i++) {
       if (strcmp(sdev->dd->winsys[i].name, "dri") == 0) {
-         sdev->ws = sdev->dd->winsys[i].create_winsys_dri(drisw_lf);
+         sdev->ws = sdev->dd->winsys[i].create_winsys_dri(NULL);
          break;
       }
    }

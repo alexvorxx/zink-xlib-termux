@@ -485,6 +485,7 @@
 #include "nir.h"
 #include "nir_builder.h"
 #include "util/u_math.h"
+#include "util/u_memory.h"
 
 /* nir_opt_varyings works at scalar 16-bit granularity across all varyings.
  *
@@ -504,7 +505,23 @@ enum fs_vec4_type {
    FS_VEC4_TYPE_INTERP_FP32,
    FS_VEC4_TYPE_INTERP_FP16,
    FS_VEC4_TYPE_INTERP_COLOR,
+   FS_VEC4_TYPE_INTERP_EXPLICIT,
+   FS_VEC4_TYPE_INTERP_EXPLICIT_STRICT,
+   FS_VEC4_TYPE_PER_PRIMITIVE,
 };
+
+#if PRINT_RELOCATE_SLOT
+static const char *fs_vec4_type_strings[] = {
+   "NONE",
+   "FLAT",
+   "INTERP_FP32",
+   "INTERP_FP16",
+   "INTERP_COLOR",
+   "INTERP_EXPLICIT",
+   "INTERP_EXPLICIT_STRICT",
+   "PER_PRIMITIVE",
+};
+#endif // PRINT_RELOCATE_SLOT
 
 static unsigned
 get_scalar_16bit_slot(nir_io_semantics sem, unsigned component)
@@ -627,6 +644,12 @@ struct linkage_info {
    BITSET_DECLARE(interp_fp16_mask, NUM_SCALAR_SLOTS);
    BITSET_DECLARE(flat32_mask, NUM_SCALAR_SLOTS);
    BITSET_DECLARE(flat16_mask, NUM_SCALAR_SLOTS);
+   BITSET_DECLARE(interp_explicit32_mask, NUM_SCALAR_SLOTS);
+   BITSET_DECLARE(interp_explicit16_mask, NUM_SCALAR_SLOTS);
+   BITSET_DECLARE(interp_explicit_strict32_mask, NUM_SCALAR_SLOTS);
+   BITSET_DECLARE(interp_explicit_strict16_mask, NUM_SCALAR_SLOTS);
+   BITSET_DECLARE(per_primitive32_mask, NUM_SCALAR_SLOTS);
+   BITSET_DECLARE(per_primitive16_mask, NUM_SCALAR_SLOTS);
 
    /* Color interpolation unqualified (follows the flat-shade state). */
    BITSET_DECLARE(color32_mask, NUM_SCALAR_SLOTS);
@@ -689,12 +712,18 @@ print_linkage(struct linkage_info *linkage)
           !BITSET_TEST(linkage->interp_fp16_mask, i) &&
           !BITSET_TEST(linkage->flat32_mask, i) &&
           !BITSET_TEST(linkage->flat16_mask, i) &&
+          !BITSET_TEST(linkage->interp_explicit32_mask, i) &&
+          !BITSET_TEST(linkage->interp_explicit16_mask, i) &&
+          !BITSET_TEST(linkage->interp_explicit_strict32_mask, i) &&
+          !BITSET_TEST(linkage->interp_explicit_strict16_mask, i) &&
+          !BITSET_TEST(linkage->per_primitive32_mask, i) &&
+          !BITSET_TEST(linkage->per_primitive16_mask, i) &&
           !BITSET_TEST(linkage->convergent32_mask, i) &&
           !BITSET_TEST(linkage->convergent16_mask, i) &&
           !BITSET_TEST(linkage->output_equal_mask, i))
          continue;
 
-      printf("  %7s.%c.%s: num_slots=%2u%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n",
+      printf("  %7s.%c.%s: num_slots=%2u%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n",
              gl_varying_slot_name_for_stage(vec4_slot(i),
                                             linkage->producer_stage) + 13,
              "xyzw"[(i / 2) % 4],
@@ -710,6 +739,12 @@ print_linkage(struct linkage_info *linkage)
              BITSET_TEST(linkage->interp_fp16_mask, i) ? " interp_fp16" : "",
              BITSET_TEST(linkage->flat32_mask, i) ? " flat32" : "",
              BITSET_TEST(linkage->flat16_mask, i) ? " flat16" : "",
+             BITSET_TEST(linkage->interp_explicit32_mask, i) ? " interp_explicit32" : "",
+             BITSET_TEST(linkage->interp_explicit16_mask, i) ? " interp_explicit16" : "",
+             BITSET_TEST(linkage->interp_explicit_strict32_mask, i) ? " interp_explicit_strict32" : "",
+             BITSET_TEST(linkage->interp_explicit_strict16_mask, i) ? " interp_explicit_strict16" : "",
+             BITSET_TEST(linkage->per_primitive32_mask, i) ? " per_primitive32" : "",
+             BITSET_TEST(linkage->per_primitive32_mask, i) ? " per_primitive16" : "",
              BITSET_TEST(linkage->convergent32_mask, i) ? " convergent32" : "",
              BITSET_TEST(linkage->convergent16_mask, i) ? " convergent16" : "",
              BITSET_TEST(linkage->output_equal_mask, i) ? " output_equal" : "",
@@ -730,6 +765,12 @@ slot_disable_optimizations_and_compaction(struct linkage_info *linkage,
    BITSET_CLEAR(linkage->interp_fp16_mask, i);
    BITSET_CLEAR(linkage->flat32_mask, i);
    BITSET_CLEAR(linkage->flat16_mask, i);
+   BITSET_CLEAR(linkage->interp_explicit32_mask, i);
+   BITSET_CLEAR(linkage->interp_explicit16_mask, i);
+   BITSET_CLEAR(linkage->interp_explicit_strict32_mask, i);
+   BITSET_CLEAR(linkage->interp_explicit_strict16_mask, i);
+   BITSET_CLEAR(linkage->per_primitive32_mask, i);
+   BITSET_CLEAR(linkage->per_primitive16_mask, i);
    BITSET_CLEAR(linkage->no_varying32_mask, i);
    BITSET_CLEAR(linkage->no_varying16_mask, i);
    BITSET_CLEAR(linkage->color32_mask, i);
@@ -866,6 +907,14 @@ can_remove_varying(struct linkage_info *linkage, gl_varying_slot location)
           location == VARYING_SLOT_FOGC)
          return true;
 
+      /* Workaround for mesh shader multiview in RADV.
+       * A layer output is inserted by ac_nir_lower_ngg which is called later.
+       * Prevent removing the layer input from FS when producer is MS.
+       */
+      if (linkage->producer_stage == MESA_SHADER_MESH &&
+          location == VARYING_SLOT_LAYER)
+         return false;
+
       /* These can be removed as varyings, which means they will be demoted to
        * sysval-only outputs keeping their culling/rasterization functions
        * while not passing the values to FS. Drivers should handle
@@ -973,8 +1022,9 @@ can_optimize_varying(struct linkage_info *linkage, gl_varying_slot location)
           location == VARYING_SLOT_FOGC)
          return options_var;
 
-      /* The primitive ID can always be optimized in GS -> FS. */
-      if (linkage->producer_stage == MESA_SHADER_GEOMETRY &&
+      /* The primitive ID can always be optimized in GS -> FS and MS -> FS. */
+      if ((linkage->producer_stage == MESA_SHADER_GEOMETRY ||
+           linkage->producer_stage == MESA_SHADER_MESH) &&
           location == VARYING_SLOT_PRIMITIVE_ID)
          return options_var;
 
@@ -1040,7 +1090,8 @@ gather_inputs(struct nir_builder *builder, nir_intrinsic_instr *intr, void *cb_d
 
    if (intr->intrinsic != nir_intrinsic_load_input &&
        intr->intrinsic != nir_intrinsic_load_per_vertex_input &&
-       intr->intrinsic != nir_intrinsic_load_interpolated_input)
+       intr->intrinsic != nir_intrinsic_load_interpolated_input &&
+       intr->intrinsic != nir_intrinsic_load_input_vertex)
       return false;
 
    /* nir_lower_io_to_scalar is required before this */
@@ -1074,16 +1125,32 @@ gather_inputs(struct nir_builder *builder, nir_intrinsic_instr *intr, void *cb_d
     * have unused components, but only if they are of the same type.
     */
    if (linkage->consumer_stage == MESA_SHADER_FRAGMENT) {
-      if (intr->intrinsic == nir_intrinsic_load_input)
-         fs_vec4_type = FS_VEC4_TYPE_FLAT;
-      else if (color_uses_shade_model(linkage, slot))
-         fs_vec4_type = FS_VEC4_TYPE_INTERP_COLOR;
-      else if (intr->def.bit_size == 32)
-         fs_vec4_type = FS_VEC4_TYPE_INTERP_FP32;
-      else if (intr->def.bit_size == 16)
-         fs_vec4_type = FS_VEC4_TYPE_INTERP_FP16;
-      else
-         unreachable("invalid load_interpolate_input type");
+      switch (intr->intrinsic) {
+      case nir_intrinsic_load_input:
+         if (sem.per_primitive)
+            fs_vec4_type = FS_VEC4_TYPE_PER_PRIMITIVE;
+         else
+            fs_vec4_type = FS_VEC4_TYPE_FLAT;
+         break;
+      case nir_intrinsic_load_input_vertex:
+         if (sem.interp_explicit_strict)
+            fs_vec4_type = FS_VEC4_TYPE_INTERP_EXPLICIT_STRICT;
+         else
+            fs_vec4_type = FS_VEC4_TYPE_INTERP_EXPLICIT;
+         break;
+      case nir_intrinsic_load_interpolated_input:
+         if (color_uses_shade_model(linkage, slot))
+            fs_vec4_type = FS_VEC4_TYPE_INTERP_COLOR;
+         else if (intr->def.bit_size == 32)
+            fs_vec4_type = FS_VEC4_TYPE_INTERP_FP32;
+         else if (intr->def.bit_size == 16)
+            fs_vec4_type = FS_VEC4_TYPE_INTERP_FP16;
+         else
+            unreachable("invalid load_interpolated_input type");
+         break;
+      default:
+         unreachable("unexpected input load intrinsic");
+      }
 
       linkage->fs_vec4_type[sem.location] = fs_vec4_type;
    }
@@ -1107,14 +1174,40 @@ gather_inputs(struct nir_builder *builder, nir_intrinsic_instr *intr, void *cb_d
 
    /* Record inputs that can be compacted. */
    if (linkage->consumer_stage == MESA_SHADER_FRAGMENT) {
-      if (intr->intrinsic == nir_intrinsic_load_input) {
-         if (intr->def.bit_size == 32)
-            BITSET_SET(linkage->flat32_mask, slot);
-         else if (intr->def.bit_size == 16)
-            BITSET_SET(linkage->flat16_mask, slot);
-         else
+      switch (intr->intrinsic) {
+      case nir_intrinsic_load_input:
+         if (intr->def.bit_size == 32) {
+            if (sem.per_primitive)
+               BITSET_SET(linkage->per_primitive32_mask, slot);
+            else
+               BITSET_SET(linkage->flat32_mask, slot);
+         } else if (intr->def.bit_size == 16) {
+            if (sem.per_primitive)
+               BITSET_SET(linkage->per_primitive16_mask, slot);
+            else
+               BITSET_SET(linkage->flat16_mask, slot);
+         } else {
             unreachable("invalid load_input type");
-      } else {
+         }
+         break;
+      case nir_intrinsic_load_input_vertex:
+         if (sem.interp_explicit_strict) {
+            if (intr->def.bit_size == 32)
+               BITSET_SET(linkage->interp_explicit_strict32_mask, slot);
+            else if (intr->def.bit_size == 16)
+               BITSET_SET(linkage->interp_explicit_strict16_mask, slot);
+            else
+               unreachable("invalid load_input_vertex type");
+         } else {
+            if (intr->def.bit_size == 32)
+               BITSET_SET(linkage->interp_explicit32_mask, slot);
+            else if (intr->def.bit_size == 16)
+               BITSET_SET(linkage->interp_explicit16_mask, slot);
+            else
+               unreachable("invalid load_input_vertex type");
+         }
+         break;
+      case nir_intrinsic_load_interpolated_input:
          if (color_uses_shade_model(linkage, slot))
             BITSET_SET(linkage->color32_mask, slot);
          else if (intr->def.bit_size == 32)
@@ -1122,7 +1215,10 @@ gather_inputs(struct nir_builder *builder, nir_intrinsic_instr *intr, void *cb_d
          else if (intr->def.bit_size == 16)
             BITSET_SET(linkage->interp_fp16_mask, slot);
          else
-            unreachable("invalid load_interpolate_input type");
+            unreachable("invalid load_interpolated_input type");
+         break;
+      default:
+         unreachable("unexpected input load intrinsic");
       }
    } else {
       if (intr->def.bit_size == 32)
@@ -1143,12 +1239,15 @@ gather_outputs(struct nir_builder *builder, nir_intrinsic_instr *intr, void *cb_
    if (intr->intrinsic != nir_intrinsic_store_output &&
        intr->intrinsic != nir_intrinsic_load_output &&
        intr->intrinsic != nir_intrinsic_store_per_vertex_output &&
-       intr->intrinsic != nir_intrinsic_load_per_vertex_output)
+       intr->intrinsic != nir_intrinsic_store_per_primitive_output &&
+       intr->intrinsic != nir_intrinsic_load_per_vertex_output &&
+       intr->intrinsic != nir_intrinsic_load_per_primitive_output)
       return false;
 
    bool is_store =
       intr->intrinsic == nir_intrinsic_store_output ||
-      intr->intrinsic == nir_intrinsic_store_per_vertex_output;
+      intr->intrinsic == nir_intrinsic_store_per_vertex_output ||
+      intr->intrinsic == nir_intrinsic_store_per_primitive_output;
 
    if (is_store) {
       /* nir_lower_io_to_scalar is required before this */
@@ -1244,11 +1343,19 @@ gather_outputs(struct nir_builder *builder, nir_intrinsic_instr *intr, void *cb_
 
    if (is_store) {
       nir_def *value = intr->src[0].ssa;
+
+      const bool constant = value->parent_instr->type == nir_instr_type_load_const;
+
       /* If the store instruction is executed in a divergent block, the value
        * that's stored in the output becomes divergent.
+       *
+       * Mesh shaders get special treatment because we can't follow their topology,
+       * so we only propagate constants.
+       * TODO: revisit this when workgroup divergence analysis is merged.
        */
-      bool divergent = value->divergent ||
-                       intr->instr.block->divergent;
+      const bool divergent = value->divergent ||
+                             intr->instr.block->divergent ||
+                             (!constant && linkage->producer_stage == MESA_SHADER_MESH);
 
       if (!out->producer.value) {
          /* This is the first store to this output. */
@@ -1689,8 +1796,7 @@ remove_dead_varyings(struct linkage_info *linkage,
                else
                   replacement = nir_undef(b, 1, loadi->def.bit_size);
 
-               nir_def_rewrite_uses(&loadi->def, replacement);
-               nir_instr_remove(&loadi->instr);
+               nir_def_replace(&loadi->def, replacement);
 
                *progress |= list_index ? nir_progress_producer :
                                          nir_progress_consumer;
@@ -2082,8 +2188,7 @@ propagate_uniform_expressions(struct linkage_info *linkage,
                clone = build_convert_inf_to_nan(b, clone);
 
             /* Replace the original load. */
-            nir_def_rewrite_uses(&loadi->def, clone);
-            nir_instr_remove(&loadi->instr);
+            nir_def_replace(&loadi->def, clone);
             *progress |= list_index ? nir_progress_producer :
                                       nir_progress_consumer;
          }
@@ -2117,6 +2222,9 @@ enum var_qualifier {
    QUAL_PATCH,
    QUAL_VAR_FLAT,
    QUAL_COLOR_FLAT,
+   QUAL_EXPLICIT,
+   QUAL_EXPLICIT_STRICT,
+   QUAL_PER_PRIMITIVE,
    /* When nir_io_has_flexible_input_interpolation_except_flat is set: */
    QUAL_VAR_INTERP_ANY,
    QUAL_COLOR_INTERP_ANY,
@@ -2155,8 +2263,16 @@ get_input_qualifier(struct linkage_info *linkage, unsigned i)
    nir_intrinsic_instr *load =
       list_first_entry(&slot->consumer.loads, struct list_node, head)->instr;
 
-   if (load->intrinsic == nir_intrinsic_load_input)
+   if (load->intrinsic == nir_intrinsic_load_input) {
+      if (nir_intrinsic_io_semantics(load).per_primitive)
+         return QUAL_PER_PRIMITIVE;
       return is_color ? QUAL_COLOR_FLAT : QUAL_VAR_FLAT;
+   }
+
+   if (load->intrinsic == nir_intrinsic_load_input_vertex) {
+      return nir_intrinsic_io_semantics(load).interp_explicit_strict ?
+               QUAL_EXPLICIT_STRICT : QUAL_EXPLICIT;
+   }
 
    assert(load->intrinsic == nir_intrinsic_load_interpolated_input);
    nir_intrinsic_instr *baryc =
@@ -2975,7 +3091,7 @@ try_move_postdominator(struct linkage_info *linkage,
     * the original load(s).
     */
    if (linkage->consumer_stage == MESA_SHADER_FRAGMENT &&
-       alu_interp > FLAG_INTERP_FLAT) {
+       alu_interp != FLAG_INTERP_FLAT) {
       nir_def *baryc = NULL;
 
       /* Determine the barycentric coordinates. */
@@ -2992,27 +3108,38 @@ try_move_postdominator(struct linkage_info *linkage,
       case FLAG_INTERP_LINEAR_SAMPLE:
          baryc = nir_load_barycentric_sample(b, 32);
          break;
+      default:
+         baryc = first_load->src[0].ssa;
+         break;
       }
 
-      nir_intrinsic_instr *baryc_i =
-         nir_instr_as_intrinsic(baryc->parent_instr);
+      if (baryc != first_load->src[0].ssa) {
+         nir_intrinsic_instr *baryc_i =
+            nir_instr_as_intrinsic(baryc->parent_instr);
 
-      if (alu_interp == FLAG_INTERP_LINEAR_PIXEL ||
-          alu_interp == FLAG_INTERP_LINEAR_CENTROID ||
-          alu_interp == FLAG_INTERP_LINEAR_SAMPLE)
-         nir_intrinsic_set_interp_mode(baryc_i, INTERP_MODE_NOPERSPECTIVE);
-      else
-         nir_intrinsic_set_interp_mode(baryc_i, INTERP_MODE_SMOOTH);
+         if (alu_interp == FLAG_INTERP_LINEAR_PIXEL ||
+            alu_interp == FLAG_INTERP_LINEAR_CENTROID ||
+            alu_interp == FLAG_INTERP_LINEAR_SAMPLE)
+            nir_intrinsic_set_interp_mode(baryc_i, INTERP_MODE_NOPERSPECTIVE);
+         else
+            nir_intrinsic_set_interp_mode(baryc_i, INTERP_MODE_SMOOTH);
+      }
 
       new_input = nir_load_interpolated_input(
                      b, 1, new_bit_size, baryc, nir_imm_int(b, 0),
                      .base = nir_intrinsic_base(first_load),
                      .component = nir_intrinsic_component(first_load),
-                     .dest_type = nir_intrinsic_dest_type(first_load),
+                     .dest_type = nir_alu_type_get_base_type(nir_intrinsic_dest_type(first_load)) |
+                                  new_bit_size,
                      .io_semantics = nir_intrinsic_io_semantics(first_load));
 
-      mask = new_bit_size == 16 ? linkage->interp_fp16_mask
-                                : linkage->interp_fp32_mask;
+      if (alu_interp == FLAG_INTERP_CONVERGENT) {
+         mask = new_bit_size == 16 ? linkage->convergent16_mask
+                                   : linkage->convergent32_mask;
+      } else {
+         mask = new_bit_size == 16 ? linkage->interp_fp16_mask
+                                   : linkage->interp_fp32_mask;
+      }
    } else if (linkage->consumer_stage == MESA_SHADER_TESS_EVAL &&
               alu_interp > FLAG_INTERP_FLAT) {
       nir_def *zero = nir_imm_int(b, 0);
@@ -3023,7 +3150,8 @@ try_move_postdominator(struct linkage_info *linkage,
                   i ? nir_imm_int(b, i) : zero, zero,
                   .base = nir_intrinsic_base(first_load),
                   .component = nir_intrinsic_component(first_load),
-                  .dest_type = nir_intrinsic_dest_type(first_load),
+                     .dest_type = nir_alu_type_get_base_type(nir_intrinsic_dest_type(first_load)) |
+                                  new_bit_size,
                   .io_semantics = nir_intrinsic_io_semantics(first_load));
       }
 
@@ -3060,21 +3188,18 @@ try_move_postdominator(struct linkage_info *linkage,
       mask = new_bit_size == 16 ? linkage->flat16_mask
                                 : linkage->flat32_mask;
    } else {
+      assert(linkage->consumer_stage != MESA_SHADER_FRAGMENT || alu_interp == FLAG_INTERP_FLAT);
+
       new_input =
          nir_load_input(b, 1, new_bit_size, nir_imm_int(b, 0),
                         .base = nir_intrinsic_base(first_load),
                         .component = nir_intrinsic_component(first_load),
-                        .dest_type = nir_intrinsic_dest_type(first_load),
+                        .dest_type = nir_alu_type_get_base_type(nir_intrinsic_dest_type(first_load)) |
+                                    new_bit_size,
                         .io_semantics = nir_intrinsic_io_semantics(first_load));
 
-      if (linkage->consumer_stage == MESA_SHADER_FRAGMENT &&
-          alu_interp == FLAG_INTERP_CONVERGENT) {
-         mask = new_bit_size == 16 ? linkage->convergent16_mask
-                                   : linkage->convergent32_mask;
-      } else {
-         mask = new_bit_size == 16 ? linkage->flat16_mask
-                                   : linkage->flat32_mask;
-      }
+      mask = new_bit_size == 16 ? linkage->flat16_mask
+                                : linkage->flat32_mask;
    }
 
    assert(!BITSET_TEST(linkage->no_varying32_mask, slot_index));
@@ -3151,6 +3276,9 @@ try_move_postdominator(struct linkage_info *linkage,
       list_first_entry(&linkage->slot[final_slot].producer.stores,
                        struct list_node, head)->instr;
    nir_instr_move(b->cursor, &store->instr);
+   if (nir_src_bit_size(store->src[0]) != producer_clone->bit_size)
+      nir_intrinsic_set_src_type(store, nir_alu_type_get_base_type(nir_intrinsic_src_type(store)) |
+                                        producer_clone->bit_size);
    nir_src_rewrite(&store->src[0], producer_clone);
 
    /* Remove all loads and stores that we are replacing from the producer
@@ -3351,6 +3479,11 @@ backward_inter_shader_code_motion(struct linkage_info *linkage,
                load->instr.pass_flags |= FLAG_INTERP_FLAT;
             }
             break;
+         case nir_intrinsic_load_input_vertex:
+            /* Inter-shader code motion is unimplemented for explicit
+             * interpolation.
+             */
+            continue;
          default:
             unreachable("unexpected load intrinsic");
          }
@@ -3376,6 +3509,23 @@ backward_inter_shader_code_motion(struct linkage_info *linkage,
    if (!num_movable_loads)
       return false;
 
+   /* Inter-shader code motion turns ALU results into outputs, but not all
+    * bit sizes are supported by outputs.
+    *
+    * The 1-bit type is allowed because the pass always promotes 1-bit
+    * outputs to 16 or 32 bits, whichever is supported.
+    *
+    * TODO: We could support replacing 2 32-bit inputs with one 64-bit
+    * post-dominator by supporting 64 bits here, but the likelihood of that
+    * occuring seems low.
+    */
+   unsigned supported_io_types = 32 | 1;
+
+   if (linkage->producer_builder.shader->options->io_options &
+       linkage->consumer_builder.shader->options->io_options &
+       nir_io_16bit_input_output_support)
+      supported_io_types |= 16;
+
    struct nir_use_dominance_state *postdom_state =
       nir_calc_use_dominance_impl(linkage->consumer_builder.impl, true);
 
@@ -3397,10 +3547,8 @@ backward_inter_shader_code_motion(struct linkage_info *linkage,
             /* This can only be an ALU instruction. */
             nir_alu_instr *alu = nir_instr_as_alu(iter);
 
-            /* Skip 64-bit defs and keep searching. Replacing 32-bit inputs
-             * with one 64-bit input is unlikely to benefit.
-             */
-            if (alu->def.bit_size == 64)
+            /* Skip unsupported bit sizes and keep searching. */
+            if (!(alu->def.bit_size & supported_io_types))
                continue;
 
             /* Skip comparison opcodes that directly source the first load
@@ -3523,11 +3671,46 @@ relocate_slot(struct linkage_info *linkage, struct scalar_slot *slot,
                            (new_semantic - VARYING_SLOT_COL0);
          }
 
+#if PRINT_RELOCATE_SLOT
+         unsigned bit_size =
+            (intr->intrinsic == nir_intrinsic_load_input ||
+             intr->intrinsic == nir_intrinsic_load_input_vertex ||
+             intr->intrinsic == nir_intrinsic_load_interpolated_input)
+            ? intr->def.bit_size : intr->src[0].ssa->bit_size;
+
+         assert(bit_size == 16 || bit_size == 32);
+
+         fprintf(stderr, "--- relocating: %s.%c%s%s -> %s.%c%s%s FS_VEC4_TYPE_%s\n",
+                 gl_varying_slot_name_for_stage(sem.location, linkage->producer_stage) + 13,
+                 "xyzw"[nir_intrinsic_component(intr) % 4],
+                 (bit_size == 16 && !sem.high_16bits) ? ".lo" : "",
+                 (bit_size == 16 && sem.high_16bits) ? ".hi" : "",
+                 gl_varying_slot_name_for_stage(new_semantic, linkage->producer_stage) + 13,
+                 "xyzw"[new_component % 4],
+                 (bit_size == 16 && !new_high_16bits) ? ".lo" : "",
+                 (bit_size == 16 && new_high_16bits) ? ".hi" : "",
+                 fs_vec4_type_strings[fs_vec4_type]);
+#endif /* PRINT_RELOCATE_SLOT */
+
          sem.location = new_semantic;
          sem.high_16bits = new_high_16bits;
 
+         /* This is never indirectly indexed. Simplify num_slots. */
+         sem.num_slots = 1;
+
          nir_intrinsic_set_io_semantics(intr, sem);
          nir_intrinsic_set_component(intr, new_component);
+
+         if (fs_vec4_type == FS_VEC4_TYPE_PER_PRIMITIVE) {
+            assert(intr->intrinsic == nir_intrinsic_store_per_primitive_output ||
+                   intr->intrinsic == nir_intrinsic_load_per_primitive_output ||
+                   intr->intrinsic == nir_intrinsic_load_input);
+            assert(intr->intrinsic != nir_intrinsic_load_input || sem.per_primitive);
+         } else {
+            assert(!sem.per_primitive);
+            assert(intr->intrinsic != nir_intrinsic_store_per_primitive_output &&
+                   intr->intrinsic != nir_intrinsic_load_per_primitive_output);
+         }
 
          /* This path is used when promoting convergent interpolated
           * inputs to flat. Replace load_interpolated_input with load_input.
@@ -3676,7 +3859,10 @@ fs_assign_slots(struct linkage_info *linkage,
       assert(slot_index < max_slot * 8);
       relocate_slot(linkage, &linkage->slot[i], i, new_slot_index,
                     fs_vec4_type, progress);
-      BITSET_SET(assigned_mask, slot_index);
+
+      for (unsigned i = 0; i < slot_size; ++i)
+         BITSET_SET(assigned_mask, slot_index + i);
+
       if (assigned_fs_vec4_type)
          assigned_fs_vec4_type[vec4_slot(slot_index)] = fs_vec4_type;
       slot_index += slot_size; /* move to the next slot */
@@ -3869,6 +4055,35 @@ compact_varyings(struct linkage_info *linkage,
                             linkage->convergent16_mask, NULL,
                             FS_VEC4_TYPE_INTERP_FP16, 1, false, 0, progress);
 
+      /* Assign INTERP_MODE_EXPLICIT. Both FP32 and FP16 can occupy the same
+       * slot because the vertex data is passed to FS as-is.
+       */
+      fs_assign_slots(linkage, assigned_mask, assigned_fs_vec4_type,
+                      linkage->interp_explicit32_mask, FS_VEC4_TYPE_INTERP_EXPLICIT,
+                      2, NUM_SCALAR_SLOTS, false, 0, progress);
+
+      fs_assign_slots(linkage, assigned_mask, assigned_fs_vec4_type,
+                      linkage->interp_explicit16_mask, FS_VEC4_TYPE_INTERP_EXPLICIT,
+                      1, NUM_SCALAR_SLOTS, false, 0, progress);
+
+      /* Same for strict vertex ordering. */
+      fs_assign_slots(linkage, assigned_mask, assigned_fs_vec4_type,
+                      linkage->interp_explicit_strict32_mask, FS_VEC4_TYPE_INTERP_EXPLICIT_STRICT,
+                      2, NUM_SCALAR_SLOTS, false, 0, progress);
+
+      fs_assign_slots(linkage, assigned_mask, assigned_fs_vec4_type,
+                      linkage->interp_explicit_strict16_mask, FS_VEC4_TYPE_INTERP_EXPLICIT_STRICT,
+                      1, NUM_SCALAR_SLOTS, false, 0, progress);
+
+      /* Same for per-primitive. */
+      fs_assign_slots(linkage, assigned_mask, assigned_fs_vec4_type,
+                      linkage->per_primitive32_mask, FS_VEC4_TYPE_PER_PRIMITIVE,
+                      2, NUM_SCALAR_SLOTS, false, 0, progress);
+
+      fs_assign_slots(linkage, assigned_mask, assigned_fs_vec4_type,
+                      linkage->per_primitive16_mask, FS_VEC4_TYPE_PER_PRIMITIVE,
+                      1, NUM_SCALAR_SLOTS, false, 0, progress);
+
       /* Put transform-feedback-only outputs last. */
       fs_assign_slots(linkage, assigned_mask, NULL,
                       linkage->xfb32_only_mask, FS_VEC4_TYPE_NONE, 2,
@@ -3989,11 +4204,12 @@ free_linkage(struct linkage_info *linkage)
 static void
 print_shader_linkage(nir_shader *producer, nir_shader *consumer)
 {
-   struct linkage_info linkage;
+   struct linkage_info *linkage = MALLOC_STRUCT(linkage_info);
 
-   init_linkage(producer, consumer, false, 0, 0, &linkage);
-   print_linkage(&linkage);
-   free_linkage(&linkage);
+   init_linkage(producer, consumer, false, 0, 0, linkage);
+   print_linkage(linkage);
+   free_linkage(linkage);
+   FREE(linkage);
 }
 
 /**
@@ -4004,6 +4220,17 @@ nir_opt_varyings_progress
 nir_opt_varyings(nir_shader *producer, nir_shader *consumer, bool spirv,
                  unsigned max_uniform_components, unsigned max_ubos_per_stage)
 {
+   /* Task -> Mesh I/O uses payload variables and not varying slots,
+    * so this pass can't do anything about it.
+    */
+   if (producer->info.stage == MESA_SHADER_TASK)
+      return 0;
+
+   nir_opt_varyings_progress progress = 0;
+   struct linkage_info *linkage = MALLOC_STRUCT(linkage_info);
+   if (linkage == NULL)
+      return 0;
+
    /* Producers before a fragment shader must have up-to-date vertex
     * divergence information.
     */
@@ -4013,19 +4240,17 @@ nir_opt_varyings(nir_shader *producer, nir_shader *consumer, bool spirv,
       nir_vertex_divergence_analysis(producer);
    }
 
-   nir_opt_varyings_progress progress = 0;
-   struct linkage_info linkage;
    init_linkage(producer, consumer, spirv, max_uniform_components,
-                max_ubos_per_stage, &linkage);
+                max_ubos_per_stage, linkage);
 
    /* Part 1: Run optimizations that only remove varyings. (they can move
     * instructions between shaders)
     */
-   remove_dead_varyings(&linkage, &progress);
-   propagate_uniform_expressions(&linkage, &progress);
+   remove_dead_varyings(linkage, &progress);
+   propagate_uniform_expressions(linkage, &progress);
 
    /* Part 2: Deduplicate outputs. */
-   deduplicate_outputs(&linkage, &progress);
+   deduplicate_outputs(linkage, &progress);
 
    /* Run CSE on the consumer after output deduplication because duplicated
     * loads can prevent finding the post-dominator for inter-shader code
@@ -4034,17 +4259,17 @@ nir_opt_varyings(nir_shader *producer, nir_shader *consumer, bool spirv,
    NIR_PASS(_, consumer, nir_opt_cse);
 
    /* Re-gather linkage info after CSE. */
-   free_linkage(&linkage);
+   free_linkage(linkage);
    init_linkage(producer, consumer, spirv, max_uniform_components,
-                max_ubos_per_stage, &linkage);
+                max_ubos_per_stage, linkage);
    /* This must be done again to clean up bitmasks in linkage. */
-   remove_dead_varyings(&linkage, &progress);
+   remove_dead_varyings(linkage, &progress);
 
    /* This must be done after deduplication and before inter-shader code
     * motion.
     */
-   tidy_up_convergent_varyings(&linkage);
-   find_open_coded_tes_input_interpolation(&linkage);
+   tidy_up_convergent_varyings(linkage);
+   find_open_coded_tes_input_interpolation(linkage);
 
    /* Part 3: Run optimizations that completely change varyings. */
 #if PRINT
@@ -4056,31 +4281,30 @@ nir_opt_varyings(nir_shader *producer, nir_shader *consumer, bool spirv,
    puts("");
 #endif
 
-   while (backward_inter_shader_code_motion(&linkage, &progress)) {
+   while (backward_inter_shader_code_motion(linkage, &progress)) {
 #if PRINT
       i++;
       printf("Finished: %i\n", i);
-      nir_print_shader(linkage.producer_builder.shader, stdout);
-      nir_print_shader(linkage.consumer_builder.shader, stdout);
-      print_linkage(&linkage);
+      nir_print_shader(linkage->producer_builder.shader, stdout);
+      nir_print_shader(linkage->consumer_builder.shader, stdout);
+      print_linkage(linkage);
       puts("");
 #endif
    }
 
    /* Part 4: Do compaction. */
-   compact_varyings(&linkage, &progress);
+   compact_varyings(linkage, &progress);
 
-   nir_metadata_preserve(linkage.producer_builder.impl,
+   nir_metadata_preserve(linkage->producer_builder.impl,
                          progress & nir_progress_producer ?
-                            (nir_metadata_block_index |
-                             nir_metadata_dominance) :
+                            (nir_metadata_control_flow) :
                             nir_metadata_all);
-   nir_metadata_preserve(linkage.consumer_builder.impl,
+   nir_metadata_preserve(linkage->consumer_builder.impl,
                          progress & nir_progress_consumer ?
-                            (nir_metadata_block_index |
-                             nir_metadata_dominance) :
+                            (nir_metadata_control_flow) :
                             nir_metadata_all);
-   free_linkage(&linkage);
+   free_linkage(linkage);
+   FREE(linkage);
 
    if (progress & nir_progress_producer)
       nir_validate_shader(producer, "nir_opt_varyings");

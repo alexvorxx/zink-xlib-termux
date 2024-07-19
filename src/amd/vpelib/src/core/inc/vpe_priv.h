@@ -255,6 +255,12 @@ struct vpe_priv {
     bool scale_yuv_matrix; // this is a flag that forces scaling the yuv->rgb matrix
                            //  when embedding the color adjustments
 
+#ifdef VPE_BUILD_1_1
+    // collaborate sync data counter
+    int32_t  collaborate_sync_index;
+    uint16_t vpe_num_instance;
+    bool     collaboration_mode;
+#endif
     enum vpe_expansion_mode expansion_mode;
 };
 

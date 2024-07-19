@@ -111,7 +111,7 @@ fd6_emit_shader(struct fd_context *ctx, struct fd_ringbuffer *ring,
       return;
    }
 
-#ifdef DEBUG
+#if MESA_DEBUG
    /* Name should generally match what you get with MESA_SHADER_CAPTURE_PATH: */
    const char *name = so->name;
    if (name)
@@ -119,7 +119,7 @@ fd6_emit_shader(struct fd_context *ctx, struct fd_ringbuffer *ring,
 #endif
 
    gl_shader_stage type = so->type;
-   if (type == MESA_SHADER_COMPUTE)
+   if (type == MESA_SHADER_KERNEL)
       type = MESA_SHADER_COMPUTE;
 
    enum a6xx_threadsize thrsz =
@@ -132,6 +132,7 @@ fd6_emit_shader(struct fd_context *ctx, struct fd_ringbuffer *ring,
                .fullregfootprint = so->info.max_reg + 1,
                .branchstack = ir3_shader_branchstack_hw(so),
                .mergedregs = so->mergedregs,
+               .earlypreamble = so->early_preamble,
       ));
       break;
    case MESA_SHADER_TESS_CTRL:
@@ -139,6 +140,7 @@ fd6_emit_shader(struct fd_context *ctx, struct fd_ringbuffer *ring,
                .halfregfootprint = so->info.max_half_reg + 1,
                .fullregfootprint = so->info.max_reg + 1,
                .branchstack = ir3_shader_branchstack_hw(so),
+               .earlypreamble = so->early_preamble,
       ));
       break;
    case MESA_SHADER_TESS_EVAL:
@@ -146,6 +148,7 @@ fd6_emit_shader(struct fd_context *ctx, struct fd_ringbuffer *ring,
                .halfregfootprint = so->info.max_half_reg + 1,
                .fullregfootprint = so->info.max_reg + 1,
                .branchstack = ir3_shader_branchstack_hw(so),
+               .earlypreamble = so->early_preamble,
       ));
       break;
    case MESA_SHADER_GEOMETRY:
@@ -153,6 +156,7 @@ fd6_emit_shader(struct fd_context *ctx, struct fd_ringbuffer *ring,
                .halfregfootprint = so->info.max_half_reg + 1,
                .fullregfootprint = so->info.max_reg + 1,
                .branchstack = ir3_shader_branchstack_hw(so),
+               .earlypreamble = so->early_preamble,
       ));
       break;
    case MESA_SHADER_FRAGMENT:
@@ -166,6 +170,7 @@ fd6_emit_shader(struct fd_context *ctx, struct fd_ringbuffer *ring,
                /* unknown bit, seems unnecessary */
                .unk24 = true,
                .pixlodenable = so->need_pixlod,
+               .earlypreamble = so->early_preamble,
                .mergedregs = so->mergedregs,
       ));
       break;
@@ -176,6 +181,7 @@ fd6_emit_shader(struct fd_context *ctx, struct fd_ringbuffer *ring,
                .fullregfootprint = so->info.max_reg + 1,
                .branchstack = ir3_shader_branchstack_hw(so),
                .threadsize = thrsz,
+               .earlypreamble = so->early_preamble,
                .mergedregs = so->mergedregs,
       ));
       break;
@@ -1306,7 +1312,7 @@ fd6_program_create(void *data, const struct ir3_shader_variant *bs,
    state->binning_stateobj = fd_ringbuffer_new_object(ctx->pipe, 0x1000);
    state->stateobj = fd_ringbuffer_new_object(ctx->pipe, 0x1000);
 
-#ifdef DEBUG
+#if MESA_DEBUG
    if (!ds) {
       for (unsigned i = 0; i < bs->inputs_count; i++) {
          if (vs->inputs[i].sysval)

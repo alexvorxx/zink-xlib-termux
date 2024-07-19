@@ -227,7 +227,8 @@ i915_gem_mmap(struct anv_device *device, struct anv_bo *bo, uint64_t offset,
 }
 
 static VkResult
-i915_vm_bind(struct anv_device *device, struct anv_sparse_submission *submit)
+i915_vm_bind(struct anv_device *device, struct anv_sparse_submission *submit,
+             enum anv_vm_bind_flags flags)
 {
    return VK_SUCCESS;
 }
@@ -295,10 +296,8 @@ anv_i915_kmd_backend_get(void)
       .vm_bind = i915_vm_bind,
       .vm_bind_bo = i915_vm_bind_bo,
       .vm_unbind_bo = i915_vm_bind_bo,
-      .execute_simple_batch = i915_execute_simple_batch,
-      .execute_trtt_batch = i915_execute_trtt_batch,
       .queue_exec_locked = i915_queue_exec_locked,
-      .queue_exec_trace = i915_queue_exec_trace,
+      .queue_exec_async = i915_queue_exec_async,
       .bo_alloc_flags_to_bo_flags = i915_bo_alloc_flags_to_bo_flags,
    };
    return &i915_backend;

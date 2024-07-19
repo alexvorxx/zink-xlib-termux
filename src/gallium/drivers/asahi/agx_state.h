@@ -6,16 +6,20 @@
 
 #pragma once
 
+#include <xf86drm.h>
 #include "asahi/compiler/agx_compile.h"
 #include "asahi/genxml/agx_pack.h"
 #include "asahi/layout/layout.h"
 #include "asahi/lib/agx_bo.h"
 #include "asahi/lib/agx_device.h"
+#include "asahi/lib/agx_linker.h"
 #include "asahi/lib/agx_nir_lower_vbo.h"
 #include "asahi/lib/agx_scratch.h"
 #include "asahi/lib/agx_tilebuffer.h"
+#include "asahi/lib/agx_uvs.h"
 #include "asahi/lib/pool.h"
 #include "asahi/lib/shaders/geometry.h"
+#include "asahi/lib/unstable_asahi_drm.h"
 #include "compiler/nir/nir_lower_blend.h"
 #include "compiler/shader_enums.h"
 #include "gallium/auxiliary/util/u_blitter.h"
@@ -26,9 +30,11 @@
 #include "util/bitset.h"
 #include "util/disk_cache.h"
 #include "util/hash_table.h"
+#include "util/rwlock.h"
 #include "util/u_range.h"
+#include "agx_bg_eot.h"
 #include "agx_helpers.h"
-#include "agx_meta.h"
+#include "agx_nir_passes.h"
 
 #ifdef __GLIBC__
 #include <errno.h>
@@ -112,6 +118,16 @@ struct PACKED agx_draw_uniforms {
    /* Addresses for the results of pipeline statistics queries */
    uint64_t pipeline_statistics[PIPE_STAT_QUERY_MS_INVOCATIONS];
 
+   /* Pointer to base address of the VS->TCS, VS->GS, or TES->GS buffer.
+    * Indirected so it can be written to in an indirect setup kernel. G13
+    * appears to prefetch uniforms across dispatches, but does not pre-run
+    * preambles, so this indirection saves us from splitting the batch.
+    */
+   uint64_t vertex_output_buffer_ptr;
+
+   /* Mask of outputs flowing VS->TCS, VS->GS, or TES->GS . */
+   uint64_t vertex_outputs;
+
    /* Address of input assembly buffer if geom/tess is used, else 0 */
    uint64_t input_assembly;
 
@@ -144,14 +160,22 @@ struct PACKED agx_draw_uniforms {
    /* glSampleMask */
    uint16_t sample_mask;
 
-   /* Nonzero if the last vertex stage writes the layer ID, zero otherwise */
-   uint16_t layer_id_written;
-
    /* Nonzero for indexed draws, zero otherwise */
    uint16_t is_indexed_draw;
 
    /* Zero for [0, 1] clipping, 0.5 for [-1, 1] clipping. */
    uint16_t clip_z_coeff;
+
+   /* ~0/0 boolean whether the epilog lacks any discard instrction */
+   uint16_t no_epilog_discard;
+
+   /* Provoking vertex: 0, 1, 2 */
+   uint16_t provoking_vertex;
+
+   /* Mapping from varying slots written by the last vertex stage to UVS
+    * indices. This mapping must be compatible with the fragment shader.
+    */
+   uint16_t uvs_index[VARYING_SLOT_MAX];
 };
 
 struct PACKED agx_stage_uniforms {
@@ -198,18 +222,28 @@ struct agx_push_range {
 };
 
 struct agx_compiled_shader {
+   /* Base struct */
+   struct agx_shader_part b;
+
    /* Uncompiled shader that we belong to */
    const struct agx_uncompiled_shader *so;
 
    /* Mapped executable memory */
    struct agx_bo *bo;
 
-   /* Metadata returned from the compiler */
-   struct agx_shader_info info;
-
    /* Uniforms the driver must push */
    unsigned push_range_count;
    struct agx_push_range push[AGX_MAX_PUSH_RANGES];
+
+   /* UVS layout for the last vertex stage */
+   struct agx_unlinked_uvs_layout uvs;
+
+   /* For a vertex shader, the mask of vertex attributes read. Used to key the
+    * prolog so the prolog doesn't write components not actually read.
+    */
+   BITSET_DECLARE(attrib_components_read, AGX_MAX_ATTRIBS * 4);
+
+   struct agx_fs_epilog_link_info epilog_key;
 
    /* Auxiliary programs, or NULL if not used */
    struct agx_compiled_shader *gs_count, *pre_gs;
@@ -228,16 +262,45 @@ struct agx_compiled_shader {
    enum pipe_shader_type stage;
 };
 
+struct agx_fast_link_key {
+   union {
+      struct agx_vs_prolog_key vs;
+      struct agx_fs_prolog_key fs;
+   } prolog;
+
+   struct agx_compiled_shader *main;
+
+   union {
+      struct agx_fs_epilog_key fs;
+   } epilog;
+
+   unsigned nr_samples_shaded;
+};
+
 struct agx_uncompiled_shader {
    struct pipe_shader_state base;
    enum pipe_shader_type type;
    struct blob early_serialized_nir;
    struct blob serialized_nir;
    uint8_t nir_sha1[20];
-   struct agx_uncompiled_shader_info info;
+
+   struct {
+      uint64_t inputs_flat_shaded;
+      uint64_t inputs_linear_shaded;
+      uint8_t cull_distance_size;
+      bool has_edgeflags;
+      bool uses_fbfetch;
+
+      /* Number of bindful textures, images used */
+      unsigned nr_bindful_textures, nr_bindful_images;
+   } info;
+
    struct hash_table *variants;
    struct agx_uncompiled_shader *passthrough_progs[MESA_PRIM_COUNT][3][2];
    struct agx_uncompiled_shader *passthrough_tcs[32];
+
+   /* agx_fast_link_key -> agx_linked_shader */
+   struct hash_table *linked_shaders;
 
    uint32_t xfb_strides[4];
    bool has_xfb_info;
@@ -297,6 +360,8 @@ struct agx_stage {
 };
 
 union agx_batch_result {
+   struct drm_asahi_result_render render;
+   struct drm_asahi_result_compute compute;
 };
 
 /* This is a firmware limit. It should be possible to raise to 2048 in the
@@ -346,6 +411,7 @@ struct agx_batch {
 
    /* Current varyings linkage structures */
    uint32_t varyings;
+   struct agx_varyings_vs linked_varyings;
 
    struct agx_draw_uniforms uniforms;
    struct agx_stage_uniforms stage_uniforms[PIPE_SHADER_TYPES];
@@ -422,12 +488,6 @@ struct agx_zsa {
    uint32_t load, store;
 };
 
-struct agx_blend_key {
-   nir_lower_blend_rt rt[8];
-   unsigned logicop_func;
-   bool alpha_to_coverage, alpha_to_one;
-};
-
 struct agx_blend {
    struct agx_blend_key key;
 
@@ -435,35 +495,11 @@ struct agx_blend {
    uint32_t store;
 };
 
-/* These parts of the vertex element affect the generated code */
-struct agx_velem_key {
-   uint32_t divisor;
-   uint16_t stride;
-   uint8_t format;
-   uint8_t pad;
-};
-
-enum asahi_vs_next_stage {
-   ASAHI_VS_FS,
-   ASAHI_VS_GS,
-   ASAHI_VS_TCS,
-};
-
 struct asahi_vs_shader_key {
-   struct agx_velem_key attribs[AGX_MAX_VBUFS];
-   enum asahi_vs_next_stage next_stage;
-
-   union {
-      struct {
-         uint8_t index_size_B;
-      } gs;
-
-      struct {
-         bool fixed_point_size;
-         uint64_t outputs_flat_shaded;
-         uint64_t outputs_linear_shaded;
-      } fs;
-   } next;
+   /* If true, this is running as a hardware vertex shader. If false, this is a
+    * compute job used to feed a TCS or GS.
+    */
+   bool hw;
 };
 
 struct agx_vertex_elements {
@@ -476,49 +512,21 @@ struct agx_vertex_elements {
 };
 
 struct asahi_fs_shader_key {
-   struct agx_blend_key blend;
-
-   /* Need to count FRAGMENT_SHADER_INVOCATIONS */
-   bool statistics;
-
-   /* Set if glSampleMask() is used with a mask other than all-1s. If not, we
-    * don't want to emit lowering code for it, since it would disable early-Z.
-    */
-   bool api_sample_mask;
-   bool polygon_stipple;
-
-   uint8_t cull_distance_size;
-   uint8_t nr_samples;
    enum pipe_format rt_formats[PIPE_MAX_COLOR_BUFS];
+   uint8_t nr_samples;
+   bool padding[7];
 };
-
-struct asahi_tcs_shader_key {
-   /* Input assembly key. Simplified because we know we're operating on patches.
-    */
-   uint8_t index_size_B;
-
-   /* Vertex shader key */
-   struct agx_velem_key attribs[AGX_MAX_VBUFS];
-
-   /* Tessellation control shaders must be linked with a vertex shader. */
-   uint8_t input_nir_sha1[20];
-};
+static_assert(sizeof(struct asahi_fs_shader_key) == 40, "no holes");
 
 struct asahi_gs_shader_key {
-   /* Rasterizer shader key */
-   uint64_t outputs_flat_shaded;
-   uint64_t outputs_linear_shaded;
-   bool fixed_point_size;
-
    /* If true, this GS is run only for its side effects (including XFB) */
    bool rasterizer_discard;
-   bool padding[6];
+   bool padding[7];
 };
-static_assert(sizeof(struct asahi_gs_shader_key) == 24, "no holes");
+static_assert(sizeof(struct asahi_gs_shader_key) == 8, "no holes");
 
 union asahi_shader_key {
    struct asahi_vs_shader_key vs;
-   struct asahi_tcs_shader_key tcs;
    struct asahi_gs_shader_key gs;
    struct asahi_fs_shader_key fs;
 };
@@ -594,6 +602,9 @@ struct agx_oq_heap;
 struct agx_context {
    struct pipe_context base;
    struct agx_compiled_shader *vs, *fs, *gs, *tcs, *tes;
+   struct {
+      struct agx_linked_shader *vs, *tcs, *tes, *gs, *fs;
+   } linked;
    uint32_t dirty;
 
    /* Heap for dynamic memory allocation for geometry/tessellation shaders */
@@ -625,6 +636,9 @@ struct agx_context {
        */
       uint64_t generation[AGX_MAX_BATCHES];
    } batches;
+
+   /* Queue handle */
+   uint32_t queue_id;
 
    struct agx_batch *batch;
    struct agx_bo *result_buf;
@@ -669,6 +683,7 @@ struct agx_context {
    bool is_noop;
 
    bool in_tess;
+   bool in_generated_vdm;
 
    struct blitter_context *blitter;
    struct asahi_blitter compute_blitter;
@@ -682,7 +697,7 @@ struct agx_context {
    struct util_dynarray global_buffers;
 
    struct hash_table *generic_meta;
-   struct agx_meta_cache meta;
+   struct agx_bg_eot_cache bg_eot;
 
    bool any_faults;
 
@@ -754,8 +769,79 @@ agx_context(struct pipe_context *pctx)
    return (struct agx_context *)pctx;
 }
 
-void agx_launch(struct agx_batch *batch, const struct pipe_grid_info *info,
-                struct agx_compiled_shader *cs, enum pipe_shader_type stage);
+struct agx_linked_shader;
+
+typedef void (*meta_shader_builder_t)(struct nir_builder *b, const void *key);
+
+void agx_init_meta_shaders(struct agx_context *ctx);
+
+void agx_destroy_meta_shaders(struct agx_context *ctx);
+
+struct agx_compiled_shader *agx_build_meta_shader(struct agx_context *ctx,
+                                                  meta_shader_builder_t builder,
+                                                  void *data, size_t data_size);
+
+struct agx_grid {
+   /* Tag for the union */
+   enum agx_cdm_mode mode;
+
+   /* If mode != INDIRECT_LOCAL, the local size */
+   uint32_t local[3];
+
+   union {
+      /* If mode == DIRECT, the global size. This is *not* multiplied by the
+       * local size, differing from the API definition but matching AGX.
+       */
+      uint32_t global[3];
+
+      /* Address of the indirect buffer if mode != DIRECT */
+      uint64_t indirect;
+   };
+};
+
+static inline const struct agx_grid
+agx_grid_direct(uint32_t global_x, uint32_t global_y, uint32_t global_z,
+                uint32_t local_x, uint32_t local_y, uint32_t local_z)
+{
+   return (struct agx_grid){
+      .mode = AGX_CDM_MODE_DIRECT,
+      .global = {global_x, global_y, global_z},
+      .local = {local_x, local_y, local_z},
+   };
+}
+
+static inline const struct agx_grid
+agx_grid_indirect(uint64_t indirect, uint32_t local_x, uint32_t local_y,
+                  uint32_t local_z)
+{
+   return (struct agx_grid){
+      .mode = AGX_CDM_MODE_INDIRECT_GLOBAL,
+      .local = {local_x, local_y, local_z},
+      .indirect = indirect,
+   };
+}
+
+static inline const struct agx_grid
+agx_grid_indirect_local(uint64_t indirect)
+{
+   return (struct agx_grid){
+      .mode = AGX_CDM_MODE_INDIRECT_LOCAL,
+      .indirect = indirect,
+   };
+}
+
+void agx_launch_with_data(struct agx_batch *batch, const struct agx_grid *grid,
+                          meta_shader_builder_t builder, void *key,
+                          size_t key_size, void *data, size_t data_size);
+
+void agx_launch_internal(struct agx_batch *batch, const struct agx_grid *grid,
+                         struct agx_compiled_shader *cs,
+                         enum pipe_shader_type stage, uint32_t usc);
+
+void agx_launch(struct agx_batch *batch, const struct agx_grid *grid,
+                struct agx_compiled_shader *cs,
+                struct agx_linked_shader *linked, enum pipe_shader_type stage,
+                unsigned variable_shared_mem);
 
 void agx_init_query_functions(struct pipe_context *ctx);
 
@@ -799,6 +885,7 @@ struct agx_rasterizer {
    uint8_t cull[AGX_CULL_LENGTH];
    uint8_t line_width;
    uint8_t polygon_mode;
+   bool depth_bias;
 };
 
 struct agx_query {
@@ -841,8 +928,9 @@ struct agx_screen {
    struct pipe_screen pscreen;
    struct agx_device dev;
    struct disk_cache *disk_cache;
-   /* Queue handle */
-   uint32_t queue_id;
+
+   /* Lock to protect syncobj usage vs. destruction in context destroy */
+   struct u_rwlock destroy_lock;
 };
 
 static inline struct agx_screen *
@@ -966,7 +1054,7 @@ void agx_set_cbuf_uniforms(struct agx_batch *batch,
 void agx_set_ssbo_uniforms(struct agx_batch *batch,
                            enum pipe_shader_type stage);
 
-bool agx_nir_lower_point_size(nir_shader *nir, bool fixed_point_size);
+bool agx_nir_lower_point_size(nir_shader *nir, bool insert_write);
 
 bool agx_nir_lower_sysvals(nir_shader *shader, enum pipe_shader_type desc_stage,
                            bool lower_draw_params);
@@ -1022,9 +1110,12 @@ agx_batch_add_bo(struct agx_batch *batch, struct agx_bo *bo)
 #define AGX_BATCH_FOREACH_BO_HANDLE(batch, handle)                             \
    BITSET_FOREACH_SET(handle, (batch)->bo_list.set, batch->bo_list.bit_count)
 
+struct drm_asahi_cmd_compute;
+struct drm_asahi_cmd_render;
+
 void agx_batch_submit(struct agx_context *ctx, struct agx_batch *batch,
-                      uint32_t barriers, enum drm_asahi_cmd_type cmd_type,
-                      void *cmdbuf);
+                      struct drm_asahi_cmd_compute *compute,
+                      struct drm_asahi_cmd_render *render);
 
 void agx_flush_batch(struct agx_context *ctx, struct agx_batch *batch);
 void agx_flush_batch_for_reason(struct agx_context *ctx,
@@ -1101,8 +1192,13 @@ struct agx_encoder agx_encoder_allocate(struct agx_batch *batch,
 
 void agx_batch_init_state(struct agx_batch *batch);
 
-uint64_t agx_build_meta(struct agx_batch *batch, bool store,
-                        bool partial_render);
+struct asahi_bg_eot {
+   uint64_t usc;
+   struct agx_counts_packed counts;
+};
+
+struct asahi_bg_eot agx_build_bg_eot(struct agx_batch *batch, bool store,
+                                     bool partial_render);
 
 /* Query management */
 uint16_t agx_get_oq_index(struct agx_batch *batch, struct agx_query *query);
@@ -1124,12 +1220,6 @@ agx_render_condition_check(struct agx_context *ctx)
       return agx_render_condition_check_inner(ctx);
 }
 
-/* Texel buffers lowered to (at most) 1024x16384 2D textures */
-#define AGX_TEXTURE_BUFFER_WIDTH      1024
-#define AGX_TEXTURE_BUFFER_MAX_HEIGHT 16384
-#define AGX_TEXTURE_BUFFER_MAX_SIZE                                            \
-   (AGX_TEXTURE_BUFFER_WIDTH * AGX_TEXTURE_BUFFER_MAX_HEIGHT)
-
 static inline uint32_t
 agx_texture_buffer_size_el(enum pipe_format format, uint32_t size)
 {
@@ -1137,9 +1227,3 @@ agx_texture_buffer_size_el(enum pipe_format format, uint32_t size)
 
    return MIN2(AGX_TEXTURE_BUFFER_MAX_SIZE, size / blocksize);
 }
-
-typedef void (*meta_shader_builder_t)(struct nir_builder *b, const void *key);
-
-void agx_init_meta_shaders(struct agx_context *ctx);
-
-void agx_destroy_meta_shaders(struct agx_context *ctx);

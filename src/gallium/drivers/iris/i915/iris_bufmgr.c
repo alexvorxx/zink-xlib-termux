@@ -108,3 +108,17 @@ int iris_i915_bo_set_tiling(struct iris_bo *bo, const struct isl_surf *surf)
 
    return ret;
 }
+
+uint64_t
+iris_i915_tiling_to_modifier(uint32_t tiling)
+{
+   static const uint64_t map[] = {
+      [I915_TILING_NONE]   = DRM_FORMAT_MOD_LINEAR,
+      [I915_TILING_X]      = I915_FORMAT_MOD_X_TILED,
+      [I915_TILING_Y]      = I915_FORMAT_MOD_Y_TILED,
+   };
+
+   assert(tiling < ARRAY_SIZE(map));
+
+   return map[tiling];
+}

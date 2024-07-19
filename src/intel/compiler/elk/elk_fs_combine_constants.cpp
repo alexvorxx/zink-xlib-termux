@@ -1595,7 +1595,7 @@ elk_fs_visitor::opt_combine_constants()
             reg->type = elk_int_type(type_sz(reg->type), true);
          }
 
-#ifdef DEBUG
+#if MESA_DEBUG
          switch (reg->type) {
          case ELK_REGISTER_TYPE_DF:
             assert((isnan(reg->df) && isnan(table.imm[i].df)) ||

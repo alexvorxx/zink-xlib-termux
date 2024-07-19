@@ -1,24 +1,7 @@
 /*
  * Copyright 2009 Nicolai Hähnle <nhaehnle@gmail.com>
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * on the rights to use, copy, modify, merge, publish, distribute, sub
- * license, and/or sell copies of the Software, and to permit persons to whom
- * the Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHOR(S) AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
- * USE OR OTHER DEALINGS IN THE SOFTWARE. */
+ * SPDX-License-Identifier: MIT
+ */
 
 #ifndef RADEON_CODE_H
 #define RADEON_CODE_H
@@ -75,7 +58,7 @@ enum {
 
 struct rc_constant {
 	unsigned Type:2; /**< RC_CONSTANT_xxx */
-	unsigned Size:3;
+	unsigned UseMask:4;
 
 	union {
 		unsigned External;
@@ -91,6 +74,11 @@ struct rc_constant_list {
 	unsigned _Reserved;
 };
 
+struct const_remap {
+        int index[4];
+        uint8_t swizzle[4];
+};
+
 void rc_constants_init(struct rc_constant_list * c);
 void rc_constants_copy(struct rc_constant_list * dst, struct rc_constant_list * src);
 void rc_constants_destroy(struct rc_constant_list * c);
@@ -98,7 +86,7 @@ unsigned rc_constants_add(struct rc_constant_list * c, struct rc_constant * cons
 unsigned rc_constants_add_state(struct rc_constant_list * c, unsigned state1, unsigned state2);
 unsigned rc_constants_add_immediate_vec4(struct rc_constant_list * c, const float * data);
 unsigned rc_constants_add_immediate_scalar(struct rc_constant_list * c, float data, unsigned * swizzle);
-void rc_constants_print(struct rc_constant_list * c);
+void rc_constants_print(struct rc_constant_list *c, struct const_remap *r);
 
 /**
  * Compare functions.
@@ -243,7 +231,7 @@ struct rX00_fragment_program_code {
 	unsigned writes_depth:1;
 
 	struct rc_constant_list constants;
-	unsigned *constants_remap_table;
+	struct const_remap *constants_remap_table;
 };
 
 
@@ -274,7 +262,7 @@ struct r300_vertex_program_code {
 	unsigned last_pos_write;
 
 	struct rc_constant_list constants;
-	unsigned *constants_remap_table;
+	struct const_remap *constants_remap_table;
 
 	uint32_t InputsRead;
 	uint32_t OutputsWritten;

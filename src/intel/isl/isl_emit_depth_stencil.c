@@ -38,6 +38,7 @@ __gen_combine_address(__attribute__((unused)) void *data,
 #include "genxml/genX_pack.h"
 
 #include "isl_priv.h"
+#include "isl_genX_helpers.h"
 
 static const uint32_t isl_encode_ds_surftype[] = {
 #if GFX_VER >= 9
@@ -60,12 +61,10 @@ static const uint32_t isl_encode_ds_surftype[] = {
 
 #if GFX_VER >= 9
 static const uint8_t isl_encode_tiling[] = {
-#if GFX_VER >= 20
-   [ISL_TILING_4]          = TILE4,
-   [ISL_TILING_64_XE2]     = TILE64,
-#elif GFX_VERx10 >= 125
+#if GFX_VERx10 >= 125
    [ISL_TILING_4]          = TILE4,
    [ISL_TILING_64]         = TILE64,
+   [ISL_TILING_64_XE2]     = TILE64,
 #else
    [ISL_TILING_Y0]         = NONE,
    [ISL_TILING_SKL_Yf]     = TILEYF,
@@ -169,6 +168,7 @@ isl_genX(emit_depth_stencil_hiz_s)(const struct isl_device *dev, void *batch,
 #if GFX_VER >= 7
       db.DepthWriteEnable = true;
 #endif
+      assert(info->depth_address % info->depth_surf->alignment_B == 0);
       db.SurfaceBaseAddress = info->depth_address;
 
 #if GFX_VERx10 >= 125
@@ -202,6 +202,9 @@ isl_genX(emit_depth_stencil_hiz_s)(const struct isl_device *dev, void *batch,
 #if GFX_VER == 12
       db.ControlSurfaceEnable = db.DepthBufferCompressionEnable =
          isl_aux_usage_has_ccs(info->hiz_usage);
+#endif
+#if GFX_VER >= 12
+      db.NullPageCoherencyEnable = info->depth_surf->usage & ISL_SURF_USAGE_SPARSE_BIT;
 #endif
    }
 
@@ -268,11 +271,15 @@ isl_genX(emit_depth_stencil_hiz_s)(const struct isl_device *dev, void *batch,
 #elif GFX_VERx10 >= 75
       sb.StencilBufferEnable = true;
 #endif
+      assert(info->stencil_address % info->stencil_surf->alignment_B == 0);
       sb.SurfaceBaseAddress = info->stencil_address;
       sb.SurfacePitch = info->stencil_surf->row_pitch_B - 1;
 #if GFX_VER >= 8
       sb.SurfaceQPitch =
          isl_surf_get_array_pitch_el_rows(info->stencil_surf) >> 2;
+#endif
+#if GFX_VER >= 12
+      sb.NullPageCoherencyEnable = info->stencil_surf->usage & ISL_SURF_USAGE_SPARSE_BIT;
 #endif
    } else {
 #if GFX_VER >= 12
@@ -306,6 +313,7 @@ isl_genX(emit_depth_stencil_hiz_s)(const struct isl_device *dev, void *batch,
       assert(GFX_VER >= 12 || info->hiz_usage == ISL_AUX_USAGE_HIZ);
       db.HierarchicalDepthBufferEnable = true;
 
+      assert(info->hiz_address % info->hiz_surf->alignment_B == 0);
       hiz.SurfaceBaseAddress = info->hiz_address;
       hiz.SurfacePitch = info->hiz_surf->row_pitch_B - 1;
 

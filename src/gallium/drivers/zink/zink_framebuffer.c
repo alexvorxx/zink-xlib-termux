@@ -405,7 +405,7 @@ zink_update_framebuffer_state(struct zink_context *ctx)
          _mesa_hash_table_remove(&screen->framebuffer_cache, he);
          he = NULL;
          /* ensure an unflushed fb doesn't get destroyed by deferring it */
-         util_dynarray_append(&ctx->batch.state->dead_framebuffers, struct zink_framebuffer*, ctx->framebuffer);
+         util_dynarray_append(&ctx->bs->dead_framebuffers, struct zink_framebuffer*, ctx->framebuffer);
          ctx->framebuffer = NULL;
       }
       /* a framebuffer loses 1 ref every time we unset it;

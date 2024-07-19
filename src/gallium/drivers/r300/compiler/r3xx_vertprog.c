@@ -1,24 +1,7 @@
 /*
  * Copyright 2009 Nicolai Hähnle <nhaehnle@gmail.com>
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * on the rights to use, copy, modify, merge, publish, distribute, sub
- * license, and/or sell copies of the Software, and to permit persons to whom
- * the Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHOR(S) AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
- * USE OR OTHER DEALINGS IN THE SOFTWARE. */
+ * SPDX-License-Identifier: MIT
+ */
 
 #include "radeon_compiler.h"
 
@@ -818,10 +801,10 @@ void r3xx_compile_vertex_program(struct r300_vertex_program_compiler *c)
 		{"native rewrite",		1, 1,		rc_local_transform,		alu_rewrite},
 		{"unused channels",		1, opt,		rc_mark_unused_channels,	NULL},
 		{"dataflow optimize",		1, opt,		rc_optimize,			NULL},
+		{"dead constants",		1, 1,		rc_remove_unused_constants,	&c->code->constants_remap_table},
 		/* This pass must be done after optimizations. */
 		{"source conflict resolve",	1, 1,		rc_local_transform,		resolve_src_conflicts},
 		{"register allocation",		1, opt,		allocate_temporary_registers,	NULL},
-		{"dead constants",		1, 1,		rc_remove_unused_constants,	&c->code->constants_remap_table},
 		{"lower control flow opcodes",	1, is_r500,	rc_vert_fc,			NULL},
 		{"final code validation",	0, 1,		rc_validate_final_shader,	NULL},
 		{"machine code generation",	0, 1,		translate_vertex_program,	NULL},

@@ -39,7 +39,7 @@
 #include "util/u_debug_describe.h"
 #include "util/u_debug_refcnt.h"
 #include "util/u_atomic.h"
-#include "util/u_box.h"
+#include "util/box.h"
 #include "util/u_math.h"
 
 
@@ -128,7 +128,8 @@ pipe_surface_release(struct pipe_context *pipe, struct pipe_surface **ptr)
 {
    struct pipe_surface *old = *ptr;
 
-   if (pipe_reference_described(&old->reference, NULL,
+   if (pipe_reference_described(old ? &old->reference : NULL,
+                                NULL,
                                 (debug_reference_descriptor)
                                 debug_describe_surface))
       pipe->surface_destroy(pipe, old);

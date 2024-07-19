@@ -41,8 +41,6 @@
 #include "intel/common/intel_genX_state_elk.h"
 #endif
 
-#include "drm-uapi/i915_drm.h"
-
 #include "libintel_shaders.h"
 
 #if GFX_VERx10 == 80

@@ -202,7 +202,7 @@ struct nine_allocator {
     struct list_head pending_frees;
 };
 
-#ifdef DEBUG
+#if MESA_DEBUG
 
 static void
 debug_dump_memfd_state(struct nine_memfd_file *memfd_file, bool details)
@@ -401,7 +401,7 @@ static struct nine_memfd_file_region *allocate_region(struct nine_allocator *all
 }
 
 /* Go through memfd allocated files, and try to use unused memory for the requested allocation.
- * Returns whether it suceeded */
+ * Returns whether it succeeded */
 static bool
 insert_new_allocation(struct nine_allocator *allocator, struct nine_allocation *new_allocation, unsigned allocation_size)
 {

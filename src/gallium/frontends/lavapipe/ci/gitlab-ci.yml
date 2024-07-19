@@ -11,7 +11,17 @@ lavapipe:
     - .deqp-test
     - .lavapipe-test
 
-lavapipe-vk-asan:
+lavapipe-full:
+  extends:
+    - lavapipe
+    - .lavapipe-manual-rules
+  timeout: 2h  # base runtime = 1h15m
+  variables:
+    DEQP_FRACTION: 1
+
+# this seems broken
+# https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/29068#note_2403558
+.lavapipe-vk-asan:
   extends:
     - .deqp-test
     - .lavapipe-test

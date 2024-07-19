@@ -12,7 +12,6 @@
 
 #include "nak.h"
 #include "nir.h"
-#include "nouveau_bo.h"
 
 #include "vk_shader.h"
 
@@ -46,12 +45,17 @@ enum ENUM_PACKED nvk_cbuf_type {
    NVK_CBUF_TYPE_UBO_DESC,
 };
 
+PRAGMA_DIAGNOSTIC_PUSH
+PRAGMA_DIAGNOSTIC_ERROR(-Wpadded)
 struct nvk_cbuf {
    enum nvk_cbuf_type type;
    uint8_t desc_set;
    uint8_t dynamic_idx;
+   uint8_t _pad;
    uint32_t desc_offset;
 };
+PRAGMA_DIAGNOSTIC_POP
+static_assert(sizeof(struct nvk_cbuf) == 8, "This struct has no holes");
 
 struct nvk_cbuf_map {
    uint32_t cbuf_count;
@@ -96,22 +100,16 @@ VkShaderStageFlags nvk_nak_stages(const struct nv_device_info *info);
 uint64_t
 nvk_physical_device_compiler_flags(const struct nvk_physical_device *pdev);
 
-static inline nir_address_format
-nvk_buffer_addr_format(VkPipelineRobustnessBufferBehaviorEXT robustness)
-{
-   switch (robustness) {
-   case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DISABLED_EXT:
-      return nir_address_format_64bit_global_32bit_offset;
-   case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_EXT:
-   case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_2_EXT:
-      return nir_address_format_64bit_bounded_global;
-   default:
-      unreachable("Invalid robust buffer access behavior");
-   }
-}
+nir_address_format
+nvk_ubo_addr_format(const struct nvk_physical_device *pdev,
+                    VkPipelineRobustnessBufferBehaviorEXT robustness);
+nir_address_format
+nvk_ssbo_addr_format(const struct nvk_physical_device *pdev,
+                     VkPipelineRobustnessBufferBehaviorEXT robustness);
 
 bool
 nvk_nir_lower_descriptors(nir_shader *nir,
+                          const struct nvk_physical_device *pdev,
                           const struct vk_pipeline_robustness_state *rs,
                           uint32_t set_layout_count,
                           struct vk_descriptor_set_layout * const *set_layouts,

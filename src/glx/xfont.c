@@ -267,7 +267,7 @@ DRI_glXUseXFont(struct glx_context *CC, Font font, int first, int count, int lis
          fill_bitmap(dpy, screen, gc, bm_width, bm_height, x, y, c, bm);
 
          glBitmap(width, height, x0, y0, dx, dy, bm);
-      }
+         }
       else {
          glBitmap(0, 0, 0.0, 0.0, dx, dy, NULL);
       }

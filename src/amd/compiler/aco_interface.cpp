@@ -1,25 +1,7 @@
 /*
  * Copyright © 2018 Google
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
- * IN THE SOFTWARE.
- *
+ * SPDX-License-Identifier: MIT
  */
 
 #include "aco_interface.h"
@@ -91,7 +73,7 @@ get_disasm_string(Program* program, std::vector<uint32_t>& code, unsigned exec_s
          print_asm(program, code, exec_size / 4u, memf);
       } else {
          fprintf(memf, "Shader disassembly is not supported in the current configuration"
-#if !LLVM_AVAILABLE
+#if !AMD_LLVM_AVAILABLE
                        " (LLVM not available)"
 #endif
                        ", falling back to print_program.\n\n");
@@ -118,10 +100,13 @@ aco_postprocess_shader(const struct aco_compiler_options* options,
    ASSERTED bool is_valid = validate_cfg(program.get());
    assert(is_valid);
 
-   live live_vars;
    if (!info->is_trap_handler_shader) {
       dominator_tree(program.get());
       lower_phis(program.get());
+
+      if (program->gfx_level <= GFX7)
+         lower_subdword(program.get());
+
       validate(program.get());
 
       /* Optimization */
@@ -138,10 +123,10 @@ aco_postprocess_shader(const struct aco_compiler_options* options,
       validate(program.get());
 
       /* spilling and scheduling */
-      live_vars = live_var_analysis(program.get());
+      live_var_analysis(program.get());
       if (program->collect_statistics)
          collect_presched_stats(program.get());
-      spill(program.get(), live_vars);
+      spill(program.get());
    }
 
    if (options->record_ir) {
@@ -160,15 +145,15 @@ aco_postprocess_shader(const struct aco_compiler_options* options,
    }
 
    if ((debug_flags & DEBUG_LIVE_INFO) && options->dump_shader)
-      aco_print_program(program.get(), stderr, live_vars, print_live_vars | print_kill);
+      aco_print_program(program.get(), stderr, print_live_vars | print_kill);
 
    if (!info->is_trap_handler_shader) {
       if (!options->optimisations_disabled && !(debug_flags & DEBUG_NO_SCHED))
-         schedule_program(program.get(), live_vars);
+         schedule_program(program.get());
       validate(program.get());
 
       /* Register Allocation */
-      register_allocation(program.get(), live_vars);
+      register_allocation(program.get());
 
       if (validate_ra(program.get())) {
          aco_print_program(program.get(), stderr);
@@ -371,6 +356,8 @@ aco_compile_vs_prolog(const struct aco_compiler_options* options,
    select_vs_prolog(program.get(), pinfo, &config, options, info, args);
    validate(program.get());
    insert_NOPs(program.get());
+   if (program->gfx_level >= GFX10)
+      form_hard_clauses(program.get());
 
    if (options->dump_shader)
       aco_print_program(program.get(), stderr);
@@ -401,16 +388,6 @@ aco_compile_ps_epilog(const struct aco_compiler_options* options,
 }
 
 void
-aco_compile_tcs_epilog(const struct aco_compiler_options* options,
-                       const struct aco_shader_info* info, const struct aco_tcs_epilog_info* pinfo,
-                       const struct ac_shader_args* args, aco_shader_part_callback* build_epilog,
-                       void** binary)
-{
-   aco_compile_shader_part(options, info, args, select_tcs_epilog, (void*)pinfo, build_epilog,
-                           binary);
-}
-
-void
 aco_compile_ps_prolog(const struct aco_compiler_options* options,
                       const struct aco_shader_info* info, const struct aco_ps_prolog_info* pinfo,
                       const struct ac_shader_args* args, aco_shader_part_callback* build_prolog,
@@ -426,15 +403,28 @@ aco_get_codegen_flags()
    init();
    /* Exclude flags which don't affect code generation. */
    uint64_t exclude =
-      DEBUG_VALIDATE_IR | DEBUG_VALIDATE_RA | DEBUG_PERFWARN | DEBUG_PERF_INFO | DEBUG_LIVE_INFO;
+      DEBUG_VALIDATE_IR | DEBUG_VALIDATE_RA | DEBUG_PERF_INFO | DEBUG_LIVE_INFO;
    return debug_flags & ~exclude;
 }
 
 bool
 aco_is_gpu_supported(const struct radeon_info* info)
 {
-   /* Does not support compute only cards yet. */
-   return info->gfx_level >= GFX6 && info->has_graphics;
+   switch (info->gfx_level) {
+   case GFX6:
+   case GFX7:
+   case GFX8:
+      return true;
+   case GFX9:
+      return info->has_graphics; /* no CDNA support */
+   case GFX10:
+   case GFX10_3:
+   case GFX11:
+   case GFX11_5:
+      return true;
+   default:
+      return false;
+   }
 }
 
 bool
@@ -486,3 +476,18 @@ aco_nir_op_supports_packed_math_16bit(const nir_alu_instr* alu)
 }
 
 const aco_compiler_statistic_info* aco_statistic_infos = statistic_infos.data();
+
+void
+aco_print_asm(const struct radeon_info *info, unsigned wave_size,
+              uint32_t *binary, unsigned num_dw)
+{
+   std::vector<uint32_t> binarray(binary, binary + num_dw);
+   aco::Program prog;
+
+   prog.gfx_level = info->gfx_level;
+   prog.family = info->family;
+   prog.wave_size = wave_size;
+   prog.blocks.push_back(aco::Block());
+
+   aco::print_asm(&prog, binarray, num_dw, stderr);
+}

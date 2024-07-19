@@ -86,6 +86,16 @@ enum ENUM_PACKED nak_attr {
    NAK_ATTR_FRONT_FACE        = 0x3fc,
 };
 
+static inline uint16_t
+nak_attribute_attr_addr(gl_vert_attrib attrib)
+{
+   assert(attrib >= VERT_ATTRIB_GENERIC0);
+   return NAK_ATTR_GENERIC_START + (attrib - VERT_ATTRIB_GENERIC0) * 0x10;
+}
+
+uint16_t nak_varying_attr_addr(gl_varying_slot slot);
+uint16_t nak_sysval_attr_addr(gl_system_value sysval);
+
 enum ENUM_PACKED nak_sv {
    NAK_SV_LANE_ID          = 0x00,
    NAK_SV_VIRTCFG          = 0x02,
@@ -189,6 +199,10 @@ struct nak_nir_ipa_flags {
    uint32_t pad:26;
 };
 
+bool nak_nir_lower_fs_inputs(nir_shader *nir,
+                             const struct nak_compiler *nak,
+                             const struct nak_fs_key *fs_key);
+
 enum nak_fs_out {
    NAK_FS_OUT_COLOR0 = 0x00,
    NAK_FS_OUT_COLOR1 = 0x10,
@@ -204,22 +218,11 @@ enum nak_fs_out {
 
 #define NAK_FS_OUT_COLOR(n) (NAK_FS_OUT_COLOR0 + (n) * 16)
 
+bool nak_nir_lower_non_uniform_ldcx(nir_shader *nir);
 bool nak_nir_add_barriers(nir_shader *nir, const struct nak_compiler *nak);
+bool nak_nir_lower_cf(nir_shader *nir);
 
-static inline bool
-nak_is_only_used_by_iadd(const nir_alu_instr *instr)
-{
-   nir_foreach_use(src, &instr->def) {
-      nir_instr *use = nir_src_parent_instr(src);
-      if (use->type != nir_instr_type_alu)
-         return false;
-
-      if (nir_instr_as_alu(use)->op != nir_op_iadd)
-         return false;
-   }
-
-   return true;
-}
+void nak_optimize_nir(nir_shader *nir, const struct nak_compiler *nak);
 
 struct nak_memstream {
    FILE *stream;

@@ -1,23 +1,5 @@
 # Copyright 2022 Advanced Micro Devices, Inc.
-# All Rights Reserved.
-
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+# SPDX-License-Identifier: MIT
 
 c_args_vpe = cc.get_supported_arguments([
   '-Wall',
@@ -41,13 +23,13 @@ c_args_vpe += [
   '-DLITTLEENDIAN_CPU',
   '-DVPE_BUILD_1_0',
   '-DVPE_BUILD_1_X',
+  '-DVPE_BUILD_1_1',
 ]
 
 vpe_files = files(
   'src/core/inc/reg_helper.h',
   'src/core/inc/vpe_priv.h',
   'src/core/inc/vpe_command.h',
-  'src/core/inc/color_pwl.h',
   'src/core/inc/color_gamut.h',
   'src/core/inc/vpe_assert.h',
   'src/core/inc/vpec.h',
@@ -127,6 +109,10 @@ vpe_files = files(
   'src/chip/vpe10/vpe10_background.c',
   'src/chip/vpe10/vpe10_cdc.c',
   'src/chip/vpe10/vpe10_vpec.c',
+  'src/chip/vpe11/inc/vpe11_cmd_builder.h',
+  'src/chip/vpe11/inc/vpe11_resource.h',
+  'src/chip/vpe11/vpe11_cmd_builder.c',
+  'src/chip/vpe11/vpe11_resource.c',
 )
 
 inc_amd_vpe = include_directories(
@@ -136,6 +122,7 @@ inc_amd_vpe = include_directories(
   'src/chip',
   'src/utils/inc',
   'src/chip/vpe10/inc',
+  'src/chip/vpe11/inc',
 )
 
 libvpe = static_library(

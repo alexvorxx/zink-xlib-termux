@@ -296,6 +296,14 @@ fui( float f )
    return fi.ui;
 }
 
+static inline uint64_t
+dui( double f )
+{
+   union di di;
+   di.d = f;
+   return di.ui;
+}
+
 static inline float
 uif(uint32_t ui)
 {
@@ -304,6 +312,13 @@ uif(uint32_t ui)
    return fi.f;
 }
 
+static inline double
+uid(uint64_t ui)
+{
+   union di di;
+   di.ui = ui;
+   return di.d;
+}
 
 /**
  * Convert uint8_t to float in [0, 1].
@@ -806,6 +821,23 @@ util_clamped_uadd(unsigned a, unsigned b)
       res = ~0U;
    }
    return res;
+}
+
+/**
+ * Checks the value 'n' is aligned to 'a'.
+ * The alignment must be a power of two.
+ */
+static inline bool
+util_is_aligned(uintmax_t n, uintmax_t a)
+{
+   assert(a == (a & -a));
+   return (n & (a - 1)) == 0;
+}
+
+static inline bool
+util_is_sint16(int x)
+{
+   return x >= INT16_MIN && x <= INT16_MAX;
 }
 
 #ifdef __cplusplus

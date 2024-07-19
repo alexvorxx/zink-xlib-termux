@@ -17,7 +17,7 @@ brw_fs_optimize(fs_visitor &s)
    s.debug_optimizer(nir, "start", 0, 0);
 
    /* Start by validating the shader we currently have. */
-   s.validate();
+   brw_fs_validate(s);
 
    bool progress = false;
    int iteration = 0;
@@ -30,7 +30,7 @@ brw_fs_optimize(fs_visitor &s)
       if (this_progress)                                                \
          s.debug_optimizer(nir, #pass, iteration, pass_num);            \
                                                                         \
-      s.validate();                                                     \
+      brw_fs_validate(s);                                               \
                                                                         \
       progress = progress || this_progress;                             \
       this_progress;                                                    \
@@ -38,8 +38,6 @@ brw_fs_optimize(fs_visitor &s)
 
    s.assign_constant_locations();
    OPT(brw_fs_lower_constant_loads);
-
-   s.validate();
 
    if (s.compiler->lower_dpas)
       OPT(brw_fs_lower_dpas);
@@ -64,9 +62,9 @@ brw_fs_optimize(fs_visitor &s)
       iteration++;
 
       OPT(brw_fs_opt_algebraic);
-      OPT(brw_fs_opt_cse);
-      OPT(brw_fs_opt_copy_propagation);
-      OPT(brw_fs_opt_predicated_break);
+      OPT(brw_fs_opt_cse_defs);
+      if (!OPT(brw_fs_opt_copy_propagation_defs))
+         OPT(brw_fs_opt_copy_propagation);
       OPT(brw_fs_opt_cmod_propagation);
       OPT(brw_fs_opt_dead_code_eliminate);
       OPT(brw_fs_opt_peephole_sel);
@@ -80,31 +78,34 @@ brw_fs_optimize(fs_visitor &s)
    progress = false;
    pass_num = 0;
 
+   OPT(brw_fs_opt_predicated_break);
+
    if (OPT(brw_fs_lower_pack)) {
       OPT(brw_fs_opt_register_coalesce);
       OPT(brw_fs_opt_dead_code_eliminate);
    }
 
+   OPT(brw_fs_lower_csel);
    OPT(brw_fs_lower_simd_width);
    OPT(brw_fs_lower_barycentrics);
    OPT(brw_fs_lower_logical_sends);
 
    /* After logical SEND lowering. */
 
-   if (OPT(brw_fs_opt_copy_propagation))
+   if (OPT(brw_fs_opt_copy_propagation_defs) || OPT(brw_fs_opt_copy_propagation))
       OPT(brw_fs_opt_algebraic);
 
    /* Identify trailing zeros LOAD_PAYLOAD of sampler messages.
     * Do this before splitting SENDs.
     */
-   if (OPT(brw_fs_opt_zero_samples) && OPT(brw_fs_opt_copy_propagation))
+   if (OPT(brw_fs_opt_zero_samples) && (OPT(brw_fs_opt_copy_propagation_defs) || OPT(brw_fs_opt_copy_propagation)))
       OPT(brw_fs_opt_algebraic);
 
    OPT(brw_fs_opt_split_sends);
    OPT(brw_fs_workaround_nomask_control_flow);
 
    if (progress) {
-      if (OPT(brw_fs_opt_copy_propagation))
+      if (OPT(brw_fs_opt_copy_propagation_defs) || OPT(brw_fs_opt_copy_propagation))
          OPT(brw_fs_opt_algebraic);
 
       /* Run after logical send lowering to give it a chance to CSE the
@@ -112,7 +113,7 @@ brw_fs_optimize(fs_visitor &s)
        * e.g. texturing messages in cases where it wasn't possible to CSE the
        * whole logical instruction.
        */
-      OPT(brw_fs_opt_cse);
+      OPT(brw_fs_opt_cse_defs);
       OPT(brw_fs_opt_register_coalesce);
       OPT(brw_fs_opt_dead_code_eliminate);
       OPT(brw_fs_opt_peephole_sel);
@@ -144,7 +145,12 @@ brw_fs_optimize(fs_visitor &s)
    OPT(brw_fs_lower_derivatives);
    OPT(brw_fs_lower_regioning);
    if (progress) {
-      if (OPT(brw_fs_opt_copy_propagation)) {
+      /* Try both copy propagation passes.  The defs one will likely not be
+       * able to handle everything at this point.
+       */
+      const bool cp1 = OPT(brw_fs_opt_copy_propagation_defs);
+      const bool cp2 = OPT(brw_fs_opt_copy_propagation);
+      if (cp1 || cp2) {
          OPT(brw_fs_opt_algebraic);
          OPT(brw_fs_opt_combine_constants);
       }
@@ -156,9 +162,11 @@ brw_fs_optimize(fs_visitor &s)
 
    OPT(brw_fs_lower_uniform_pull_constant_loads);
 
+   OPT(brw_fs_lower_indirect_mov);
+
    OPT(brw_fs_lower_find_live_channel);
 
-   s.validate();
+   OPT(brw_fs_lower_load_subgroup_invocation);
 }
 
 static unsigned
@@ -170,7 +178,7 @@ load_payload_sources_read_for_size(fs_inst *lp, unsigned size_read)
    unsigned i;
    unsigned size = lp->header_size * REG_SIZE;
    for (i = lp->header_size; size < size_read && i < lp->sources; i++)
-      size += lp->exec_size * type_sz(lp->src[i].type);
+      size += lp->exec_size * brw_type_size_bytes(lp->src[i].type);
 
    /* Size read must cover exactly a subset of sources. */
    assert(size == size_read);
@@ -229,11 +237,13 @@ brw_fs_opt_zero_samples(fs_visitor &s)
       for (unsigned i = params - 1; i > first_param_idx; i--) {
          if (lp->src[i].file != BAD_FILE && !lp->src[i].is_zero())
             break;
-         zero_size += lp->exec_size * type_sz(lp->src[i].type) * lp->dst.stride;
+         zero_size += lp->exec_size * brw_type_size_bytes(lp->src[i].type) * lp->dst.stride;
       }
 
-      const unsigned zero_len = zero_size / (reg_unit(s.devinfo) * REG_SIZE);
+      /* Round down to ensure to only consider full registers. */
+      const unsigned zero_len = ROUND_DOWN_TO(zero_size / REG_SIZE, reg_unit(s.devinfo));
       if (zero_len > 0) {
+         /* Note mlen is in REG_SIZE units. */
          send->mlen -= zero_len;
          progress = true;
       }
@@ -268,10 +278,9 @@ brw_fs_opt_split_sends(fs_visitor &s)
 
    foreach_block_and_inst(block, fs_inst, send, s.cfg) {
       if (send->opcode != SHADER_OPCODE_SEND ||
-          send->mlen <= reg_unit(s.devinfo) || send->ex_mlen > 0)
+          send->mlen <= reg_unit(s.devinfo) || send->ex_mlen > 0 ||
+          send->src[2].file != VGRF)
          continue;
-
-      assert(send->src[2].file == VGRF);
 
       /* Currently don't split sends that reuse a previously used payload. */
       fs_inst *lp = (fs_inst *) send->prev;
@@ -315,8 +324,8 @@ brw_fs_opt_split_sends(fs_visitor &s)
       assert(lp2->size_written % REG_SIZE == 0);
       assert((lp1->size_written + lp2->size_written) / REG_SIZE == send->mlen);
 
-      lp1->dst = fs_reg(VGRF, s.alloc.allocate(lp1->size_written / REG_SIZE), lp1->dst.type);
-      lp2->dst = fs_reg(VGRF, s.alloc.allocate(lp2->size_written / REG_SIZE), lp2->dst.type);
+      lp1->dst = brw_vgrf(s.alloc.allocate(lp1->size_written / REG_SIZE), lp1->dst.type);
+      lp2->dst = brw_vgrf(s.alloc.allocate(lp2->size_written / REG_SIZE), lp2->dst.type);
 
       send->resize_sources(4);
       send->src[2] = lp1->dst;

@@ -89,6 +89,7 @@ static const struct dxil_logger default_logger = { .priv = NULL, .log = default_
 
 static const nir_shader_compiler_options
 nir_options = {
+   .compact_arrays = true,
    .lower_ineg = true,
    .lower_fneg = true,
    .lower_ffma16 = true,
@@ -152,12 +153,14 @@ nir_options = {
       nir_lower_dfloor |
       nir_lower_dceil |
       nir_lower_dround_even,
+   .lower_uniforms_to_ubo = true,
    .max_unroll_iterations = 32, /* arbitrary */
    .force_indirect_unrolling = (nir_var_shader_in | nir_var_shader_out),
    .lower_device_index_to_zero = true,
    .linker_ignore_precision = true,
    .support_16bit_alu = true,
    .preserve_mediump = true,
+   .discard_is_demote = true,
 };
 
 const nir_shader_compiler_options*
@@ -389,6 +392,9 @@ enum dxil_intr {
    DXIL_INTR_SAMPLE_CMP_LEVEL = 224,
    DXIL_INTR_SAMPLE_CMP_GRAD = 254,
    DXIL_INTR_SAMPLE_CMP_BIAS = 255,
+
+   DXIL_INTR_START_VERTEX_LOCATION = 256,
+   DXIL_INTR_START_INSTANCE_LOCATION = 257,
 };
 
 enum dxil_atomic_op {
@@ -589,7 +595,6 @@ struct ntd_context {
    const struct dxil_value **scratchvars;
    const struct dxil_value **consts;
 
-   nir_variable *ps_front_face;
    nir_variable *system_value[SYSTEM_VALUE_MAX];
 
    nir_function *tess_ctrl_patch_constant_func;
@@ -1316,44 +1321,6 @@ emit_srv(struct ntd_context *ctx, nir_variable *var, unsigned count)
 }
 
 static bool
-emit_globals(struct ntd_context *ctx, unsigned size)
-{
-   nir_foreach_variable_with_modes(var, ctx->shader, nir_var_mem_ssbo)
-      size++;
-
-   if (!size)
-      return true;
-
-   const struct dxil_type *struct_type = dxil_module_get_res_type(&ctx->mod,
-      DXIL_RESOURCE_KIND_RAW_BUFFER, DXIL_COMP_TYPE_INVALID, 1, true /* readwrite */);
-   if (!struct_type)
-      return false;
-
-   const struct dxil_type *array_type =
-      dxil_module_get_array_type(&ctx->mod, struct_type, size);
-   if (!array_type)
-      return false;
-
-   resource_array_layout layout = {0, 0, size, 0};
-   const struct dxil_mdnode *uav_meta =
-      emit_uav_metadata(&ctx->mod, array_type,
-                                   "globals", &layout,
-                                   DXIL_COMP_TYPE_INVALID,
-                                   DXIL_RESOURCE_KIND_RAW_BUFFER, 0);
-   if (!uav_meta)
-      return false;
-
-   util_dynarray_append(&ctx->uav_metadata_nodes, const struct dxil_mdnode *, uav_meta);
-   if (ctx->mod.minor_validator < 6 &&
-       util_dynarray_num_elements(&ctx->uav_metadata_nodes, const struct dxil_mdnode *) > 8)
-      ctx->mod.feats.use_64uavs = 1;
-   /* Handles to UAVs used for kernel globals are created on-demand */
-   add_resource(ctx, DXIL_RES_UAV_RAW, DXIL_RESOURCE_KIND_RAW_BUFFER, &layout);
-   ctx->mod.raw_and_structured_buffers = true;
-   return true;
-}
-
-static bool
 emit_uav(struct ntd_context *ctx, unsigned binding, unsigned space, unsigned count,
          enum dxil_component_type comp_type, unsigned num_comps, enum dxil_resource_kind res_kind,
          enum gl_access_qualifier access, const char *name)
@@ -1380,6 +1347,21 @@ emit_uav(struct ntd_context *ctx, unsigned binding, unsigned space, unsigned cou
    if (ctx->mod.shader_kind != DXIL_PIXEL_SHADER &&
        ctx->mod.shader_kind != DXIL_COMPUTE_SHADER)
       ctx->mod.feats.uavs_at_every_stage = true;
+
+   return true;
+}
+
+static bool
+emit_globals(struct ntd_context *ctx, unsigned size)
+{
+   nir_foreach_variable_with_modes(var, ctx->shader, nir_var_mem_ssbo)
+      size++;
+
+   if (!size)
+      return true;
+
+   if (!emit_uav(ctx, 0, 0, size, DXIL_COMP_TYPE_INVALID, 1, DXIL_RESOURCE_KIND_RAW_BUFFER, 0, "globals"))
+      return false;
 
    return true;
 }
@@ -2509,6 +2491,7 @@ get_overload(nir_alu_type alu_type, unsigned bit_size)
    switch (nir_alu_type_get_base_type(alu_type)) {
    case nir_type_int:
    case nir_type_uint:
+   case nir_type_bool:
       switch (bit_size) {
       case 1: return DXIL_I1;
       case 16: return DXIL_I16;
@@ -3292,7 +3275,7 @@ emit_load_tess_coord(struct ntd_context *ctx,
    for (unsigned i = 0; i < num_coords; ++i) {
       unsigned component_idx = i;
 
-      const struct dxil_value *component = dxil_module_get_int32_const(&ctx->mod, component_idx);
+      const struct dxil_value *component = dxil_module_get_int8_const(&ctx->mod, component_idx);
       if (!component)
          return false;
 
@@ -3328,39 +3311,39 @@ get_resource_handle(struct ntd_context *ctx, nir_src *src, enum dxil_resource_cl
 {
    /* This source might be one of:
     * 1. Constant resource index - just look it up in precomputed handle arrays
-    *    If it's null in that array, create a handle, and store the result
+    *    If it's null in that array, create a handle
     * 2. A handle from load_vulkan_descriptor - just get the stored SSA value
     * 3. Dynamic resource index - create a handle for it here
     */
    assert(src->ssa->num_components == 1 && src->ssa->bit_size == 32);
    nir_const_value *const_block_index = nir_src_as_const_value(*src);
-   const struct dxil_value **handle_entry = NULL;
+   const struct dxil_value *handle_entry = NULL;
    if (const_block_index) {
       assert(ctx->opts->environment != DXIL_ENVIRONMENT_VULKAN);
       switch (kind) {
       case DXIL_RESOURCE_KIND_CBUFFER:
-         handle_entry = &ctx->cbv_handles[const_block_index->u32];
+         handle_entry = ctx->cbv_handles[const_block_index->u32];
          break;
       case DXIL_RESOURCE_KIND_RAW_BUFFER:
          if (class == DXIL_RESOURCE_CLASS_UAV)
-            handle_entry = &ctx->ssbo_handles[const_block_index->u32];
+            handle_entry = ctx->ssbo_handles[const_block_index->u32];
          else
-            handle_entry = &ctx->srv_handles[const_block_index->u32];
+            handle_entry = ctx->srv_handles[const_block_index->u32];
          break;
       case DXIL_RESOURCE_KIND_SAMPLER:
-         handle_entry = &ctx->sampler_handles[const_block_index->u32];
+         handle_entry = ctx->sampler_handles[const_block_index->u32];
          break;
       default:
          if (class == DXIL_RESOURCE_CLASS_UAV)
-            handle_entry = &ctx->image_handles[const_block_index->u32];
+            handle_entry = ctx->image_handles[const_block_index->u32];
          else
-            handle_entry = &ctx->srv_handles[const_block_index->u32];
+            handle_entry = ctx->srv_handles[const_block_index->u32];
          break;
       }
    }
 
-   if (handle_entry && *handle_entry)
-      return *handle_entry;
+   if (handle_entry)
+      return handle_entry;
 
    if (nir_src_as_deref(*src) ||
        ctx->opts->environment == DXIL_ENVIRONMENT_VULKAN) {
@@ -3380,7 +3363,7 @@ get_resource_handle(struct ntd_context *ctx, nir_src *src, enum dxil_resource_cl
     * up in this type of dynamic indexing are:
     * 1. GL UBOs
     * 2. GL SSBOs
-    * 2. CL SSBOs
+    * 3. CL SSBOs
     * In all cases except GL UBOs, the resources are a single zero-based array.
     * In that case, the base is 1, because uniforms use 0 and cannot by dynamically
     * indexed. All other cases should either fall into static indexing (first early return),
@@ -3388,15 +3371,13 @@ get_resource_handle(struct ntd_context *ctx, nir_src *src, enum dxil_resource_cl
     * load_vulkan_descriptor handle creation.
     */
    unsigned base_binding = 0;
-   if (ctx->opts->environment == DXIL_ENVIRONMENT_GL &&
+   if (ctx->shader->info.first_ubo_is_default_ubo &&
        class == DXIL_RESOURCE_CLASS_CBV)
       base_binding = 1;
 
    const struct dxil_value *value = get_src(ctx, src, 0, nir_type_uint);
    const struct dxil_value *handle = emit_createhandle_call_dynamic(ctx, class,
       space, base_binding, value, !const_block_index);
-   if (handle_entry)
-      *handle_entry = handle;
 
    return handle;
 }
@@ -4806,14 +4787,12 @@ emit_intrinsic(struct ntd_context *ctx, nir_intrinsic_instr *intr)
 {
    switch (intr->intrinsic) {
    case nir_intrinsic_load_global_invocation_id:
-   case nir_intrinsic_load_global_invocation_id_zero_base:
       return emit_load_global_invocation_id(ctx, intr);
    case nir_intrinsic_load_local_invocation_id:
       return emit_load_local_invocation_id(ctx, intr);
    case nir_intrinsic_load_local_invocation_index:
       return emit_load_local_invocation_index(ctx, intr);
    case nir_intrinsic_load_workgroup_id:
-   case nir_intrinsic_load_workgroup_id_zero_base:
       return emit_load_local_workgroup_id(ctx, intr);
    case nir_intrinsic_load_ssbo:
       return emit_load_ssbo(ctx, intr);
@@ -4854,10 +4833,10 @@ emit_intrinsic(struct ntd_context *ctx, nir_intrinsic_instr *intr)
       return emit_load_sample_mask_in(ctx, intr);
    case nir_intrinsic_load_tess_coord:
       return emit_load_tess_coord(ctx, intr);
-   case nir_intrinsic_discard_if:
+   case nir_intrinsic_terminate_if:
    case nir_intrinsic_demote_if:
       return emit_discard_if(ctx, intr);
-   case nir_intrinsic_discard:
+   case nir_intrinsic_terminate:
    case nir_intrinsic_demote:
       return emit_discard(ctx);
    case nir_intrinsic_emit_vertex:
@@ -4962,6 +4941,15 @@ emit_intrinsic(struct ntd_context *ctx, nir_intrinsic_instr *intr)
    case nir_intrinsic_reduce:
    case nir_intrinsic_exclusive_scan:
       return emit_reduce(ctx, intr);
+
+   case nir_intrinsic_load_first_vertex:
+      ctx->mod.feats.extended_command_info = true;
+      return emit_load_unary_external_function(ctx, intr, "dx.op.startVertexLocation",
+                                               DXIL_INTR_START_VERTEX_LOCATION, nir_type_int);
+   case nir_intrinsic_load_base_instance:
+      ctx->mod.feats.extended_command_info = true;
+      return emit_load_unary_external_function(ctx, intr, "dx.op.startInstanceLocation",
+                                               DXIL_INTR_START_INSTANCE_LOCATION, nir_type_int);
 
    case nir_intrinsic_load_num_workgroups:
    case nir_intrinsic_load_workgroup_size:
@@ -5902,16 +5890,17 @@ emit_cbvs(struct ntd_context *ctx)
    } else {
       if (ctx->shader->info.num_ubos) {
          const unsigned ubo_size = 16384 /*4096 vec4's*/;
-         bool has_ubo0 = !ctx->opts->no_ubo0;
+         uint array_base = ctx->shader->info.first_ubo_is_default_ubo ? 1 : 0;
+         bool has_ubo0 = ctx->shader->num_uniforms > 0 && ctx->shader->info.first_ubo_is_default_ubo;
          bool has_state_vars = ctx->opts->last_ubo_is_not_arrayed;
-         unsigned ubo1_array_size = ctx->shader->info.num_ubos -
-            (has_state_vars ? 2 : 1);
+         unsigned ubo1_array_size = ctx->shader->info.num_ubos - array_base -
+            (has_state_vars ? 1 : 0);
 
          if (has_ubo0 &&
              !emit_cbv(ctx, 0, 0, ubo_size, 1, "__ubo_uniforms"))
             return false;
          if (ubo1_array_size &&
-             !emit_cbv(ctx, 1, 0, ubo_size, ubo1_array_size, "__ubos"))
+             !emit_cbv(ctx, array_base, 0, ubo_size, ubo1_array_size, "__ubos"))
             return false;
          if (has_state_vars &&
              !emit_cbv(ctx, ctx->shader->info.num_ubos - 1, 0, ubo_size, 1, "__ubo_state_vars"))

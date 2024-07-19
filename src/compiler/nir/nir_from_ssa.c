@@ -1051,8 +1051,7 @@ nir_convert_from_ssa_impl(nir_function_impl *impl,
    }
 
    /* Mark metadata as dirty before we ask for liveness analysis */
-   nir_metadata_preserve(impl, nir_metadata_block_index |
-                                  nir_metadata_dominance);
+   nir_metadata_preserve(impl, nir_metadata_control_flow);
 
    nir_metadata_require(impl, nir_metadata_instr_index |
                                  nir_metadata_live_defs |
@@ -1072,8 +1071,7 @@ nir_convert_from_ssa_impl(nir_function_impl *impl,
       resolve_parallel_copies_block(block, &state);
    }
 
-   nir_metadata_preserve(impl, nir_metadata_block_index |
-                                  nir_metadata_dominance);
+   nir_metadata_preserve(impl, nir_metadata_control_flow);
 
    /* Clean up dead instructions and the hash tables */
    nir_instr_free_list(&state.dead_instrs);
@@ -1169,6 +1167,7 @@ nir_lower_phis_to_regs_block(nir_block *block)
    bool progress = false;
    nir_foreach_phi_safe(phi, block) {
       nir_def *reg = decl_reg_for_ssa_def(&b, &phi->def);
+      set_reg_divergent(reg, phi->def.divergent);
 
       b.cursor = nir_after_instr(&phi->instr);
       nir_def_rewrite_uses(&phi->def, nir_load_reg(&b, reg));

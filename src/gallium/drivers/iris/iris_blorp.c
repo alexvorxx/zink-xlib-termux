@@ -134,6 +134,13 @@ blorp_get_surface_base_address(UNUSED struct blorp_batch *blorp_batch)
    return (struct blorp_address) { .offset = IRIS_MEMZONE_BINDER_START };
 }
 
+static uint32_t
+blorp_get_dynamic_state(struct blorp_batch *batch,
+                        enum blorp_dynamic_state name)
+{
+   unreachable("Not implemented");
+}
+
 static void *
 blorp_alloc_dynamic_state(struct blorp_batch *blorp_batch,
                           uint32_t size,

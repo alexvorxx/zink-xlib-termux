@@ -38,15 +38,13 @@ __gen_combine_address(__attribute__((unused)) void *data,
 #include "genxml/genX_pack.h"
 
 #include "isl_priv.h"
+#include "isl_genX_helpers.h"
 
 #if GFX_VERx10 >= 125
 static const uint8_t isl_encode_tiling[] = {
    [ISL_TILING_4]  = TILE4,
-#if GFX_VER >= 20
-   [ISL_TILING_64_XE2] = TILE64,
-#else
    [ISL_TILING_64] = TILE64,
-#endif
+   [ISL_TILING_64_XE2] = TILE64,
 };
 #endif
 
@@ -102,6 +100,8 @@ isl_genX(emit_cpb_control_s)(const struct isl_device *dev, void *batch,
       cpb.MOCS                   = info->mocs;
       cpb.SurfaceQPitch          = isl_surf_get_array_pitch_sa_rows(info->surf) >> 2;
       cpb.TiledMode              = isl_encode_tiling[info->surf->tiling];
+
+      assert(info->address % info->surf->alignment_B == 0);
       cpb.SurfaceBaseAddress     = info->address;
 
       cpb.MipTailStartLOD        = info->surf->miptail_start_level;
@@ -110,6 +110,10 @@ isl_genX(emit_cpb_control_s)(const struct isl_device *dev, void *batch,
        * cpb.CPCBCompressionEnable is this CCS compression? Currently disabled
        * in isl_surf_supports_ccs() for CPB buffers.
        */
+#if GFX_VER >= 20
+      cpb.CompressionFormat  =
+         isl_get_render_compression_format(info->surf->format);
+#endif
    } else {
       cpb.SurfaceType  = SURFTYPE_NULL;
       cpb.TiledMode    = TILE64;

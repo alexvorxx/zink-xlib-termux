@@ -346,7 +346,7 @@ dump_binding_table(struct intel_batch_decode_ctx *ctx,
       uint32_t size = strct->dw_length * 4;
 
       if (pointers[i] % 32 != 0 ||
-          addr < bo.addr || addr + size >= bo.addr + bo.size) {
+          addr < bo.addr || addr + size > bo.addr + bo.size) {
          fprintf(ctx->fp, "pointer %u: 0x%08x <not valid>\n", i, pointers[i]);
          continue;
       }

@@ -21,7 +21,7 @@ impl PipeLoaderDevice {
     }
 
     fn load_screen(self) -> Option<PipeScreen> {
-        let s = unsafe { pipe_loader_create_screen(self.ldev.as_ptr()) };
+        let s = unsafe { pipe_loader_create_screen(self.ldev.as_ptr(), false) };
         PipeScreen::new(self, s)
     }
 
@@ -87,6 +87,10 @@ fn get_enabled_devs() -> HashMap<String, u32> {
                 res.insert(driver_str.to_owned(), devices);
                 last_driver = Some(driver_str);
             }
+        }
+
+        if res.contains_key("panfrost") {
+            res.insert("panthor".to_owned(), res["panfrost"]);
         }
     }
 

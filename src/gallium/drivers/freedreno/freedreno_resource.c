@@ -207,6 +207,7 @@ realloc_bo(struct fd_resource *rsc, uint32_t size)
    struct pipe_resource *prsc = &rsc->b.b;
    struct fd_screen *screen = fd_screen(rsc->b.b.screen);
    uint32_t flags =
+      (prsc->target == PIPE_BUFFER) ? FD_BO_HINT_BUFFER : FD_BO_HINT_IMAGE |
       COND(rsc->layout.tile_mode, FD_BO_NOMAP) |
       COND((prsc->usage & PIPE_USAGE_STAGING) &&
            (prsc->flags & PIPE_RESOURCE_FLAG_MAP_COHERENT),
@@ -1260,6 +1261,10 @@ get_best_layout(struct fd_screen *screen,
       return LINEAR;
 
    if (tmpl->target == PIPE_BUFFER)
+      return LINEAR;
+
+   if ((tmpl->usage == PIPE_USAGE_STAGING) &&
+       !util_format_is_depth_or_stencil(tmpl->format))
       return LINEAR;
 
    if (tmpl->bind & PIPE_BIND_LINEAR) {

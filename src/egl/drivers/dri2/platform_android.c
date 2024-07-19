@@ -58,21 +58,12 @@ droid_create_image_from_buffer_info(
 {
    unsigned error;
 
-   if (dri2_dpy->image->base.version >= 15 &&
-       dri2_dpy->image->createImageFromDmaBufs2 != NULL) {
-      return dri2_dpy->image->createImageFromDmaBufs2(
-         dri2_dpy->dri_screen_render_gpu, width, height, buf_info->drm_fourcc,
-         buf_info->modifier, buf_info->fds, buf_info->num_planes,
-         buf_info->strides, buf_info->offsets, color_info->yuv_color_space,
-         color_info->sample_range, color_info->horizontal_siting,
-         color_info->vertical_siting, &error, priv);
-   }
-
    return dri2_dpy->image->createImageFromDmaBufs(
       dri2_dpy->dri_screen_render_gpu, width, height, buf_info->drm_fourcc,
-      buf_info->fds, buf_info->num_planes, buf_info->strides, buf_info->offsets,
-      color_info->yuv_color_space, color_info->sample_range,
-      color_info->horizontal_siting, color_info->vertical_siting, &error, priv);
+      buf_info->modifier, buf_info->fds, buf_info->num_planes,
+      buf_info->strides, buf_info->offsets, color_info->yuv_color_space,
+      color_info->sample_range, color_info->horizontal_siting,
+      color_info->vertical_siting, 0, &error, priv);
 }
 
 static __DRIimage *
@@ -501,7 +492,7 @@ get_front_bo(struct dri2_egl_surface *dri2_surf, unsigned int format)
    } else if (dri2_surf->base.Type == EGL_PBUFFER_BIT) {
       dri2_surf->dri_image_front = dri2_dpy->image->createImage(
          dri2_dpy->dri_screen_render_gpu, dri2_surf->base.Width,
-         dri2_surf->base.Height, format, 0, NULL);
+         dri2_surf->base.Height, format, NULL, 0, 0, NULL);
       if (!dri2_surf->dri_image_front) {
          _eglLog(_EGL_WARNING, "dri2_image_front allocation failed");
          return -1;
@@ -836,9 +827,14 @@ droid_add_configs_for_visuals(_EGLDisplay *disp)
          continue;
       for (int j = 0; dri2_dpy->driver_configs[j]; j++) {
          const struct gl_config *gl_config =
-            (struct gl_config *) dri2_dpy->driver_configs;
+            (struct gl_config *) dri2_dpy->driver_configs[j];
 
-         if (gl_config->color_format != visuals[i].pipe_format)
+         /* Rather than have duplicate table entries for _SRGB formats, just
+          * use the linear version of the format for the comparision:
+          */
+         enum pipe_format linear_format =
+            util_format_linear(gl_config->color_format);
+         if (linear_format != visuals[i].pipe_format)
             continue;
 
          const EGLint surface_type = EGL_WINDOW_BIT | EGL_PBUFFER_BIT;
@@ -977,11 +973,14 @@ droid_load_driver(_EGLDisplay *disp, bool swrast)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
 
-   dri2_dpy->driver_name = loader_get_driver_for_fd(dri2_dpy->fd_render_gpu);
+   if (disp->Options.Zink)
+      dri2_dpy->driver_name = strdup("zink");
+   else
+      dri2_dpy->driver_name = loader_get_driver_for_fd(dri2_dpy->fd_render_gpu);
    if (dri2_dpy->driver_name == NULL)
       return false;
 
-   if (swrast) {
+   if (swrast && !disp->Options.Zink) {
       /* Use kms swrast only with vgem / virtio_gpu.
        * virtio-gpu fallbacks to software rendering when 3D features
        * are unavailable since 6c5ab.
@@ -1013,8 +1012,6 @@ droid_unload_driver(_EGLDisplay *disp)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
 
-   dlclose(dri2_dpy->driver);
-   dri2_dpy->driver = NULL;
    free(dri2_dpy->driver_name);
    dri2_dpy->driver_name = NULL;
 }

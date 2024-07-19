@@ -28,7 +28,7 @@
 #include "ir3.h"
 #include "ir3_compiler.h"
 
-#ifdef DEBUG
+#if MESA_DEBUG
 #define RA_DEBUG (ir3_shader_debug & IR3_DBG_RAMSGS)
 #else
 #define RA_DEBUG 0
@@ -143,6 +143,7 @@ ra_reg_is_predicate(const struct ir3_register *reg)
 #define RA_HALF_SIZE     (4 * 48)
 #define RA_FULL_SIZE     (4 * 48 * 2)
 #define RA_SHARED_SIZE   (2 * 4 * 8)
+#define RA_SHARED_HALF_SIZE (4 * 8)
 #define RA_MAX_FILE_SIZE RA_FULL_SIZE
 
 struct ir3_liveness {
@@ -175,8 +176,10 @@ void ir3_merge_regs(struct ir3_liveness *live, struct ir3 *ir);
 void ir3_force_merge(struct ir3_register *a, struct ir3_register *b,
                      int b_offset);
 
+void ir3_index_instrs_for_merge_sets(struct ir3 *ir);
+
 struct ir3_pressure {
-   unsigned full, half, shared;
+   unsigned full, half, shared, shared_half;
 };
 
 void ir3_calc_pressure(struct ir3_shader_variant *v, struct ir3_liveness *live,
@@ -188,7 +191,7 @@ bool ir3_spill(struct ir3 *ir, struct ir3_shader_variant *v,
 
 bool ir3_lower_spill(struct ir3 *ir);
 
-void ir3_ra_shared(struct ir3_shader_variant *v, struct ir3_liveness *live);
+void ir3_ra_shared(struct ir3_shader_variant *v, struct ir3_liveness **live);
 
 void ir3_ra_validate(struct ir3_shader_variant *v, unsigned full_size,
                      unsigned half_size, unsigned block_count, bool shared_ra);

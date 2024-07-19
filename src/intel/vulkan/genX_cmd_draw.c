@@ -37,15 +37,7 @@
 
 #include "ds/intel_tracepoints.h"
 
-/* We reserve :
- *    - GPR 14 for secondary command buffer returns
- *    - GPR 15 for conditional rendering
- */
-#define MI_BUILDER_NUM_ALLOC_GPRS 14
-#define __gen_get_batch_dwords anv_batch_emit_dwords
-#define __gen_address_offset anv_address_add
-#define __gen_get_batch_address(b, a) anv_batch_address(b, a)
-#include "common/mi_builder.h"
+#include "genX_mi_builder.h"
 
 static void
 cmd_buffer_alloc_gfx_push_constants(struct anv_cmd_buffer *cmd_buffer)
@@ -486,10 +478,15 @@ cmd_buffer_flush_gfx_push_constants(struct anv_cmd_buffer *cmd_buffer,
       }
    }
 
-   /* Resets the push constant state so that we allocate a new one if
-    * needed.
+    /* Setting NULL resets the push constant state so that we allocate a new one
+    * if needed. If push constant data not dirty, get_push_range_address can
+    * re-use existing allocation.
+    *
+    * Always reallocate on gfx9, gfx11 to fix push constant related flaky tests.
+    * See https://gitlab.freedesktop.org/mesa/mesa/-/issues/11064
     */
-   gfx_state->base.push_constants_state = ANV_STATE_NULL;
+   if (gfx_state->base.push_constants_data_dirty || GFX_VER < 12)
+      gfx_state->base.push_constants_state = ANV_STATE_NULL;
 
    anv_foreach_stage(stage, dirty_stages) {
       unsigned buffer_count = 0;
@@ -560,6 +557,7 @@ cmd_buffer_flush_gfx_push_constants(struct anv_cmd_buffer *cmd_buffer,
 #endif
 
    cmd_buffer->state.push_constants_dirty &= ~flushed;
+   gfx_state->base.push_constants_data_dirty = false;
 }
 
 #if GFX_VERx10 >= 125
@@ -653,7 +651,11 @@ genX(emit_ds)(struct anv_cmd_buffer *cmd_buffer)
    if (!anv_pipeline_has_stage(pipeline, MESA_SHADER_TESS_EVAL))
       return;
 
-   anv_batch_emit_pipeline_state(&cmd_buffer->batch, pipeline, final.ds);
+   const bool protected = cmd_buffer->vk.pool->flags &
+                          VK_COMMAND_POOL_CREATE_PROTECTED_BIT;
+
+   anv_batch_emit_pipeline_state_protected(&cmd_buffer->batch, pipeline,
+                                           final.ds, protected);
 #endif
 }
 
@@ -755,18 +757,6 @@ genX(cmd_buffer_flush_gfx_state)(struct anv_cmd_buffer *cmd_buffer)
    }
 
    cmd_buffer->state.gfx.vb_dirty &= ~vb_emit;
-
-   /* If patch control points value is changed, let's just update the push
-    * constant data. If the current pipeline also use this, we need to reemit
-    * the 3DSTATE_CONSTANT packet.
-    */
-   struct anv_push_constants *push = &cmd_buffer->state.gfx.base.push_constants;
-   if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_TS_PATCH_CONTROL_POINTS) &&
-       push->gfx.tcs_input_vertices != dyn->ts.patch_control_points) {
-      push->gfx.tcs_input_vertices = dyn->ts.patch_control_points;
-      if (pipeline->dynamic_patch_control_points)
-         cmd_buffer->state.push_constants_dirty |= VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
-   }
 
    const bool any_dynamic_state_dirty =
       vk_dynamic_graphics_state_any_dirty(dyn);
@@ -924,6 +914,10 @@ anv_use_generated_draws(const struct anv_cmd_buffer *cmd_buffer, uint32_t count)
    const struct anv_graphics_pipeline *pipeline =
       anv_pipeline_to_graphics(cmd_buffer->state.gfx.base.pipeline);
 
+   /* We cannot generate readable commands in protected mode. */
+   if (cmd_buffer->vk.pool->flags & VK_COMMAND_POOL_CREATE_PROTECTED_BIT)
+      return false;
+
    /* Limit generated draws to pipelines without HS stage. This makes things
     * simpler for implementing Wa_1306463417, Wa_16011107343.
     */
@@ -970,9 +964,6 @@ void genX(CmdDraw)(
     */
    genX(flush_pipeline_select_3d)(cmd_buffer);
 
-   if (cmd_buffer->state.conditional_render_enabled)
-      genX(cmd_emit_conditional_render_predicate)(cmd_buffer);
-
 #if GFX_VER < 11
    cmd_buffer_emit_vertex_constants_and_flush(cmd_buffer,
                                               get_vs_prog_data(pipeline),
@@ -982,6 +973,9 @@ void genX(CmdDraw)(
 
    genX(cmd_buffer_flush_gfx_state)(cmd_buffer);
    genX(emit_ds)(cmd_buffer);
+
+   if (cmd_buffer->state.conditional_render_enabled)
+      genX(cmd_emit_conditional_render_predicate)(cmd_buffer);
 
    genX(emit_breakpoint)(&cmd_buffer->batch, cmd_buffer->device, true);
 
@@ -1151,9 +1145,6 @@ void genX(CmdDrawIndexed)(
     */
    genX(flush_pipeline_select_3d)(cmd_buffer);
 
-   if (cmd_buffer->state.conditional_render_enabled)
-      genX(cmd_emit_conditional_render_predicate)(cmd_buffer);
-
 #if GFX_VER < 11
    const struct brw_vs_prog_data *vs_prog_data = get_vs_prog_data(pipeline);
    cmd_buffer_emit_vertex_constants_and_flush(cmd_buffer, vs_prog_data,
@@ -1162,6 +1153,10 @@ void genX(CmdDrawIndexed)(
 #endif
 
    genX(cmd_buffer_flush_gfx_state)(cmd_buffer);
+
+   if (cmd_buffer->state.conditional_render_enabled)
+      genX(cmd_emit_conditional_render_predicate)(cmd_buffer);
+
    genX(emit_breakpoint)(&cmd_buffer->batch, cmd_buffer->device, true);
 
    anv_batch_emit(&cmd_buffer->batch, _3DPRIMITIVE_DIRECT, prim) {
@@ -1458,9 +1453,6 @@ void genX(CmdDrawIndirectByteCountEXT)(
     */
    genX(flush_pipeline_select_3d)(cmd_buffer);
 
-   if (cmd_buffer->state.conditional_render_enabled)
-      genX(cmd_emit_conditional_render_predicate)(cmd_buffer);
-
 #if GFX_VER < 11
    const struct brw_vs_prog_data *vs_prog_data = get_vs_prog_data(pipeline);
    if (vs_prog_data->uses_firstvertex ||
@@ -1471,6 +1463,9 @@ void genX(CmdDrawIndirectByteCountEXT)(
 #endif
 
    genX(cmd_buffer_flush_gfx_state)(cmd_buffer);
+
+   if (cmd_buffer->state.conditional_render_enabled)
+      genX(cmd_emit_conditional_render_predicate)(cmd_buffer);
 
    struct mi_builder b;
    mi_builder_init(&b, cmd_buffer->device->info, &cmd_buffer->batch);
@@ -1611,7 +1606,8 @@ emit_indirect_draws(struct anv_cmd_buffer *cmd_buffer,
    UNUSED const struct intel_device_info *devinfo = cmd_buffer->device->info;
    UNUSED const bool aligned_stride =
       (indirect_data_stride == 0 ||
-       indirect_data_stride == sizeof(VkDrawIndirectCommand));
+       (!indexed && indirect_data_stride == sizeof(VkDrawIndirectCommand)) ||
+       (indexed && indirect_data_stride == sizeof(VkDrawIndexedIndirectCommand)));
    UNUSED const bool execute_indirect_supported =
       execute_indirect_draw_supported(cmd_buffer);
 
@@ -1660,7 +1656,7 @@ emit_indirect_draws(struct anv_cmd_buffer *cmd_buffer,
 #if GFX_VERx10 >= 125
          genX(emit_breakpoint)(&cmd_buffer->batch, cmd_buffer->device, true);
          anv_batch_emit(&cmd_buffer->batch, GENX(EXECUTE_INDIRECT_DRAW), ind) {
-            ind.ArgumentFormat             = DRAW;
+            ind.ArgumentFormat             = indexed ? DRAWINDEXED : DRAW;
             ind.TBIMREnabled               = cmd_buffer->state.gfx.dyn_state.use_tbimr;
             ind.PredicateEnable            =
                cmd_buffer->state.conditional_render_enabled;

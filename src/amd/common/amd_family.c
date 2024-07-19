@@ -7,6 +7,7 @@
 #include "amd_family.h"
 #include "addrlib/src/amdgpu_asic_addr.h"
 #include "util/macros.h"
+#include "ac_gpu_info.h"
 
 const char *ac_get_family_name(enum radeon_family family)
 {
@@ -99,6 +100,12 @@ const char *ac_get_family_name(enum radeon_family family)
       return "GFX1150";
    case CHIP_GFX1151:
       return "GFX1151";
+   case CHIP_GFX1152:
+      return "GFX1152";
+   case CHIP_GFX1200:
+      return "GFX1200";
+   case CHIP_GFX1201:
+      return "GFX1201";
    default:
       unreachable("Unknown GPU family");
    }
@@ -106,6 +113,8 @@ const char *ac_get_family_name(enum radeon_family family)
 
 enum amd_gfx_level ac_get_gfx_level(enum radeon_family family)
 {
+   if (family >= CHIP_GFX1200)
+      return GFX12;
    if (family >= CHIP_GFX1150)
       return GFX11_5;
    if (family >= CHIP_NAVI31)
@@ -126,6 +135,8 @@ enum amd_gfx_level ac_get_gfx_level(enum radeon_family family)
 
 unsigned ac_get_family_id(enum radeon_family family)
 {
+   if (family >= CHIP_GFX1200)
+      return FAMILY_GFX12;
    if (family >= CHIP_GFX1150)
       return FAMILY_GFX1150;
    if (family >= CHIP_NAVI31)
@@ -231,7 +242,41 @@ const char *ac_get_llvm_processor_name(enum radeon_family family)
       return "gfx1150";
    case CHIP_GFX1151:
       return "gfx1151";
+   case CHIP_GFX1152:
+      return "gfx1152";
+   case CHIP_GFX1200:
+      return "gfx1200";
+   case CHIP_GFX1201:
+      return "gfx1201";
    default:
       return "";
+   }
+}
+
+const char *ac_get_ip_type_string(const struct radeon_info *info, enum amd_ip_type ip_type)
+{
+   switch (ip_type) {
+   case AMD_IP_GFX:
+      return "GFX";
+   case AMD_IP_COMPUTE:
+      return "COMPUTE";
+   case AMD_IP_SDMA:
+      return "SDMA";
+   case AMD_IP_UVD:
+      return "UVD";
+   case AMD_IP_VCE:
+      return "VCE";
+   case AMD_IP_UVD_ENC:
+      return "UVD_ENC";
+   case AMD_IP_VCN_DEC:
+      return "VCN_DEC";
+   case AMD_IP_VCN_ENC: /* equal to AMD_IP_VCN_UNIFIED */
+      return !info || info->vcn_ip_version >= VCN_4_0_0 ? "VCN" : "VCN_ENC";
+   case AMD_IP_VCN_JPEG:
+      return "VCN_JPEG";
+   case AMD_IP_VPE:
+      return "VPE";
+   default:
+      return "UNKNOWN_IP";
    }
 }

@@ -1,12 +1,9 @@
-VK_EXT_map_memory_placed on RADV, ANV and NVK
-VK_KHR_shader_subgroup_rotate on RADV and ANV
-VK_KHR_load_store_op_none on RADV, ANV, NVK and Turnip
-VK_KHR_line_rasterization on RADV, ANV, NVK and Turnip
-VK_KHR_index_type_uint8 on RADV, ANV, NVK and Turnip
-VK_KHR_shader_expect_assume on all Vulkan drivers
-VK_KHR_shader_maximal_reconvergence on RADV
-VK_KHR_shader_quad_control on RADV
-OpenGL 4.6 on Asahi
-OpenGL ES 3.2 on Asahi
-Mali G610 and G310 on Panfrost
-Mali T600 on Panfrost
+VK_KHR_dynamic_rendering_local_read on RADV
+VK_EXT_legacy_vertex_attributes on lavapipe, ANV, Turnip and RADV
+VK_MESA_image_alignment_control on RADV
+VK_EXT_shader_replicated_composites on ANV, dozen, hasvk, lavapipe, nvk, RADV, and Turnip
+VK_KHR_maintenance5 on v3dv
+VK_KHR_maintenance7 on RADV
+VK_EXT_depth_clamp_zero_one on v3dv
+GL_ARB_depth_clamp on v3d
+Defaulting to a new shader cache implementation, reducing filesystem overhead.

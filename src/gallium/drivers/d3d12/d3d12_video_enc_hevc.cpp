@@ -351,7 +351,13 @@ d3d12_video_encoder_update_current_frame_pic_params_info_hevc(struct d3d12_video
 
    bUsedAsReference = !hevcPic->not_referenced;
 
-   picParams.pHEVCPicData->slice_pic_parameter_set_id = pHEVCBitstreamBuilder->get_active_pps_id();
+   if (pD3D12Enc->m_currentEncodeCapabilities.m_encoderCodecSpecificConfigCaps.m_HEVCCodecCaps.SupportFlags &
+       D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT_HEVC_FLAG_NUM_REF_IDX_ACTIVE_OVERRIDE_FLAG_SLICE_SUPPORT)
+   {
+      picParams.pHEVCPicData->Flags |= D3D12_VIDEO_ENCODER_PICTURE_CONTROL_CODEC_DATA_HEVC_FLAG_REQUEST_NUM_REF_IDX_ACTIVE_OVERRIDE_FLAG_SLICE;
+   }
+
+   picParams.pHEVCPicData->slice_pic_parameter_set_id = pHEVCBitstreamBuilder->get_active_pps().pps_pic_parameter_set_id;
    picParams.pHEVCPicData->FrameType = d3d12_video_encoder_convert_frame_type_hevc(hevcPic->picture_type);
    picParams.pHEVCPicData->PictureOrderCountNumber = hevcPic->pic_order_cnt;
 
@@ -1035,6 +1041,30 @@ d3d12_video_encoder_isequal_slice_config_hevc(
                   sizeof(D3D12_VIDEO_ENCODER_PICTURE_CONTROL_SUBREGIONS_LAYOUT_DATA_SLICES)) == 0);
 }
 
+static inline bool
+d3d12_video_encoder_needs_new_pps_hevc(struct d3d12_video_encoder *pD3D12Enc,
+                                       bool writeNewSPS,
+                                       HevcPicParameterSet &tentative_pps,
+                                       const HevcPicParameterSet &active_pps)
+{
+   bool bUseSliceL0L1Override = (pD3D12Enc->m_currentEncodeConfig.m_encoderPicParamsDesc.m_HEVCPicData.Flags &
+                                 D3D12_VIDEO_ENCODER_PICTURE_CONTROL_CODEC_DATA_HEVC_FLAG_REQUEST_NUM_REF_IDX_ACTIVE_OVERRIDE_FLAG_SLICE);
+
+   bool bDifferentL0L1Lists = !bUseSliceL0L1Override &&
+         ((tentative_pps.num_ref_idx_lx_default_active_minus1[0] != active_pps.num_ref_idx_lx_default_active_minus1[0]) ||
+         (tentative_pps.num_ref_idx_lx_default_active_minus1[1] != active_pps.num_ref_idx_lx_default_active_minus1[1]));
+
+   size_t offset_before_l0l1 = offsetof(HevcPicParameterSet, num_ref_idx_lx_default_active_minus1[0]);
+   size_t offset_after_l0l1 = offset_before_l0l1 + sizeof(HevcPicParameterSet::num_ref_idx_lx_default_active_minus1);
+   bool bDidPPSChange = memcmp(&tentative_pps, &active_pps, offset_before_l0l1) ||
+                        bDifferentL0L1Lists ||
+                        memcmp(reinterpret_cast<uint8_t*>(&tentative_pps) + offset_after_l0l1,
+                               reinterpret_cast<const uint8_t*>(&active_pps) + offset_after_l0l1,
+                               sizeof(HevcPicParameterSet) - offset_after_l0l1);
+
+   return writeNewSPS || bDidPPSChange;
+}
+
 uint32_t
 d3d12_video_encoder_build_codec_headers_hevc(struct d3d12_video_encoder *pD3D12Enc,
                                              std::vector<uint64_t> &pWrittenCodecUnitsSizes)
@@ -1054,24 +1084,24 @@ d3d12_video_encoder_build_codec_headers_hevc(struct d3d12_video_encoder *pD3D12E
       static_cast<d3d12_video_bitstream_builder_hevc *>(pD3D12Enc->m_upBitstreamBuilder.get());
    assert(pHEVCBitstreamBuilder);
 
-   uint32_t active_seq_parameter_set_id = pHEVCBitstreamBuilder->get_active_sps_id();
-   uint32_t active_video_parameter_set_id = pHEVCBitstreamBuilder->get_active_vps_id();
+   uint32_t active_seq_parameter_set_id = pHEVCBitstreamBuilder->get_active_sps().sps_seq_parameter_set_id;
+   uint32_t active_video_parameter_set_id = pHEVCBitstreamBuilder->get_active_vps().vps_video_parameter_set_id;
    
    bool writeNewVPS = isFirstFrame;
    
    size_t writtenVPSBytesCount = 0;
    if (writeNewVPS) {
       bool gopHasBFrames = (pD3D12Enc->m_currentEncodeConfig.m_encoderGOPConfigDesc.m_HEVCGroupOfPictures.PPicturePeriod > 1);
-      pHEVCBitstreamBuilder->build_vps(*profDesc.pHEVCProfile,
-                                       *levelDesc.pHEVCLevelSetting,
-                                       pD3D12Enc->m_currentEncodeConfig.m_encodeFormatInfo.Format,
-                                       MaxDPBCapacity,   // max_num_ref_frames
-                                       gopHasBFrames,
-                                       active_video_parameter_set_id,
-                                       pD3D12Enc->m_BitstreamHeadersBuffer,
-                                       pD3D12Enc->m_BitstreamHeadersBuffer.begin(),
-                                       writtenVPSBytesCount);      
-
+      HevcVideoParameterSet vps = pHEVCBitstreamBuilder->build_vps(*profDesc.pHEVCProfile,
+                                                                   *levelDesc.pHEVCLevelSetting,
+                                                                   pD3D12Enc->m_currentEncodeConfig.m_encodeFormatInfo.Format,
+                                                                   MaxDPBCapacity,   // max_num_ref_frames
+                                                                   gopHasBFrames,
+                                                                   active_video_parameter_set_id,
+                                                                   pD3D12Enc->m_BitstreamHeadersBuffer,
+                                                                   pD3D12Enc->m_BitstreamHeadersBuffer.begin(),
+                                                                   writtenVPSBytesCount);
+      pHEVCBitstreamBuilder->set_active_vps(vps);
       pWrittenCodecUnitsSizes.push_back(writtenVPSBytesCount);
    }
 
@@ -1083,37 +1113,34 @@ d3d12_video_encoder_build_codec_headers_hevc(struct d3d12_video_encoder *pD3D12E
 
    size_t writtenSPSBytesCount = 0;
    if (writeNewSPS) {
-      pHEVCBitstreamBuilder->build_sps(
-                           pHEVCBitstreamBuilder->get_latest_vps(),
-                           pD3D12Enc->m_currentEncodeConfig.m_encoderCodecSpecificSequenceStateDescH265,
-                           active_seq_parameter_set_id,
-                           pD3D12Enc->m_currentEncodeConfig.m_currentResolution,
-                           pD3D12Enc->m_currentEncodeConfig.m_FrameCroppingCodecConfig,
-                           pD3D12Enc->m_currentEncodeCapabilities.m_currentResolutionSupportCaps.SubregionBlockPixelsSize,
-                           pD3D12Enc->m_currentEncodeConfig.m_encodeFormatInfo.Format,
-                           *codecConfigDesc.pHEVCConfig,
-                           pD3D12Enc->m_currentEncodeConfig.m_encoderGOPConfigDesc.m_HEVCGroupOfPictures,
-                           pD3D12Enc->m_BitstreamHeadersBuffer,
-                           pD3D12Enc->m_BitstreamHeadersBuffer.begin() + writtenVPSBytesCount,
-                           writtenSPSBytesCount);
-
+      HevcSeqParameterSet sps = pHEVCBitstreamBuilder->build_sps(pHEVCBitstreamBuilder->get_active_vps(),
+                                                                 pD3D12Enc->m_currentEncodeConfig.m_encoderCodecSpecificSequenceStateDescH265,
+                                                                 active_seq_parameter_set_id,
+                                                                 pD3D12Enc->m_currentEncodeConfig.m_currentResolution,
+                                                                 pD3D12Enc->m_currentEncodeConfig.m_FrameCroppingCodecConfig,
+                                                                 pD3D12Enc->m_currentEncodeCapabilities.m_currentResolutionSupportCaps.SubregionBlockPixelsSize,
+                                                                 pD3D12Enc->m_currentEncodeConfig.m_encodeFormatInfo.Format,
+                                                                 *codecConfigDesc.pHEVCConfig,
+                                                                 pD3D12Enc->m_currentEncodeConfig.m_encoderGOPConfigDesc.m_HEVCGroupOfPictures,
+                                                                 pD3D12Enc->m_BitstreamHeadersBuffer,
+                                                                 pD3D12Enc->m_BitstreamHeadersBuffer.begin() + writtenVPSBytesCount,
+                                                                 writtenSPSBytesCount);
+      pHEVCBitstreamBuilder->set_active_sps(sps);
       pWrittenCodecUnitsSizes.push_back(writtenSPSBytesCount);
    }
 
    size_t writtenPPSBytesCount = 0;
-   pHEVCBitstreamBuilder->build_pps(pHEVCBitstreamBuilder->get_latest_sps(),
-                                    currentPicParams.pHEVCPicData->slice_pic_parameter_set_id,
-                                    *codecConfigDesc.pHEVCConfig,
-                                    *currentPicParams.pHEVCPicData,
-                                    pD3D12Enc->m_StagingHeadersBuffer,
-                                    pD3D12Enc->m_StagingHeadersBuffer.begin(),
-                                    writtenPPSBytesCount);
+   HevcPicParameterSet tentative_pps = pHEVCBitstreamBuilder->build_pps(pHEVCBitstreamBuilder->get_active_sps(),
+                                                                        currentPicParams.pHEVCPicData->slice_pic_parameter_set_id,
+                                                                        *codecConfigDesc.pHEVCConfig,
+                                                                        *currentPicParams.pHEVCPicData,
+                                                                        pD3D12Enc->m_StagingHeadersBuffer,
+                                                                        pD3D12Enc->m_StagingHeadersBuffer.begin(),
+                                                                        writtenPPSBytesCount);
 
-   std::vector<uint8_t>& active_pps = pHEVCBitstreamBuilder->get_active_pps();
-   if (writeNewSPS ||
-       (writtenPPSBytesCount != active_pps.size()) ||
-       memcmp(pD3D12Enc->m_StagingHeadersBuffer.data(), active_pps.data(), writtenPPSBytesCount)) {
-      active_pps = pD3D12Enc->m_StagingHeadersBuffer;
+   const HevcPicParameterSet &active_pps = pHEVCBitstreamBuilder->get_active_pps();
+   if (d3d12_video_encoder_needs_new_pps_hevc(pD3D12Enc, writeNewSPS, tentative_pps, active_pps)) {
+      pHEVCBitstreamBuilder->set_active_pps(tentative_pps);
       pD3D12Enc->m_BitstreamHeadersBuffer.resize(writtenSPSBytesCount + writtenVPSBytesCount + writtenPPSBytesCount);
       memcpy(&pD3D12Enc->m_BitstreamHeadersBuffer.data()[(writtenSPSBytesCount + writtenVPSBytesCount)], pD3D12Enc->m_StagingHeadersBuffer.data(), writtenPPSBytesCount);
       pWrittenCodecUnitsSizes.push_back(writtenPPSBytesCount);

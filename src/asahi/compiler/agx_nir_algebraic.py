@@ -83,10 +83,23 @@ lower_pack = [
       ('isub', 32, 'bits'))),
 ]
 
+lower_selects = []
+for T, sizes, one in [('f', [16, 32], 1.0),
+                      ('i', [8, 16, 32], 1),
+                      ('b', [16, 32], -1)]:
+    for size in sizes:
+        lower_selects.extend([
+            ((f'b2{T}{size}', ('inot', 'a@1')), ('bcsel', a, 0, one)),
+            ((f'b2{T}{size}', 'a@1'), ('bcsel', a, one, 0)),
+        ])
+
 # Rewriting bcsel(a || b, ...) in terms of bcsel(a, ...) and bcsel(b, ...) lets
 # our rules to fuse compare-and-select do a better job, assuming that a and b
 # are comparisons themselves.
-lower_selects = [
+#
+# This needs to be a separate pass that runs after lower_selects, in order to
+# pick up patterns like b2f32(iand(...))
+opt_selects = [
         (('bcsel', ('ior(is_used_once)', a, b), c, d),
          ('bcsel', a, c, ('bcsel', b, c, d))),
 
@@ -94,14 +107,11 @@ lower_selects = [
          ('bcsel', a, ('bcsel', b, c, d), d)),
 ]
 
-for T, sizes, one in [('f', [16, 32], 1.0),
-                      ('i', [8, 16, 32], 1),
-                      ('b', [32], -1)]:
-    for size in sizes:
-        lower_selects.extend([
-            ((f'b2{T}{size}', ('inot', 'a@1')), ('bcsel', a, 0, one)),
-            ((f'b2{T}{size}', 'a@1'), ('bcsel', a, one, 0)),
-        ])
+# When the ior/iand is used multiple times, we can instead fuse the other way.
+opt_selects.extend([
+        (('iand', 'a@1', b), ('bcsel', a, b, False)),
+        (('ior', 'a@1', b), ('bcsel', a, True, b)),
+])
 
 fuse_extr = []
 for start in range(32):
@@ -192,9 +202,11 @@ def run():
     print(nir_algebraic.AlgebraicPass("agx_nir_lower_algebraic_late",
                                       lower_sm5_shift + lower_pack +
                                       lower_selects).render())
+    print(nir_algebraic.AlgebraicPass("agx_nir_fuse_selects",
+                                      opt_selects).render())
     print(nir_algebraic.AlgebraicPass("agx_nir_fuse_algebraic_late",
-                                      fuse_extr + fuse_ubfe + fuse_imad +
-                                      ixor_bcsel).render())
+                                      fuse_extr + fuse_ubfe +
+                                      fuse_imad + ixor_bcsel).render())
 
 
 if __name__ == '__main__':

@@ -12,6 +12,21 @@ if rc.version().version_compare('< 1.73.0')
   error('NAK requires Rust 1.73.0')
 endif
 
+bindgen_version = find_program('bindgen').version()
+
+if bindgen_version == 'unknown'
+  error('Failed to detect bindgen version. If you are using bindgen 0.69.0, ' +
+        'please either update to 0.69.1 or downgrade to 0.68.1. You can ' +
+        'install the latest version for your user with ` +
+        ``cargo install bindgen-cli`.')
+endif
+
+if bindgen_version.version_compare('< 0.65')
+  error('NAK requires bindgen 0.65 or newer. If your distribution does not ' +
+        'ship a recent enough version, you can install the latest version ' +
+        'for your user with `cargo install bindgen-cli`.')
+endif
+
 nak_rust_args = [
   '-Aclippy::identity_op',
   '-Aclippy::len_zero',
@@ -31,14 +46,22 @@ dep_syn = dependency('syn',
   required : true,
 )
 
+dep_paste = dependency('paste',
+  version : '>= 1.0.14',
+  fallback : ['paste', 'dep_paste'],
+  required : true,
+)
+
 libnak_c_files = files(
   'nak.h',
   'nak_nir.c',
-  'nak_nir_add_barriers.c',
+  'nak_nir_lower_cf.c',
+  'nak_nir_lower_fs_inputs.c',
+  'nak_nir_lower_gs_intrinsics.c',
+  'nak_nir_lower_non_uniform_ldcx.c',
   'nak_nir_lower_scan_reduce.c',
   'nak_nir_lower_tex.c',
   'nak_nir_lower_vtg_io.c',
-  'nak_nir_lower_gs_intrinsics.c',
   'nak_memstream.c',
 )
 
@@ -48,6 +71,10 @@ _libbitview_rs = static_library(
   gnu_symbol_visibility : 'hidden',
   rust_abi : 'rust',
   rust_args : nak_rust_args,
+)
+
+idep_bitview_rs = declare_dependency(
+  link_with : _libbitview_rs,
 )
 
 libnak_deps = [
@@ -111,8 +138,16 @@ _libnak_rs = static_library(
   gnu_symbol_visibility : 'hidden',
   rust_abi : 'c',
   rust_args : nak_rust_args,
+  dependencies : [
+    dep_paste,
+    idep_nvidia_headers_rs,
+  ],
   link_with: [_libbitview_rs, libnak_bindings_gen, _libnak_ir_proc_rs],
 )
+
+if with_tests
+  rust.test('nak', _libnak_rs, suite : ['nouveau'])
+endif
 
 nak_nir_algebraic_c = custom_target(
   'nak_nir_algebraic.c',

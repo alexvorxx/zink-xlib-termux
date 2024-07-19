@@ -18,6 +18,7 @@ def fastboot_deploy_actions(
     job_definition: "LAVAJobDefinition", nfsrootfs
 ) -> tuple[dict[str, Any], ...]:
     args = job_definition.job_submitter
+    cmdline = f"{job_definition.lava_nfs_args}{job_definition.extra_nfsroot_args}"
     fastboot_deploy_nfs = {
         "timeout": {"minutes": 10},
         "to": "nfs",
@@ -39,7 +40,7 @@ def fastboot_deploy_actions(
                 "steps": [
                     f"cat Image.gz {args.dtb_filename}.dtb > Image.gz+dtb",
                     "mkbootimg --kernel Image.gz+dtb"
-                    + ' --cmdline "root=/dev/nfs rw nfsroot=$NFS_SERVER_IP:$NFS_ROOTFS,tcp,hard rootwait ip=dhcp init=/init"'
+                    + f' --cmdline "{cmdline}"'
                     + " --pagesize 4096 --base 0x80000000 -o boot.img",
                 ],
             }
@@ -80,6 +81,24 @@ def tftp_deploy_actions(job_definition: "LAVAJobDefinition", nfsrootfs) -> tuple
     job_definition.attach_external_modules(tftp_deploy)
 
     return (tftp_deploy,)
+
+
+def qemu_deploy_actions(job_definition: "LAVAJobDefinition", nfsrootfs) -> tuple[dict[str, Any]]:
+    args = job_definition.job_submitter
+    qemu_deploy = {
+        "timeout": {"minutes": 5},
+        "to": "nfs",
+        "images": {
+            "kernel": {
+                "image_arg": "-kernel {kernel}",
+                "url": f"{args.kernel_url_prefix}/{args.kernel_image_name}",
+            },
+            "nfsrootfs": nfsrootfs,
+        },
+    }
+    job_definition.attach_external_modules(qemu_deploy)
+
+    return (qemu_deploy,)
 
 
 def uart_test_actions(
@@ -138,6 +157,16 @@ def tftp_boot_action(args: "LAVAJobSubmitter") -> dict[str, Any]:
     }
 
     return tftp_boot
+
+
+def qemu_boot_action(args: "LAVAJobSubmitter") -> dict[str, Any]:
+    qemu_boot = {
+        "failure_retry": NUMBER_OF_ATTEMPTS_LAVA_BOOT,
+        "method": args.boot_method,
+        "prompts": ["lava-shell:"],
+    }
+
+    return qemu_boot
 
 
 def fastboot_boot_action(args: "LAVAJobSubmitter") -> dict[str, Any]:

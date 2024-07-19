@@ -293,6 +293,8 @@ ir3_collect_info(struct ir3_shader_variant *v)
    info->size = MAX2(v->instrlen * compiler->instr_align, instr_count + 4) * 8;
    info->sizedwords = info->size / 4;
 
+   info->early_preamble = v->early_preamble;
+
    bool in_preamble = false;
    bool has_eq = false;
 
@@ -483,18 +485,26 @@ reg_create(struct ir3 *shader, int num, int flags)
 }
 
 static void
-insert_instr(struct ir3_block *block, struct ir3_instruction *instr,
-             bool at_end)
+insert_instr(struct ir3_cursor cursor, struct ir3_instruction *instr)
 {
-   struct ir3 *shader = block->shader;
+   struct ir3 *shader = instr->block->shader;
 
    instr->serialno = ++shader->instr_count;
 
-   struct ir3_instruction *terminator = ir3_block_get_terminator(block);
-   list_addtail(&instr->node, &block->instr_list);
-
-   if (!at_end && terminator)
-      ir3_instr_move_before(instr, terminator);
+   switch (cursor.option) {
+   case IR3_CURSOR_BEFORE_BLOCK:
+      list_add(&instr->node, &cursor.block->instr_list);
+      break;
+   case IR3_CURSOR_AFTER_BLOCK:
+      list_addtail(&instr->node, &cursor.block->instr_list);
+      break;
+   case IR3_CURSOR_BEFORE_INSTR:
+      list_addtail(&instr->node, &cursor.instr->node);
+      break;
+   case IR3_CURSOR_AFTER_INSTR:
+      list_add(&instr->node, &cursor.instr->node);
+      break;
+   }
 
    if (is_input(instr))
       array_insert(shader, shader->baryfs, instr);
@@ -504,7 +514,7 @@ struct ir3_block *
 ir3_block_create(struct ir3 *shader)
 {
    struct ir3_block *block = ir3_alloc(shader, sizeof(*block));
-#ifdef DEBUG
+#if MESA_DEBUG
    block->serialno = ++shader->block_count;
 #endif
    block->shader = shader;
@@ -633,22 +643,11 @@ instr_create(struct ir3_block *block, opc_t opc, int ndst, int nsrc)
    instr->dsts = (struct ir3_register **)ptr;
    instr->srcs = instr->dsts + ndst;
 
-#ifdef DEBUG
+#if MESA_DEBUG
    instr->dsts_max = ndst;
    instr->srcs_max = nsrc;
 #endif
 
-   return instr;
-}
-
-static struct ir3_instruction *
-instr_create_impl(struct ir3_block *block, opc_t opc, int ndst, int nsrc,
-                  bool at_end)
-{
-   struct ir3_instruction *instr = instr_create(block, opc, ndst, nsrc);
-   instr->block = block;
-   instr->opc = opc;
-   insert_instr(block, instr, at_end);
    return instr;
 }
 
@@ -669,16 +668,51 @@ add_to_address_users(struct ir3_instruction *instr)
    }
 }
 
+static struct ir3_block *
+get_block(struct ir3_cursor cursor)
+{
+   switch (cursor.option) {
+   case IR3_CURSOR_BEFORE_BLOCK:
+   case IR3_CURSOR_AFTER_BLOCK:
+      return cursor.block;
+   case IR3_CURSOR_BEFORE_INSTR:
+   case IR3_CURSOR_AFTER_INSTR:
+      return cursor.instr->block;
+   }
+
+   unreachable("illegal cursor option");
+}
+
+struct ir3_instruction *
+ir3_instr_create_at(struct ir3_cursor cursor, opc_t opc, int ndst, int nsrc)
+{
+   struct ir3_block *block = get_block(cursor);
+   struct ir3_instruction *instr = instr_create(block, opc, ndst, nsrc);
+   instr->block = block;
+   instr->opc = opc;
+   insert_instr(cursor, instr);
+   return instr;
+}
+
+struct ir3_instruction *
+ir3_build_instr(struct ir3_builder *builder, opc_t opc, int ndst, int nsrc)
+{
+   struct ir3_instruction *instr =
+      ir3_instr_create_at(builder->cursor, opc, ndst, nsrc);
+   builder->cursor = ir3_after_instr(instr);
+   return instr;
+}
+
 struct ir3_instruction *
 ir3_instr_create(struct ir3_block *block, opc_t opc, int ndst, int nsrc)
 {
-   return instr_create_impl(block, opc, ndst, nsrc, false);
+   return ir3_instr_create_at(ir3_before_terminator(block), opc, ndst, nsrc);
 }
 
 struct ir3_instruction *
 ir3_instr_create_at_end(struct ir3_block *block, opc_t opc, int ndst, int nsrc)
 {
-   return instr_create_impl(block, opc, ndst, nsrc, true);
+   return ir3_instr_create_at(ir3_after_block(block), opc, ndst, nsrc);
 }
 
 struct ir3_instruction *
@@ -694,7 +728,7 @@ ir3_instr_clone(struct ir3_instruction *instr)
    new_instr->dsts = dsts;
    new_instr->srcs = srcs;
 
-   insert_instr(instr->block, new_instr, false);
+   insert_instr(ir3_before_terminator(instr->block), new_instr);
 
    /* clone registers: */
    new_instr->dsts_count = 0;
@@ -737,7 +771,7 @@ struct ir3_register *
 ir3_src_create(struct ir3_instruction *instr, int num, int flags)
 {
    struct ir3 *shader = instr->block->shader;
-#ifdef DEBUG
+#if MESA_DEBUG
    assert(instr->srcs_count < instr->srcs_max);
 #endif
    struct ir3_register *reg = reg_create(shader, num, flags);
@@ -749,7 +783,7 @@ struct ir3_register *
 ir3_dst_create(struct ir3_instruction *instr, int num, int flags)
 {
    struct ir3 *shader = instr->block->shader;
-#ifdef DEBUG
+#if MESA_DEBUG
    assert(instr->dsts_count < instr->dsts_max);
 #endif
    struct ir3_register *reg = reg_create(shader, num, flags);
@@ -790,6 +824,33 @@ ir3_instr_set_address(struct ir3_instruction *instr,
    } else {
       assert(instr->address->def->instr == addr);
    }
+}
+
+/* Does this instruction use the scalar ALU?
+ */
+bool
+is_scalar_alu(struct ir3_instruction *instr,
+              const struct ir3_compiler *compiler)
+{
+   /* MOVMSK seems to always need (ss) even with other scalar ALU instructions
+    */
+   return instr->opc != OPC_MOVMSK &&
+      instr->opc != OPC_SCAN_CLUSTERS_MACRO &&
+      instr->opc != OPC_SCAN_MACRO &&
+      is_alu(instr) && (instr->dsts[0]->flags & IR3_REG_SHARED) &&
+      /* scalar->scalar mov instructions (but NOT cov) were supported before the
+       * scalar ALU was supported, but they still required (ss) whereas on GPUs
+       * that have a scalar ALU they are executed on it and do not require (ss).
+       * We have to be careful to return false for these if scalar ALU isn't
+       * supported, so that we treat them like vector->scalar mov instructions
+       * (such as requiring (ss)).
+       */
+      compiler->has_scalar_alu &&
+      /* moves from normal to shared seem to use a separate ALU as before and
+       * require a (ss) on dependent instructions.
+       */
+      ((instr->opc != OPC_MOV && !is_subgroup_cond_mov_macro(instr)) ||
+       (instr->srcs[0]->flags & (IR3_REG_SHARED | IR3_REG_IMMED | IR3_REG_CONST)));
 }
 
 void
@@ -1039,9 +1100,6 @@ ir3_valid_flags(struct ir3_instruction *instr, unsigned n, unsigned flags)
    struct ir3_compiler *compiler = instr->block->shader->compiler;
    unsigned valid_flags;
 
-   if ((flags & IR3_REG_SHARED) && opc_cat(instr->opc) > 3)
-      return false;
-
    flags = cp_flags(flags);
 
    /* If destination is indirect, then source cannot be.. at least
@@ -1078,7 +1136,10 @@ ir3_valid_flags(struct ir3_instruction *instr, unsigned n, unsigned flags)
       if (flags & ~(IR3_REG_IMMED | IR3_REG_CONST | IR3_REG_SHARED))
          return false;
 
-      if ((flags & IR3_REG_SHARED) && !(instr->dsts[0]->flags & IR3_REG_SHARED))
+      /* Except for immed/const sources, source and dest shared-ness must match.
+       */
+      if (!(flags & (IR3_REG_IMMED | IR3_REG_CONST)) &&
+          (flags & IR3_REG_SHARED) != (instr->dsts[0]->flags & IR3_REG_SHARED))
          return false;
 
       return true;
@@ -1096,11 +1157,43 @@ ir3_valid_flags(struct ir3_instruction *instr, unsigned n, unsigned flags)
          valid_flags = IR3_REG_SHARED;
          break;
       case OPC_SCAN_MACRO:
-         return flags == 0;
+         if (n == 0)
+            return flags == 0;
+         else
+            return flags == IR3_REG_SHARED;
          break;
-      default:
+      case OPC_SCAN_CLUSTERS_MACRO:
+         if (n == 0)
+            return flags == IR3_REG_SHARED;
+         else
+            return flags == 0;
+         break;
+      default: {
          valid_flags =
             IR3_REG_IMMED | IR3_REG_CONST | IR3_REG_RELATIV | IR3_REG_SHARED;
+
+         /* floating-point conversions when moving from non-shared to shared
+          * seem not to work. We only use floating-point types in ir3 for
+          * conversions, so don't bother specially handling the case where the
+          * types are equal. Same goes for 8-bit sign extension.
+          */
+         if ((instr->dsts[0]->flags & IR3_REG_SHARED) &&
+             !(flags & (IR3_REG_SHARED | IR3_REG_IMMED | IR3_REG_CONST)) &&
+             ((full_type(instr->cat1.src_type) == TYPE_F32 ||
+               full_type(instr->cat1.dst_type) == TYPE_F32) ||
+              (instr->cat1.src_type == TYPE_U8 &&
+               full_type(instr->cat1.dst_type) == TYPE_S32)))
+            return false;
+
+         /* Conversions seem not to work in shared->shared copies before scalar
+          * ALU is supported.
+          */
+         if (!compiler->has_scalar_alu &&
+             (flags & IR3_REG_SHARED) &&
+             (instr->dsts[0]->flags & IR3_REG_SHARED) &&
+             instr->cat1.src_type != instr->cat1.dst_type)
+            return false;
+      }
       }
       if (flags & ~valid_flags)
          return false;
@@ -1117,6 +1210,12 @@ ir3_valid_flags(struct ir3_instruction *instr, unsigned n, unsigned flags)
           n == 1 && flags == IR3_REG_IMMED)
          return true;
 
+      /* cat2/cat3 scalar ALU instructions must not have regular sources. */
+      if (instr->dsts[0]->flags & IR3_REG_SHARED) {
+         if (!(flags & (IR3_REG_SHARED | IR3_REG_IMMED | IR3_REG_CONST)))
+            return false;
+      }
+
       if (flags & (IR3_REG_CONST | IR3_REG_IMMED | IR3_REG_SHARED)) {
          unsigned m = n ^ 1;
          /* cannot deal w/ const or shared in both srcs:
@@ -1124,9 +1223,14 @@ ir3_valid_flags(struct ir3_instruction *instr, unsigned n, unsigned flags)
           */
          if (m < instr->srcs_count) {
             struct ir3_register *reg = instr->srcs[m];
-            if ((flags & (IR3_REG_CONST | IR3_REG_SHARED)) &&
-                (reg->flags & (IR3_REG_CONST | IR3_REG_SHARED)))
-               return false;
+            if (instr->dsts[0]->flags & IR3_REG_SHARED) {
+               if ((flags & IR3_REG_CONST) && (reg->flags & IR3_REG_CONST))
+                  return false;
+            } else {
+               if ((flags & (IR3_REG_CONST | IR3_REG_SHARED)) &&
+                   (reg->flags & (IR3_REG_CONST | IR3_REG_SHARED)))
+                  return false;
+            }
             if ((flags & IR3_REG_IMMED) && reg->flags & (IR3_REG_IMMED))
                return false;
          }
@@ -1165,14 +1269,23 @@ ir3_valid_flags(struct ir3_instruction *instr, unsigned n, unsigned flags)
       if (flags & ~valid_flags)
          return false;
 
-      if (flags & (IR3_REG_CONST | IR3_REG_SHARED | IR3_REG_RELATIV)) {
+      if (flags & (IR3_REG_CONST | IR3_REG_RELATIV) ||
+          (!(instr->dsts[0]->flags & IR3_REG_SHARED) &&
+           (flags & IR3_REG_SHARED))) {
          /* cannot deal w/ const/shared/relativ in 2nd src: */
          if (n == 1)
             return false;
       }
 
+      if (instr->dsts[0]->flags & IR3_REG_SHARED) {
+         if (!(flags & (IR3_REG_SHARED | IR3_REG_IMMED | IR3_REG_CONST)))
+            return false;
+      }
+
       break;
    case 4:
+      if ((instr->dsts[0]->flags & IR3_REG_SHARED) != (flags & IR3_REG_SHARED))
+         return false;
       /* seems like blob compiler avoids const as src.. */
       /* TODO double check if this is still the case on a4xx */
       if (flags & (IR3_REG_CONST | IR3_REG_IMMED))
@@ -1181,12 +1294,22 @@ ir3_valid_flags(struct ir3_instruction *instr, unsigned n, unsigned flags)
          return false;
       break;
    case 5:
+      if (instr->opc == OPC_ISAM && (instr->flags & IR3_INSTR_V)) {
+         if (((instr->flags & IR3_INSTR_S2EN) && n == 2) ||
+             (!(instr->flags & IR3_INSTR_S2EN) && n == 1)) {
+            return flags == IR3_REG_IMMED;
+         }
+      }
       /* no flags allowed */
       if (flags)
          return false;
       break;
    case 6:
       valid_flags = IR3_REG_IMMED;
+
+      if (instr->opc == OPC_STC && n == 1)
+         valid_flags |= IR3_REG_SHARED;
+
       if (flags & ~valid_flags)
          return false;
 
@@ -1241,12 +1364,18 @@ ir3_valid_flags(struct ir3_instruction *instr, unsigned n, unsigned flags)
          if (instr->opc == OPC_LDG_A && (n < 2))
             return false;
 
+         if (instr->opc == OPC_STC && n != 0)
+            return false;
+
          /* as with atomics, these cat6 instrs can only have an immediate
           * for SSBO/IBO slot argument
           */
          switch (instr->opc) {
          case OPC_LDIB:
          case OPC_STIB:
+            if (n != 0 && n != 2)
+               return false;
+            break;
          case OPC_RESINFO:
             if (n != 0)
                return false;

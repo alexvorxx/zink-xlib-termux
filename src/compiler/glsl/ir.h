@@ -643,7 +643,7 @@ private:
     * If the name length fits into name_storage, it's used, otherwise
     * the name is ralloc'd. shader-db mining showed that 70% of variables
     * fit here. This is a win over ralloc where only ralloc_header has
-    * 20 bytes on 64-bit (28 bytes with DEBUG), and we can also skip malloc.
+    * 20 bytes on 64-bit (28 bytes with debug), and we can also skip malloc.
     */
    char name_storage[16];
 
@@ -2445,18 +2445,6 @@ void validate_ir_tree(exec_list *instructions);
 void
 detect_recursion_unlinked(struct _mesa_glsl_parse_state *state,
 			  exec_list *instructions);
-
-/**
- * Detect whether a linked shader contains static recursion
- *
- * If the list of instructions is determined to contain static recursion,
- * \c link_error_printf will be called to emit error messages for each function
- * that is in the recursion cycle.  In addition,
- * \c gl_shader_program::LinkStatus will be set to false.
- */
-void
-detect_recursion_linked(struct gl_shader_program *prog,
-			exec_list *instructions);
 
 /**
  * Make a clone of each IR instruction in a list

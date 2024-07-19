@@ -123,6 +123,7 @@ SR = enum("sr", {
    8:  'dispatch_threads_per_threadgroup.x',
    9:  'dispatch_threads_per_threadgroup.y',
    10: 'dispatch_threads_per_threadgroup.z',
+   14: 'samples_log2',
    20: 'core_id',
    21: 'vm_slot',
    48: 'thread_position_in_threadgroup.x',
@@ -167,12 +168,27 @@ INTERPOLATION = enum("interpolation", {
     3: 'sample_register',
 })
 
+SIMD_OP = enum("simd_op", {
+    0b00000: 'and',
+    0b00001: 'fadd',
+    0b00010: 'or',
+    0b00011: 'fmul',
+    0b00100: 'xor',
+    0b00101: 'fmin',
+    0b00111: 'fmax',
+    0b10000: 'iadd',
+    0b10100: 'smin',
+    0b10110: 'smax',
+    0b11100: 'umin',
+    0b11110: 'umax',
+})
+
 FUNOP = lambda x: (x << 28)
 FUNOP_MASK = FUNOP((1 << 14) - 1)
 
 def funop(name, opcode, schedule_class = "none"):
-   op(name, (0x0A | L | (opcode << 28),
-      0x3F | L | (((1 << 14) - 1) << 28), 6, _),
+   op(name, (0x0A | (opcode << 28),
+      0x3F | (((1 << 14) - 1) << 28), 4, 6),
       srcs = 1, is_float = True, schedule_class = schedule_class)
 
 def iunop(name, opcode):
@@ -245,21 +261,24 @@ op("asr",
       encoding_32 = (0x2E | L | (0x1 << 26), 0x7F | L | (0x3 << 26), 8, _),
       srcs = 2)
 
-def subgroup_op(name, op1, op2):
-    exact      = 0b01101111 | L | (op1 << 47) | (op2 << 26)
-    exact_mask = 0b11111111 | L | (1   << 47) | (0xFFFF << 26)
+def subgroup_op(name, opc):
+    exact      = 0b01101111 | L | (opc << 29)
+    exact_mask = 0b11111111 | L | (0x3 << 29)
 
-    op(name, encoding_32 = (exact, exact_mask, 6, _), srcs = 1)
+    op(name, encoding_32 = (exact, exact_mask, 6, _), srcs = 1, imms = [SIMD_OP])
 
-subgroup_op("simd_prefix_iadd", 1, 0b0000000000011000)
-subgroup_op("simd_iadd", 1, 0b0000000000001000)
-
-op("simd_shuffle",
-    encoding_32 = (0b01101111 | (1 << 26),
-                   0xFF | L | (1 << 47) | (3 << 38) | (3 << 26), 6, _),
-    srcs = 2)
+subgroup_op("quad_reduce", 0x0)
+subgroup_op("simd_reduce", 0x1)
+subgroup_op("quad_prefix", 0x2)
+subgroup_op("simd_prefix", 0x3)
 
 for window, w_bit in [('quad_', 0), ('', 1)]:
+    for s, shuffle in enumerate(['', '_xor', '_up', '_down']):
+        op(f"{window}shuffle{shuffle}",
+            encoding_32 = (0b01101111 | (w_bit << 26) | (s << 38),
+                           0xFF | L | (1 << 47) | (3 << 38) | (3 << 26), 6, _),
+            srcs = 2)
+
     # Pseudo-instruction ballotting a boolean
     op(f"{window}ballot", _, srcs = 1)
 
@@ -322,7 +341,7 @@ op("local_store",
 # TODO: Consider permitting the short form
 op("uniform_store",
       encoding_32 = ((0b111 << 27) | 0b1000101 | (1 << 47), 0, 8, _),
-      dests = 0, srcs = 2, can_eliminate = False)
+      dests = 0, srcs = 2, imms = [MASK], can_eliminate = False)
 
 # sources are value, base, index
 op("atomic",
@@ -473,6 +492,13 @@ op("unit_test", _, dests = 0, srcs = 1, can_eliminate = False)
 # Like mov, but takes a register and can only appear at the start. Guaranteed
 # to be coalesced during RA, rather than lowered to a real move. 
 op("preload", _, srcs = 1, schedule_class = "preload")
+
+# Opposite of preload. Exports a scalar value to a particular register at the
+# end of the shader part. Must only appear after the logical end of the exit
+# block, this avoids special casing the source's liveness. Logically all exports
+# happen in parallel at the end of the shader part.
+op("export", _, dests = 0, srcs = 1, imms = [IMM], can_eliminate = False,
+   schedule_class = "invalid")
 
 # Pseudo-instructions to set the nesting counter. Lowers to r0l writes after RA.
 op("begin_cf", _, dests = 0, can_eliminate = False)

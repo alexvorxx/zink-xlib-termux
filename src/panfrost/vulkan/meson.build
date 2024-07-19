@@ -2,24 +2,7 @@
 #
 # Derived from the freedreno driver which is:
 # Copyright © 2017 Intel Corporation
-
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+# SPDX-License-Identifier: MIT
 
 panvk_entrypoints = custom_target(
   'panvk_entrypoints.[ch]',
@@ -29,53 +12,105 @@ panvk_entrypoints = custom_target(
     prog_python, '@INPUT0@', '--xml', '@INPUT1@', '--proto', '--weak',
     '--out-h', '@OUTPUT0@', '--out-c', '@OUTPUT1@', '--prefix', 'panvk',
     '--device-prefix', 'panvk_v6', '--device-prefix', 'panvk_v7',
+    '--device-prefix', 'panvk_v9', '--device-prefix', 'panvk_v10',
     '--beta', with_vulkan_beta.to_string()
   ],
   depend_files : vk_entrypoints_gen_depend_files,
 )
 
 libpanvk_files = files(
-  'panvk_cmd_buffer.c',
-  'panvk_cs.c',
-  'panvk_device.c',
-  'panvk_descriptor_set.c',
-  'panvk_formats.c',
+  'panvk_buffer.c',
+  'panvk_cmd_pool.c',
+  'panvk_device_memory.c',
+  'panvk_event.c',
   'panvk_image.c',
+  'panvk_instance.c',
   'panvk_mempool.c',
-  'panvk_pass.c',
-  'panvk_pipeline.c',
-  'panvk_private.h',
+  'panvk_physical_device.c',
+  'panvk_priv_bo.c',
   'panvk_query.c',
-  'panvk_shader.c',
   'panvk_wsi.c',
 )
+libpanvk_files += [sha1_h]
 
 panvk_deps = []
 panvk_flags = []
 panvk_per_arch_libs = []
 
-foreach arch : ['6', '7']
+bifrost_archs = [6, 7]
+bifrost_inc_dir = ['bifrost']
+bifrost_files = [
+  'bifrost/panvk_vX_cmd_desc_state.c',
+  'bifrost/panvk_vX_meta_desc_copy.c',
+  'bifrost/panvk_vX_nir_lower_descriptors.c',
+]
+
+valhall_archs = [9, 10]
+valhall_inc_dir = ['valhall']
+valhall_files = []
+
+jm_archs = [6, 7]
+jm_inc_dir = ['jm']
+jm_files = [
+  'jm/panvk_vX_cmd_buffer.c',
+  'jm/panvk_vX_cmd_dispatch.c',
+  'jm/panvk_vX_cmd_draw.c',
+  'jm/panvk_vX_cmd_event.c',
+  'jm/panvk_vX_meta.c',
+  'jm/panvk_vX_meta_blit.c',
+  'jm/panvk_vX_meta_clear.c',
+  'jm/panvk_vX_meta_copy.c',
+  'jm/panvk_vX_queue.c',
+]
+
+common_per_arch_files = [
+  panvk_entrypoints[0],
+  'panvk_vX_blend.c',
+  'panvk_vX_buffer_view.c',
+  'panvk_vX_descriptor_set.c',
+  'panvk_vX_descriptor_set_layout.c',
+  'panvk_vX_device.c',
+  'panvk_vX_image_view.c',
+  'panvk_vX_sampler.c',
+  'panvk_vX_shader.c',
+]
+
+foreach arch : [6, 7, 9, 10]
+  if arch in valhall_archs
+    # We're lacking key components to compile common source files for v9/v10.
+    # Just add the v9/v10 entrypoints for now.
+    per_arch_files = [
+      panvk_entrypoints[0],
+      'panvk_vX_descriptor_set.c',
+      'panvk_vX_descriptor_set_layout.c',
+    ]
+  else
+    per_arch_files = common_per_arch_files
+  endif
+
+  inc_panvk_per_arch = []
+
+  if arch in bifrost_archs
+    inc_panvk_per_arch += bifrost_inc_dir
+    per_arch_files += bifrost_files
+  elif arch in valhall_archs
+    inc_panvk_per_arch += valhall_inc_dir
+    per_arch_files += valhall_files
+  endif
+
+  if arch in jm_archs
+    inc_panvk_per_arch += jm_inc_dir
+    per_arch_files += jm_files
+  endif
+
   panvk_per_arch_libs += static_library(
     'panvk_v@0@'.format(arch),
-    [
-      panvk_entrypoints[0],
-      'panvk_vX_cmd_buffer.c',
-      'panvk_vX_cs.c',
-      'panvk_vX_descriptor_set.c',
-      'panvk_vX_device.c',
-      'panvk_vX_image.c',
-      'panvk_vX_meta.c',
-      'panvk_vX_meta_blit.c',
-      'panvk_vX_meta_copy.c',
-      'panvk_vX_meta_clear.c',
-      'panvk_vX_nir_lower_descriptors.c',
-      'panvk_vX_pipeline.c',
-      'panvk_vX_shader.c',
-    ],
+    per_arch_files,
     include_directories : [
       inc_include,
       inc_src,
       inc_panfrost,
+      inc_panvk_per_arch,
     ],
     dependencies : [
       idep_nir_headers,
@@ -83,6 +118,7 @@ foreach arch : ['6', '7']
       idep_vulkan_util_headers,
       idep_vulkan_runtime_headers,
       idep_vulkan_wsi_headers,
+      idep_mesautil,
       dep_libdrm,
       dep_valgrind,
     ],
@@ -169,4 +205,6 @@ _dev_icd = custom_target(
   build_by_default : true,
 )
 
+devenv.append('VK_DRIVER_FILES', _dev_icd.full_path())
+# Deprecated: replaced by VK_DRIVER_FILES above
 devenv.append('VK_ICD_FILENAMES', _dev_icd.full_path())

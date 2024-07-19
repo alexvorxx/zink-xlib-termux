@@ -19,7 +19,7 @@
 #include "state_tracker/st_context.h"
 
 
-#ifdef DEBUG
+#if MESA_DEBUG
 #   define TRACE(x...) printf("hgl:frontend: " x)
 #   define CALLED() TRACE("CALLED: %s\n", __PRETTY_FUNCTION__)
 #else

@@ -33,7 +33,7 @@ Taken from [here](https://github.com/termux/termux-packages/issues/10103#issueco
 
    _pkg install -y clang lld binutils cmake autoconf automake libtool '*ndk*' make python git libandroid-shmem-static ninja llvm bison flex libx11 xorgproto libdrm libpixman libxfixes libjpeg-turbo xtrans libxxf86vm xorg-xrandr xorg-font-util xorg-util-macros libxfont2 libxkbfile libpciaccess xcb-util-renderutil xcb-util-image xcb-util-keysyms xcb-util-wm xorg-xkbcomp xkeyboard-config libxdamage libxinerama libxshmfence_
 
-   _pip install meson mako_
+   _pip install meson mako pyyaml_
 
 ### Build Mesa Zink
 

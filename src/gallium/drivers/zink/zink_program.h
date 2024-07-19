@@ -133,6 +133,8 @@ uint32_t hash_gfx_input_dynamic(const void *key);
 
 void
 zink_gfx_program_compile_queue(struct zink_context *ctx, struct zink_gfx_pipeline_cache_entry *pc_entry);
+void
+zink_program_finish(struct zink_context *ctx, struct zink_program *pg);
 
 static inline unsigned
 get_primtype_idx(enum mesa_prim mode)
@@ -162,9 +164,6 @@ void
 zink_gfx_lib_cache_unref(struct zink_screen *screen, struct zink_gfx_lib_cache *libs);
 void
 zink_program_init(struct zink_context *ctx);
-
-uint32_t
-zink_program_get_descriptor_usage(struct zink_context *ctx, gl_shader_stage stage, enum zink_descriptor_type type);
 
 void
 debug_describe_zink_gfx_program(char* buf, const struct zink_gfx_program *ptr);
@@ -447,7 +446,7 @@ static inline bool
 zink_shader_uses_samples(const struct zink_shader *zs)
 {
    assert(zs->info.stage == MESA_SHADER_FRAGMENT);
-   return zs->uses_sample || zs->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_SAMPLE_MASK);
+   return zs->info.fs.uses_sample_qualifier || zs->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_SAMPLE_MASK);
 }
 
 static inline uint32_t

@@ -1,25 +1,7 @@
 /*
  * Copyright © 2019 Valve Corporation
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
- * IN THE SOFTWARE.
- *
+ * SPDX-License-Identifier: MIT
  */
 
 #include "aco_builder.h"
@@ -66,7 +48,6 @@ struct merge_node {
 
 struct cssa_ctx {
    Program* program;
-   std::vector<IDSet>& live_out;                  /* live-out sets per block */
    std::vector<std::vector<copy>> parallelcopies; /* copies per block */
    std::vector<merge_set> merge_sets;             /* each vector is one (ordered) merge set */
    std::unordered_map<uint32_t, merge_node> merge_node_table; /* tempid -> merge node */
@@ -126,11 +107,6 @@ collect_parallelcopies(cssa_ctx& ctx)
             set.emplace_back(tmp);
             ctx.merge_node_table[tmp.id()] = {op, index, preds[i]};
 
-            /* update the liveness information */
-            if (op.isKill())
-               ctx.live_out[preds[i]].erase(op.tempId());
-            ctx.live_out[preds[i]].insert(tmp.id());
-
             has_preheader_copy |= i == 0 && block.kind & block_kind_loop_header;
          }
 
@@ -189,22 +165,23 @@ intersects(cssa_ctx& ctx, Temp var, Temp parent)
    assert(node_var.index != node_parent.index);
    uint32_t block_idx = node_var.defined_at;
 
-   /* if the parent is live-out at the definition block of var, they intersect */
-   bool parent_live = ctx.live_out[block_idx].count(parent.id());
-   if (parent_live)
-      return true;
-
-   /* parent is defined in a different block than var */
+   /* if parent is defined in a different block than var */
    if (node_parent.defined_at < node_var.defined_at) {
       /* if the parent is not live-in, they don't interfere */
-      Block::edge_vec& preds = var.type() == RegType::vgpr
-                                  ? ctx.program->blocks[block_idx].logical_preds
-                                  : ctx.program->blocks[block_idx].linear_preds;
-      for (uint32_t pred : preds) {
-         if (!ctx.live_out[pred].count(parent.id()))
-            return false;
-      }
+      if (!ctx.program->live.live_in[block_idx].count(parent.id()))
+         return false;
    }
+
+   /* if the parent is live-out at the definition block of var, they intersect */
+   Block::edge_vec& succs = var.type() == RegType::vgpr
+                               ? ctx.program->blocks[block_idx].logical_succs
+                               : ctx.program->blocks[block_idx].linear_succs;
+
+   bool parent_live = std::any_of(succs.begin(), succs.end(),
+                                  [&](unsigned succ)
+                                  { return ctx.program->live.live_in[succ].count(parent.id()); });
+   if (parent_live)
+      return true;
 
    for (const copy& cp : ctx.parallelcopies[block_idx]) {
       /* if var is defined at the edge, they don't intersect */
@@ -352,12 +329,10 @@ try_coalesce_copy(cssa_ctx& ctx, copy copy, uint32_t block_idx)
    merge_node& op_node = ctx.merge_node_table[copy.op.tempId()];
    if (op_node.defined_at == -1u) {
       /* find defining block of operand */
-      uint32_t pred = block_idx;
-      do {
-         block_idx = pred;
-         pred = copy.op.regClass().type() == RegType::vgpr ? ctx.program->blocks[pred].logical_idom
-                                                           : ctx.program->blocks[pred].linear_idom;
-      } while (block_idx != pred && ctx.live_out[pred].count(copy.op.tempId()));
+      while (ctx.program->live.live_in[block_idx].count(copy.op.tempId()))
+         block_idx = copy.op.regClass().type() == RegType::vgpr
+                        ? ctx.program->blocks[block_idx].logical_idom
+                        : ctx.program->blocks[block_idx].linear_idom;
       op_node.defined_at = block_idx;
       op_node.value = copy.op;
    }
@@ -424,8 +399,8 @@ emit_copies_block(Builder& bld, std::map<uint32_t, ltg_node>& ltg, RegType type)
       // TODO: this should be restricted to a feasible number of registers
       // and otherwise use a temporary to avoid having to reload more (spilled)
       // variables than we have registers.
-      aco_ptr<Pseudo_instruction> copy{create_instruction<Pseudo_instruction>(
-         aco_opcode::p_parallelcopy, Format::PSEUDO, num, num)};
+      aco_ptr<Instruction> copy{
+         create_instruction(aco_opcode::p_parallelcopy, Format::PSEUDO, num, num)};
       it = ltg.begin();
       for (unsigned i = 0; i < num; i++) {
          while (it->second.cp.def.regClass().type() != type)
@@ -459,9 +434,6 @@ emit_parallelcopies(cssa_ctx& ctx)
       for (const copy& cp : ctx.parallelcopies[i]) {
          if (try_coalesce_copy(ctx, cp, i)) {
             renames.emplace(cp.def.tempId(), cp.op);
-            /* update liveness info */
-            ctx.live_out[i].erase(cp.def.tempId());
-            ctx.live_out[i].insert(cp.op.tempId());
          } else {
             uint32_t read_idx = -1u;
             if (cp.op.isTemp())
@@ -532,14 +504,14 @@ emit_parallelcopies(cssa_ctx& ctx)
 } /* end namespace */
 
 void
-lower_to_cssa(Program* program, live& live_vars)
+lower_to_cssa(Program* program)
 {
-   reindex_ssa(program, live_vars.live_out);
-   cssa_ctx ctx = {program, live_vars.live_out};
+   reindex_ssa(program, true);
+   cssa_ctx ctx = {program};
    collect_parallelcopies(ctx);
    emit_parallelcopies(ctx);
 
    /* update live variable information */
-   live_vars = live_var_analysis(program);
+   live_var_analysis(program);
 }
 } // namespace aco

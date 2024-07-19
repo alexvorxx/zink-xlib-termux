@@ -54,7 +54,9 @@
 
 static const enum pipe_format vpp_surface_formats[] = {
    PIPE_FORMAT_B8G8R8A8_UNORM, PIPE_FORMAT_R8G8B8A8_UNORM,
-   PIPE_FORMAT_B8G8R8X8_UNORM, PIPE_FORMAT_R8G8B8X8_UNORM
+   PIPE_FORMAT_B8G8R8X8_UNORM, PIPE_FORMAT_R8G8B8X8_UNORM,
+   PIPE_FORMAT_B10G10R10A2_UNORM, PIPE_FORMAT_R10G10B10A2_UNORM,
+   PIPE_FORMAT_B10G10R10X2_UNORM, PIPE_FORMAT_R10G10B10X2_UNORM
 };
 
 VAStatus
@@ -90,6 +92,8 @@ vlVaDestroySurfaces(VADriverContextP ctx, VASurfaceID *surface_list, int num_sur
          if (surf->fence && surf->ctx->decoder && surf->ctx->decoder->destroy_fence)
             surf->ctx->decoder->destroy_fence(surf->ctx->decoder, surf->fence);
       }
+      if (drv->last_efc_surface == surf)
+         drv->last_efc_surface = NULL;
       util_dynarray_fini(&surf->subpics);
       FREE(surf);
       handle_table_remove(drv->htab, surface_list[i]);
@@ -476,6 +480,8 @@ vlVaPutSurface(VADriverContextP ctx, VASurfaceID surface_id, void* draw, short s
 
    if (format == PIPE_FORMAT_B8G8R8A8_UNORM || format == PIPE_FORMAT_B8G8R8X8_UNORM ||
        format == PIPE_FORMAT_R8G8B8A8_UNORM || format == PIPE_FORMAT_R8G8B8X8_UNORM ||
+       format == PIPE_FORMAT_B10G10R10A2_UNORM || format == PIPE_FORMAT_B10G10R10X2_UNORM ||
+       format == PIPE_FORMAT_R10G10B10A2_UNORM || format == PIPE_FORMAT_R10G10B10X2_UNORM ||
        format == PIPE_FORMAT_L8_UNORM || format == PIPE_FORMAT_Y8_400_UNORM) {
       struct pipe_sampler_view **views;
 
@@ -584,7 +590,8 @@ vlVaQuerySurfaceAttributes(VADriverContextP ctx, VAConfigID config_id,
    /* vlVaCreateConfig returns PIPE_VIDEO_PROFILE_UNKNOWN
     * only for VAEntrypointVideoProc. */
    if (config->profile == PIPE_VIDEO_PROFILE_UNKNOWN) {
-      if (config->rt_format & VA_RT_FORMAT_RGB32) {
+      if (config->rt_format & VA_RT_FORMAT_RGB32 ||
+          config->rt_format & VA_RT_FORMAT_RGB32_10) {
          for (j = 0; j < ARRAY_SIZE(vpp_surface_formats); ++j) {
             attribs[i].type = VASurfaceAttribPixelFormat;
             attribs[i].value.type = VAGenericValueTypeInteger;
@@ -632,6 +639,11 @@ vlVaQuerySurfaceAttributes(VADriverContextP ctx, VAConfigID config_id,
          attribs[i].value.type = VAGenericValueTypeInteger;
          attribs[i].flags = VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE;
          attribs[i].value.value.i = VA_FOURCC_YUY2;
+         i++;
+         attribs[i].type = VASurfaceAttribPixelFormat;
+         attribs[i].value.type = VAGenericValueTypeInteger;
+         attribs[i].flags = VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE;
+         attribs[i].value.value.i = VA_FOURCC_422V;
          i++;
       }
 
@@ -725,6 +737,16 @@ vlVaQuerySurfaceAttributes(VADriverContextP ctx, VAConfigID config_id,
                                   config->profile, config->entrypoint,
                                   PIPE_VIDEO_CAP_MAX_HEIGHT);
       i++;
+#if VA_CHECK_VERSION(1, 21, 0)
+      attribs[i].type = VASurfaceAttribAlignmentSize;
+      attribs[i].value.type = VAGenericValueTypeInteger;
+      attribs[i].flags = VA_SURFACE_ATTRIB_GETTABLE;
+      attribs[i].value.value.i =
+         pscreen->get_video_param(pscreen,
+                                  config->profile, config->entrypoint,
+                                  PIPE_VIDEO_CAP_ENC_SURFACE_ALIGNMENT);
+      i++;
+#endif
    } else {
       attribs[i].type = VASurfaceAttribMaxWidth;
       attribs[i].value.type = VAGenericValueTypeInteger;
@@ -1175,7 +1197,8 @@ vlVaCreateSurfaces2(VADriverContextP ctx, unsigned int format,
        VA_RT_FORMAT_YUV400 != format &&
        VA_RT_FORMAT_YUV420_10BPP != format &&
        VA_RT_FORMAT_RGBP != format &&
-       VA_RT_FORMAT_RGB32  != format) {
+       VA_RT_FORMAT_RGB32 != format &&
+       VA_RT_FORMAT_RGB32_10 != format) {
       return VA_STATUS_ERROR_UNSUPPORTED_RT_FORMAT;
    }
 
@@ -1302,6 +1325,9 @@ vlVaCreateSurfaces2(VADriverContextP ctx, unsigned int format,
          goto destroy_surf;
       }
    }
+
+   if (memory_type != VA_SURFACE_ATTRIB_MEM_TYPE_VA)
+      drv->has_external_handles = true;
    mtx_unlock(&drv->mutex);
 
    return VA_STATUS_SUCCESS;
@@ -1525,6 +1551,14 @@ static uint32_t pipe_format_to_drm_format(enum pipe_format format)
       return DRM_FORMAT_XRGB8888;
    case PIPE_FORMAT_R8G8B8X8_UNORM:
       return DRM_FORMAT_XBGR8888;
+   case PIPE_FORMAT_B10G10R10A2_UNORM:
+      return DRM_FORMAT_ARGB2101010;
+   case PIPE_FORMAT_R10G10B10A2_UNORM:
+      return DRM_FORMAT_ABGR2101010;
+   case PIPE_FORMAT_B10G10R10X2_UNORM:
+      return DRM_FORMAT_XRGB2101010;
+   case PIPE_FORMAT_R10G10B10X2_UNORM:
+      return DRM_FORMAT_XBGR2101010;
    case PIPE_FORMAT_NV12:
       return DRM_FORMAT_NV12;
    case PIPE_FORMAT_P010:
@@ -1633,8 +1667,11 @@ vlVaExportSurfaceHandle(VADriverContextP ctx,
 #else
    VADRMPRIMESurfaceDescriptor *desc = descriptor;
    desc->fourcc = PipeFormatToVaFourcc(surf->buffer->buffer_format);
-   desc->width  = surf->templat.width;
+   desc->width = surf->templat.width;
    desc->height = surf->templat.height;
+   desc->num_objects = 0;
+
+   bool supports_contiguous_planes = screen->resource_get_info && surf->buffer->contiguous_planes;
 
    for (p = 0; p < ARRAY_SIZE(desc->objects); p++) {
       struct winsys_handle whandle;
@@ -1652,36 +1689,51 @@ vlVaExportSurfaceHandle(VADriverContextP ctx,
          goto fail;
       }
 
-      memset(&whandle, 0, sizeof(whandle));
-      whandle.type = WINSYS_HANDLE_TYPE_FD;
+      /* If the driver stores all planes contiguously in memory, only one
+       * handle needs to be exported. resource_get_info is used to obtain
+       * pitch and offset for each layer. */
+      if (!desc->num_objects || !supports_contiguous_planes) {
+         memset(&whandle, 0, sizeof(whandle));
+         whandle.type = WINSYS_HANDLE_TYPE_FD;
 
-      if (!screen->resource_get_handle(screen, drv->pipe, resource,
-                                       &whandle, usage)) {
-         ret = VA_STATUS_ERROR_INVALID_SURFACE;
-         goto fail;
+         if (!screen->resource_get_handle(screen, drv->pipe, resource,
+                                          &whandle, usage)) {
+            ret = VA_STATUS_ERROR_INVALID_SURFACE;
+            goto fail;
+         }
+
+         desc->objects[desc->num_objects].fd = (int) whandle.handle;
+         /* As per VADRMPRIMESurfaceDescriptor documentation, size must be the
+         * "Total size of this object (may include regions which are not part
+         * of the surface)."" */
+         desc->objects[desc->num_objects].size = (uint32_t) whandle.size;
+         desc->objects[desc->num_objects].drm_format_modifier = whandle.modifier;
+
+         desc->num_objects++;
       }
 
-      desc->objects[p].fd   = (int)whandle.handle;
-      /* As per VADRMPRIMESurfaceDescriptor documentation, size must be the
-       * "Total size of this object (may include regions which are not part
-       * of the surface)."" */
-      desc->objects[p].size = (uint32_t) whandle.size;
-      desc->objects[p].drm_format_modifier = whandle.modifier;
-
       if (flags & VA_EXPORT_SURFACE_COMPOSED_LAYERS) {
-         desc->layers[0].object_index[p] = p;
-         desc->layers[0].offset[p]       = whandle.offset;
-         desc->layers[0].pitch[p]        = whandle.stride;
+         desc->layers[0].object_index[p] = desc->num_objects - 1;
+
+         if (supports_contiguous_planes) {
+            screen->resource_get_info(screen, resource, &desc->layers[0].pitch[p], &desc->layers[0].offset[p]);
+         } else {
+            desc->layers[0].pitch[p] = whandle.stride;
+            desc->layers[0].offset[p] = whandle.offset;
+         }
       } else {
          desc->layers[p].drm_format      = drm_format;
          desc->layers[p].num_planes      = 1;
-         desc->layers[p].object_index[0] = p;
-         desc->layers[p].offset[0]       = whandle.offset;
-         desc->layers[p].pitch[0]        = whandle.stride;
+         desc->layers[p].object_index[0] = desc->num_objects - 1;
+
+         if (supports_contiguous_planes) {
+            screen->resource_get_info(screen, resource, &desc->layers[p].pitch[0], &desc->layers[p].offset[0]);
+         } else {
+            desc->layers[p].pitch[0] = whandle.stride;
+            desc->layers[p].offset[0] = whandle.offset;
+         }
       }
    }
-
-   desc->num_objects = p;
 
    if (flags & VA_EXPORT_SURFACE_COMPOSED_LAYERS) {
       uint32_t drm_format = pipe_format_to_drm_format(surf->buffer->buffer_format);
@@ -1698,13 +1750,14 @@ vlVaExportSurfaceHandle(VADriverContextP ctx,
    }
 #endif
 
+   drv->has_external_handles = true;
    mtx_unlock(&drv->mutex);
 
    return VA_STATUS_SUCCESS;
 
 fail:
 #ifndef _WIN32
-   for (i = 0; i < p; i++)
+   for (i = 0; i < desc->num_objects; i++)
       close(desc->objects[i].fd);
 #else
    if(whandle.handle)

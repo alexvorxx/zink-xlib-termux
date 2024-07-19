@@ -9,7 +9,6 @@ llvmpipe-piglit-rusticl:
     - debian-testing
     - debian/x86_64_test-gl
   variables:
-    RUSTICL_ENABLE: "llvmpipe"
     DEQP_SUITE: llvmpipe-rusticl
     DEQP_RUNNER_OPTIONS: "--timeout 120.0"
     GPU_VERSION: llvmpipe-rusticl
@@ -37,6 +36,14 @@ llvmpipe:
     LD_LIBRARY_PATH="$PWD/install" weston -Bheadless-backend.so -Swayland-0 --idle-time=0 &
     section_end weston
     LD_LIBRARY_PATH="$PWD/install" WAYLAND_DISPLAY=wayland-0 xvfb-run --server-args='-noreset' bash -c ". $SCRIPTS_DIR/setup-test-env.sh && ${XVFB_SCRIPT}"
+
+llvmpipe-full:
+  extends:
+    - llvmpipe
+    - .llvmpipe-manual-rules
+  timeout: 45m  # base runtime = 30m
+  variables:
+    DEQP_FRACTION: 1
 
 llvmpipe-deqp-asan:
   variables:

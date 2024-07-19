@@ -42,7 +42,7 @@
 #include <Bitmap.h>
 #include <OS.h>
 
-#ifdef DEBUG
+#if MESA_DEBUG
 #   define TRACE(x...) printf("hgl:winsys: " x)
 #   define CALLED() TRACE("CALLED: %s\n", __PRETTY_FUNCTION__)
 #else

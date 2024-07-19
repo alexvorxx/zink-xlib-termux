@@ -1,22 +1,5 @@
 # Copyright © 2017 Intel Corporation
-
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+# SPDX-License-Identifier: MIT
 
 libaub = static_library(
   'aub',
@@ -48,7 +31,11 @@ aubinator_error_decode = executable(
         'aubinator_error_decode_lib.c',
         'aubinator_error_decode_lib.h',
         'aubinator_error_decode_xe.c',
-        'aubinator_error_decode_xe.h'),
+        'aubinator_error_decode_xe.h',
+        'error_decode_lib.c',
+        'error_decode_lib.h',
+        'error_decode_xe_lib.c',
+        'error_decode_xe_lib.h'),
   dependencies : [idep_mesautil, dep_zlib, dep_thread, idep_intel_dev,
                   idep_intel_decoder_brw, idep_intel_decoder_elk,
                   idep_intel_compiler_brw, idep_intel_compiler_elk],
@@ -61,7 +48,11 @@ aubinator_error_decode = executable(
 
 error2aub = executable(
   'intel_error2aub',
-  files('aub_write.h', 'aub_write.c', 'error2aub.c'),
+  files('aub_write.h',
+        'aub_write.c',
+        'error2aub.c',
+        'error_decode_lib.c',
+        'error_decode_lib.h'),
   dependencies : [dep_zlib, dep_dl, dep_thread, dep_m, idep_intel_dev],
   include_directories : [inc_include, inc_src, inc_intel],
   c_args : [no_override_init_args],
@@ -71,7 +62,15 @@ error2aub = executable(
 
 error2hangdump = executable(
   'intel_error2hangdump',
-  files('error2hangdump.c'),
+  files('error2hangdump.c',
+        'error2hangdump_lib.c',
+        'error2hangdump_lib.h',
+        'error2hangdump_xe.c',
+        'error2hangdump_xe.h',
+        'error_decode_lib.c',
+        'error_decode_lib.h',
+        'error_decode_xe_lib.c',
+        'error_decode_xe_lib.h'),
   dependencies : [dep_zlib, dep_dl, dep_thread, dep_m, idep_intel_dev],
   include_directories : [inc_include, inc_src, inc_intel],
   c_args : [no_override_init_args],

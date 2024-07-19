@@ -83,6 +83,37 @@ get_signed_inf(nir_builder *b, nir_def *zero)
    return nir_pack_64_2x32_split(b, nir_imm_int(b, 0), inf_hi);
 }
 
+/* Return a correctly signed zero based on src, if we care. */
+static nir_def *
+get_signed_zero(nir_builder *b, nir_def *src)
+{
+   uint32_t exec_mode = b->fp_fast_math;
+
+   nir_def *zero;
+   if (nir_is_float_control_signed_zero_preserve(exec_mode, 64)) {
+      nir_def *hi = nir_unpack_64_2x32_split_y(b, src);
+      nir_def *sign = nir_iand_imm(b, hi, 0x80000000);
+      zero = nir_pack_64_2x32_split(b, nir_imm_int(b, 0), sign);
+   } else {
+      zero = nir_imm_double(b, 0.0f);
+   }
+
+   return zero;
+}
+
+static nir_def *
+preserve_nan(nir_builder *b, nir_def *src, nir_def *res)
+{
+   uint32_t exec_mode = b->fp_fast_math;
+
+   if (nir_is_float_control_nan_preserve(exec_mode, 64)) {
+      nir_def *is_nan = nir_fneu(b, src, src);
+      return nir_bcsel(b, is_nan, src, res);
+   }
+
+   return res;
+}
+
 /*
  * Generates the correctly-signed infinity if the source was zero, and flushes
  * the result to 0 if the source was infinity or the calculated exponent was
@@ -93,13 +124,14 @@ static nir_def *
 fix_inv_result(nir_builder *b, nir_def *res, nir_def *src,
                nir_def *exp)
 {
-   /* If the exponent is too small or the original input was infinity/NaN,
+   /* If the exponent is too small or the original input was infinity,
     * force the result to 0 (flush denorms) to avoid the work of handling
-    * denorms properly. Note that this doesn't preserve positive/negative
-    * zeros, but GLSL doesn't require it.
+    * denorms properly. If we are asked to preserve NaN, do so, otherwise
+    * we return the flushed result for it.
     */
    res = nir_bcsel(b, nir_ior(b, nir_ile_imm(b, exp, 0), nir_feq_imm(b, nir_fabs(b, src), INFINITY)),
-                   nir_imm_double(b, 0.0f), res);
+                   get_signed_zero(b, src), res);
+   res = preserve_nan(b, src, res);
 
    /* If the original input was 0, generate the correctly-signed infinity */
    res = nir_bcsel(b, nir_fneu_imm(b, src, 0.0f),
@@ -284,26 +316,35 @@ lower_sqrt_rsq(nir_builder *b, nir_def *src, bool sqrt)
       res = nir_ffma(b, y_1, r_1, y_1);
    }
 
+   uint32_t exec_mode = b->fp_fast_math;
    if (sqrt) {
       /* Here, the special cases we need to handle are
-       * 0 -> 0 and
+       * 0 -> 0 (sign preserving)
        * +inf -> +inf
+       * -inf -> NaN
+       * NaN -> NaN
        */
-      const bool preserve_denorms =
-         b->shader->info.float_controls_execution_mode &
-         FLOAT_CONTROLS_DENORM_PRESERVE_FP64;
+      /* Denorm flushing/preserving isn't part of the per-instruction bits, so
+       * check the execution mode for it.
+       */
+      uint32_t shader_exec_mode = b->shader->info.float_controls_execution_mode;
       nir_def *src_flushed = src;
-      if (!preserve_denorms) {
+      if (!nir_is_denorm_preserve(shader_exec_mode, 64)) {
          src_flushed = nir_bcsel(b,
                                  nir_flt_imm(b, nir_fabs(b, src), DBL_MIN),
-                                 nir_imm_double(b, 0.0),
+                                 get_signed_zero(b, src),
                                  src);
       }
       res = nir_bcsel(b, nir_ior(b, nir_feq_imm(b, src_flushed, 0.0), nir_feq_imm(b, src, INFINITY)),
                       src_flushed, res);
+      res = preserve_nan(b, src, res);
    } else {
       res = fix_inv_result(b, res, src, new_exp);
    }
+
+   if (nir_is_float_control_nan_preserve(exec_mode, 64))
+      res = nir_bcsel(b, nir_feq_imm(b, src, -INFINITY),
+                      nir_imm_double(b, NAN), res);
 
    return res;
 }
@@ -351,7 +392,7 @@ lower_trunc(nir_builder *b, nir_def *src)
 
    return nir_bcsel(b,
                     nir_ilt_imm(b, unbiased_exp, 0),
-                    nir_imm_double(b, 0.0),
+                    get_signed_zero(b, src),
                     nir_bcsel(b, nir_ige_imm(b, unbiased_exp, 53),
                               src,
                               nir_pack_64_2x32_split(b,
@@ -458,6 +499,23 @@ lower_minmax(nir_builder *b, nir_op cmp, nir_def *src0, nir_def *src1)
    nir_def *cmp_res = nir_build_alu2(b, cmp, src0, src1);
    b->exact = false;
    nir_def *take_src0 = nir_ior(b, src1_is_nan, cmp_res);
+
+   /* IEEE-754-2019 requires that fmin/fmax compare -0 < 0, but -0 and 0 are
+    * indistinguishable for flt/fge. So, we fix up signed zeroes.
+    */
+   if (nir_is_float_control_signed_zero_preserve(b->fp_fast_math, 64)) {
+      nir_def *src0_is_negzero = nir_ieq_imm(b, src0, 1ull << 63);
+      nir_def *src1_is_poszero = nir_ieq_imm(b, src1, 0x0);
+      nir_def *neg_pos_zero = nir_iand(b, src0_is_negzero, src1_is_poszero);
+
+      if (cmp == nir_op_flt) {
+         take_src0 = nir_ior(b, take_src0, neg_pos_zero);
+      } else {
+         assert(cmp == nir_op_fge);
+         take_src0 = nir_iand(b, take_src0, nir_inot(b, neg_pos_zero));
+      }
+   }
+
    return nir_bcsel(b, take_src0, src0, src1);
 }
 
@@ -742,6 +800,9 @@ lower_doubles_instr(nir_builder *b, nir_instr *instr, void *_data)
    const nir_lower_doubles_options options = data->options;
    nir_alu_instr *alu = nir_instr_as_alu(instr);
 
+   /* Easier to set it here than pass it around all over ther place. */
+   b->fp_fast_math = alu->fp_fast_math;
+
    nir_def *soft_def =
       lower_doubles_instr_to_soft(b, alu, data->softfp64, options);
    if (soft_def)
@@ -827,8 +888,7 @@ nir_lower_doubles_impl(nir_function_impl *impl,
        */
       nir_opt_deref_impl(impl);
    } else if (progress) {
-      nir_metadata_preserve(impl, nir_metadata_block_index |
-                                     nir_metadata_dominance);
+      nir_metadata_preserve(impl, nir_metadata_control_flow);
    } else {
       nir_metadata_preserve(impl, nir_metadata_all);
    }

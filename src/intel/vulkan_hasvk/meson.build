@@ -1,22 +1,5 @@
 # Copyright © 2017-2019 Intel Corporation
-
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+# SPDX-License-Identifier: MIT
 
 anv_hasvk_entrypoints = custom_target(
   'anv_hasvk_entrypoints',
@@ -64,6 +47,8 @@ _dev_icd = custom_target(
   build_by_default : true,
 )
 
+devenv.append('VK_DRIVER_FILES', _dev_icd.full_path())
+# Deprecated: replaced by VK_DRIVER_FILES above
 devenv.append('VK_ICD_FILENAMES', _dev_icd.full_path())
 
 libanv_per_hw_ver_libs = []
@@ -94,7 +79,7 @@ foreach g : [['70', ['gfx7_cmd_buffer.c']],
       dep_libdrm, dep_valgrind, idep_nir_headers, idep_genxml,
       idep_vulkan_util_headers, idep_vulkan_wsi_headers,
       idep_vulkan_runtime_headers, idep_intel_driver_ds_headers,
-      idep_intel_blorp_elk,
+      idep_intel_blorp_elk, idep_mesautil,
     ],
   )
 endforeach
@@ -134,6 +119,7 @@ anv_deps = [
   dep_libdrm,
   dep_valgrind,
   idep_genxml,
+  idep_mesautil,
   idep_nir_headers,
   idep_vulkan_util_headers,
   idep_vulkan_runtime_headers,

@@ -29,8 +29,12 @@
 #include <sys/types.h>
 
 #include "util/os_file.h"
+#include "util/u_process.h"
+
+#include "freedreno_rd_output.h"
 
 #include "freedreno_drmif.h"
+#include "freedreno_drm_perfetto.h"
 #include "freedreno_priv.h"
 
 struct fd_device *msm_device_new(int fd, drmVersionPtr version);
@@ -87,6 +91,11 @@ out:
 
    if (!dev)
       return NULL;
+
+   fd_drm_perfetto_init();
+
+   fd_rd_dump_env_init();
+   fd_rd_output_init(&dev->rd, util_get_process_name());
 
    p_atomic_set(&dev->refcnt, 1);
    dev->fd = fd;
@@ -180,6 +189,8 @@ fd_device_del(struct fd_device *dev)
 {
    if (!unref(&dev->refcnt))
       return;
+
+   fd_rd_output_fini(&dev->rd);
 
    assert(list_is_empty(&dev->deferred_submits));
    assert(!dev->deferred_submits_fence);

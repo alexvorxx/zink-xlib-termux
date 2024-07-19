@@ -47,7 +47,12 @@ void
 brw_device_sha1_update(struct mesa_sha1 *ctx,
                        const struct intel_device_info *devinfo) {
 % for member in compiler_fields:
+% if member.ray_tracing_field:
+   if (devinfo->has_ray_tracing)
+      SHA_UPDATE_FIELD(${member.name});
+% else:
    SHA_UPDATE_FIELD(${member.name});
+% endif
 % endfor
 }
 

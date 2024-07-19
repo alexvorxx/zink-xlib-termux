@@ -61,7 +61,7 @@
 
 #include "spirv.h"
 
-#if DETECT_OS_UNIX
+#if DETECT_OS_POSIX
 #include <dlfcn.h>
 #endif
 
@@ -91,13 +91,21 @@ static void
 clc_dump_llvm(const llvm::Module *mod, FILE *f);
 
 static void
+#if LLVM_VERSION_MAJOR >= 19
+llvm_log_handler(const ::llvm::DiagnosticInfo *di, void *data) {
+#else
 llvm_log_handler(const ::llvm::DiagnosticInfo &di, void *data) {
+#endif
    const clc_logger *logger = static_cast<clc_logger *>(data);
 
    std::string log;
    raw_string_ostream os { log };
    ::llvm::DiagnosticPrinterRawOStream printer { os };
+#if LLVM_VERSION_MAJOR >= 19
+   di->print(printer);
+#else
    di.print(printer);
+#endif
 
    clc_error(logger, "%s", log.c_str());
 }
@@ -784,7 +792,7 @@ clc_compile_to_llvm_module(LLVMContext &llvm_ctx,
    };
 
 #if LLVM_VERSION_MAJOR >= 17
-   const char *triple = args->address_bits == 32 ? "spirv-unknown-unknown" : "spirv64-unknown-unknown";
+   const char *triple = args->address_bits == 32 ? "spir-unknown-unknown" : "spirv64-unknown-unknown";
 #else
    const char *triple = args->address_bits == 32 ? "spir-unknown-unknown" : "spir64-unknown-unknown";
 #endif
@@ -1031,9 +1039,7 @@ llvm_mod_to_spirv(std::unique_ptr<::llvm::Module> mod,
       return -1;
    }
 
-   const char *const *extensions = NULL;
-   if (args)
-      extensions = args->allowed_spirv_extensions;
+   const char *const *extensions = args->allowed_spirv_extensions;
    if (!extensions) {
       /* The SPIR-V parser doesn't handle all extensions */
       static const char *default_extensions[] = {

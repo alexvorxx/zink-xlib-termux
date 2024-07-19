@@ -5,32 +5,26 @@
  * based in part on anv driver which is:
  * Copyright © 2015 Intel Corporation
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
- * IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
+#ifdef HAVE_VALGRIND
+#include <memcheck.h>
+#include <valgrind.h>
+#define VG(x) x
+#else
+#define VG(x) ((void)0)
+#endif
+
+#include "radv_instance.h"
 #include "radv_debug.h"
-#include "radv_private.h"
+#include "radv_entrypoints.h"
+#include "radv_wsi.h"
 
 #include "util/driconf.h"
 
 #include "vk_instance.h"
+#include "vk_log.h"
 #include "vk_util.h"
 
 static const struct debug_control radv_debug_options[] = {{"nofastclears", RADV_DEBUG_NO_FAST_CLEARS},
@@ -53,8 +47,6 @@ static const struct debug_control radv_debug_options[] = {{"nofastclears", RADV_
                                                           {"nobinning", RADV_DEBUG_NOBINNING},
                                                           {"nongg", RADV_DEBUG_NO_NGG},
                                                           {"metashaders", RADV_DEBUG_DUMP_META_SHADERS},
-                                                          {"nomemorycache", RADV_DEBUG_NO_MEMORY_CACHE},
-                                                          {"discardtodemote", RADV_DEBUG_DISCARD_TO_DEMOTE},
                                                           {"llvm", RADV_DEBUG_LLVM},
                                                           {"forcecompress", RADV_DEBUG_FORCE_COMPRESS},
                                                           {"hang", RADV_DEBUG_HANG},
@@ -79,6 +71,8 @@ static const struct debug_control radv_debug_options[] = {{"nofastclears", RADV_
                                                           {"nomeshshader", RADV_DEBUG_NO_MESH_SHADER},
                                                           {"nongg_gs", RADV_DEBUG_NO_NGG_GS},
                                                           {"nogsfastlaunch2", RADV_DEBUG_NO_GS_FAST_LAUNCH_2},
+                                                          {"noeso", RADV_DEBUG_NO_ESO},
+                                                          {"psocachestats", RADV_DEBUG_PSO_CACHE_STATS},
                                                           {NULL, 0}};
 
 const char *
@@ -102,9 +96,9 @@ static const struct debug_control radv_perftest_options[] = {{"localbos", RADV_P
                                                              {"video_decode", RADV_PERFTEST_VIDEO_DECODE},
                                                              {"dmashaders", RADV_PERFTEST_DMA_SHADERS},
                                                              {"transfer_queue", RADV_PERFTEST_TRANSFER_QUEUE},
-                                                             {"shader_object", RADV_PERFTEST_SHADER_OBJECT},
                                                              {"nircache", RADV_PERFTEST_NIR_CACHE},
                                                              {"rtwave32", RADV_PERFTEST_RT_WAVE_32},
+                                                             {"video_encode", RADV_PERFTEST_VIDEO_ENCODE},
                                                              {NULL, 0}};
 
 const char *
@@ -147,7 +141,6 @@ static const driOptionDescription radv_dri_options[] = {
       DRI_CONF_VK_REQUIRE_ETC2(false)
       DRI_CONF_VK_REQUIRE_ASTC(false)
       DRI_CONF_RADV_ZERO_VRAM(false)
-      DRI_CONF_RADV_LOWER_DISCARD_TO_DEMOTE(false)
       DRI_CONF_RADV_INVARIANT_GEOM(false)
       DRI_CONF_RADV_SPLIT_FMA(false)
       DRI_CONF_RADV_DISABLE_TC_COMPAT_HTILE_GENERAL(false)
@@ -192,9 +185,6 @@ radv_init_dri_options(struct radv_instance *instance)
 
    if (driQueryOptionb(&instance->drirc.options, "radv_no_dynamic_bounds"))
       instance->debug_flags |= RADV_DEBUG_NO_DYNAMIC_BOUNDS;
-
-   if (driQueryOptionb(&instance->drirc.options, "radv_lower_discard_to_demote"))
-      instance->debug_flags |= RADV_DEBUG_DISCARD_TO_DEMOTE;
 
    if (driQueryOptionb(&instance->drirc.options, "radv_invariant_geom"))
       instance->debug_flags |= RADV_DEBUG_INVARIANT_GEOM;
@@ -318,6 +308,22 @@ radv_handle_legacy_sqtt_trigger(struct vk_instance *instance)
    }
 }
 
+static enum radeon_ctx_pstate
+radv_parse_pstate(const char* str)
+{
+   if (!strcmp(str, "peak")) {
+      return RADEON_CTX_PSTATE_PEAK;
+   } else if (!strcmp(str, "standard")) {
+      return RADEON_CTX_PSTATE_STANDARD;
+   } else if (!strcmp(str, "min_sclk")) {
+      return RADEON_CTX_PSTATE_MIN_SCLK;
+   } else if (!strcmp(str, "min_mclk")) {
+      return RADEON_CTX_PSTATE_MIN_MCLK;
+   } else {
+      return RADEON_CTX_PSTATE_NONE;
+   }
+}
+
 VKAPI_ATTR VkResult VKAPI_CALL
 radv_CreateInstance(const VkInstanceCreateInfo *pCreateInfo, const VkAllocationCallbacks *pAllocator,
                     VkInstance *pInstance)
@@ -348,6 +354,7 @@ radv_CreateInstance(const VkInstanceCreateInfo *pCreateInfo, const VkAllocationC
 
    instance->debug_flags = parse_debug_string(getenv("RADV_DEBUG"), radv_debug_options);
    instance->perftest_flags = parse_debug_string(getenv("RADV_PERFTEST"), radv_perftest_options);
+   instance->profile_pstate = radv_parse_pstate(debug_get_option("RADV_PROFILE_PSTATE", "peak"));
 
    /* When RADV_FORCE_FAMILY is set, the driver creates a null
     * device that allows to test the compiler without having an
@@ -375,7 +382,7 @@ radv_CreateInstance(const VkInstanceCreateInfo *pCreateInfo, const VkAllocationC
 VKAPI_ATTR void VKAPI_CALL
 radv_DestroyInstance(VkInstance _instance, const VkAllocationCallbacks *pAllocator)
 {
-   RADV_FROM_HANDLE(radv_instance, instance, _instance);
+   VK_FROM_HANDLE(radv_instance, instance, _instance);
 
    if (!instance)
       return;
@@ -421,7 +428,7 @@ radv_EnumerateInstanceLayerProperties(uint32_t *pPropertyCount, VkLayerPropertie
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
 radv_GetInstanceProcAddr(VkInstance _instance, const char *pName)
 {
-   RADV_FROM_HANDLE(vk_instance, instance, _instance);
+   VK_FROM_HANDLE(vk_instance, instance, _instance);
    return vk_instance_get_proc_addr(instance, &radv_instance_entrypoints, pName);
 }
 

@@ -438,7 +438,7 @@ convert_planar_resource(struct d3d12_resource *res)
       plane_res->base.b.width0 = util_format_get_plane_width(res->base.b.format, plane, res->base.b.width0);
       plane_res->base.b.height0 = util_format_get_plane_height(res->base.b.format, plane, res->base.b.height0);
 
-#ifdef DEBUG
+#if MESA_DEBUG
       struct d3d12_screen *screen = d3d12_screen(res->base.b.screen);
       D3D12_RESOURCE_DESC desc = GetDesc(res->bo->res);
       desc.Flags &= ~D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;

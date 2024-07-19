@@ -57,7 +57,7 @@
 
 #include "util/simple_mtx.h"
 
-#ifdef DEBUG
+#if MESA_DEBUG
 #define DEBUG_PRINT(msg, ...) fprintf(stderr, msg, __VA_ARGS__)
 #else
 #define DEBUG_PRINT(msg, ...)

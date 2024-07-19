@@ -298,9 +298,6 @@ init_shader_program(struct gl_shader_program *prog)
    prog->FragDataBindings = string_to_uint_map_ctor();
    prog->FragDataIndexBindings = string_to_uint_map_ctor();
 
-   prog->Geom.UsesEndPrimitive = false;
-   prog->Geom.ActiveStreamMask = 0;
-
    prog->TransformFeedback.BufferMode = GL_INTERLEAVED_ATTRIBS;
 
    exec_list_make_empty(&prog->EmptyUniformLocations);
@@ -345,11 +342,6 @@ _mesa_clear_shader_program_data(struct gl_context *ctx,
       ralloc_free(shProg->UniformRemapTable);
       shProg->NumUniformRemapTable = 0;
       shProg->UniformRemapTable = NULL;
-   }
-
-   if (shProg->UniformHash) {
-      string_to_uint_map_dtor(shProg->UniformHash);
-      shProg->UniformHash = NULL;
    }
 
    if (shProg->data)

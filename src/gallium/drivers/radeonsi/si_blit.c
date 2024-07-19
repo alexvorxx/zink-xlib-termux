@@ -10,6 +10,7 @@
 #include "util/u_log.h"
 #include "util/u_surface.h"
 #include "util/hash_table.h"
+#include "ac_nir_meta.h"
 
 enum
 {
@@ -193,6 +194,8 @@ static void si_blit_decompress_zs_planes_in_place(struct si_context *sctx,
    unsigned layer, max_layer, checked_last_layer;
    unsigned fully_decompressed_mask = 0;
 
+   assert(sctx->gfx_level < GFX12);
+
    if (!level_mask)
       return;
 
@@ -286,6 +289,8 @@ static void si_decompress_depth(struct si_context *sctx, struct si_texture *tex,
    unsigned level_mask = u_bit_consecutive(first_level, last_level - first_level + 1);
    unsigned levels_z = 0;
    unsigned levels_s = 0;
+
+   assert(sctx->gfx_level < GFX12);
 
    if (required_planes & PIPE_MASK_Z) {
       levels_z = level_mask & tex->dirty_level_mask;
@@ -401,6 +406,8 @@ static bool si_decompress_sampler_depth_textures(struct si_context *sctx,
    unsigned mask = textures->needs_depth_decompress_mask;
    bool need_flush = false;
 
+   assert(sctx->gfx_level < GFX12);
+
    while (mask) {
       struct pipe_sampler_view *view;
       struct si_sampler_view *sview;
@@ -436,6 +443,9 @@ static void si_blit_decompress_color(struct si_context *sctx, struct si_texture 
    void *custom_blend;
    unsigned layer, checked_last_layer, max_layer;
    unsigned level_mask = u_bit_consecutive(first_level, last_level - first_level + 1);
+
+   /* No decompression is ever needed on Gfx12. */
+   assert(sctx->gfx_level < GFX12);
 
    if (!need_dcc_decompress)
       level_mask &= tex->dirty_level_mask;
@@ -624,6 +634,8 @@ static void si_check_render_feedback_texture(struct si_context *sctx, struct si_
 {
    bool render_feedback = false;
 
+   assert(sctx->gfx_level < GFX12);
+
    if (!vi_dcc_enabled(tex, first_level))
       return;
 
@@ -652,6 +664,8 @@ static void si_check_render_feedback_textures(struct si_context *sctx, struct si
 {
    uint32_t mask = textures->enabled_mask & in_use_mask;
 
+   assert(sctx->gfx_level < GFX12);
+
    while (mask) {
       const struct pipe_sampler_view *view;
       struct si_texture *tex;
@@ -674,6 +688,8 @@ static void si_check_render_feedback_images(struct si_context *sctx, struct si_i
 {
    uint32_t mask = images->enabled_mask & in_use_mask;
 
+   assert(sctx->gfx_level < GFX12);
+
    while (mask) {
       const struct pipe_image_view *view;
       struct si_texture *tex;
@@ -693,6 +709,8 @@ static void si_check_render_feedback_images(struct si_context *sctx, struct si_i
 
 static void si_check_render_feedback_resident_textures(struct si_context *sctx)
 {
+   assert(sctx->gfx_level < GFX12);
+
    util_dynarray_foreach (&sctx->resident_tex_handles, struct si_texture_handle *, tex_handle) {
       struct pipe_sampler_view *view;
       struct si_texture *tex;
@@ -710,6 +728,8 @@ static void si_check_render_feedback_resident_textures(struct si_context *sctx)
 
 static void si_check_render_feedback_resident_images(struct si_context *sctx)
 {
+   assert(sctx->gfx_level < GFX12);
+
    util_dynarray_foreach (&sctx->resident_img_handles, struct si_image_handle *, img_handle) {
       struct pipe_image_view *view;
       struct si_texture *tex;
@@ -727,6 +747,8 @@ static void si_check_render_feedback_resident_images(struct si_context *sctx)
 
 static void si_check_render_feedback(struct si_context *sctx)
 {
+   assert(sctx->gfx_level < GFX12);
+
    if (!sctx->need_check_render_feedback)
       return;
 
@@ -896,6 +918,9 @@ void si_decompress_subresource(struct pipe_context *ctx, struct pipe_resource *t
    struct si_context *sctx = (struct si_context *)ctx;
    struct si_texture *stex = (struct si_texture *)tex;
 
+   if (sctx->gfx_level >= GFX12)
+      return;
+
    if (stex->db_compatible) {
       planes &= PIPE_MASK_Z | PIPE_MASK_S;
 
@@ -931,26 +956,12 @@ void si_decompress_subresource(struct pipe_context *ctx, struct pipe_resource *t
    }
 }
 
-struct texture_orig_info {
-   unsigned format;
-   unsigned width0;
-   unsigned height0;
-   unsigned npix_x;
-   unsigned npix_y;
-   unsigned npix0_x;
-   unsigned npix0_y;
-};
-
 void si_resource_copy_region(struct pipe_context *ctx, struct pipe_resource *dst,
                              unsigned dst_level, unsigned dstx, unsigned dsty, unsigned dstz,
                              struct pipe_resource *src, unsigned src_level,
                              const struct pipe_box *src_box)
 {
    struct si_context *sctx = (struct si_context *)ctx;
-   struct si_texture *ssrc = (struct si_texture *)src;
-   struct pipe_surface *dst_view, dst_templ;
-   struct pipe_sampler_view src_templ, *src_view;
-   struct pipe_box dstbox;
 
    /* Handle buffers first. */
    if (dst->target == PIPE_BUFFER && src->target == PIPE_BUFFER) {
@@ -958,9 +969,21 @@ void si_resource_copy_region(struct pipe_context *ctx, struct pipe_resource *dst
       return;
    }
 
-   if (si_compute_copy_image(sctx, dst, dst_level, src, src_level, dstx, dsty, dstz,
-                             src_box, SI_OP_SYNC_BEFORE_AFTER))
+   if (si_compute_copy_image(sctx, dst, dst_level, src, src_level, dstx, dsty, dstz, src_box, true))
       return;
+
+   si_gfx_copy_image(sctx, dst, dst_level, dstx, dsty, dstz, src, src_level, src_box);
+}
+
+void si_gfx_copy_image(struct si_context *sctx, struct pipe_resource *dst,
+                       unsigned dst_level, unsigned dstx, unsigned dsty, unsigned dstz,
+                       struct pipe_resource *src, unsigned src_level,
+                       const struct pipe_box *src_box)
+{
+   struct si_texture *ssrc = (struct si_texture *)src;
+   struct pipe_surface *dst_view, dst_templ;
+   struct pipe_sampler_view src_templ, *src_view;
+   struct pipe_box dstbox;
 
    /* If the blitter isn't available fail here instead of crashing. */
    if (!sctx->blitter) {
@@ -973,7 +996,7 @@ void si_resource_copy_region(struct pipe_context *ctx, struct pipe_resource *dst
 
    /* The driver doesn't decompress resources automatically while
     * u_blitter is rendering. */
-   si_decompress_subresource(ctx, src, PIPE_MASK_RGBAZS, src_level, src_box->z,
+   si_decompress_subresource(&sctx->b, src, PIPE_MASK_RGBAZS, src_level, src_box->z,
                              src_box->z + src_box->depth - 1, false);
 
    util_blitter_default_dst_texture(&dst_templ, dst, dst_level, dstz);
@@ -982,27 +1005,27 @@ void si_resource_copy_region(struct pipe_context *ctx, struct pipe_resource *dst
    assert(!util_format_is_compressed(src->format) && !util_format_is_compressed(dst->format));
    assert(!util_format_is_subsampled_422(src->format));
 
-   if (!util_blitter_is_copy_supported(sctx->blitter, dst, src)) {
+   /* We can't blit as floats because it wouldn't preserve NaNs.
+    * Z32_FLOAT needs to keep using floats.
+    */
+   if ((util_format_is_float(dst_templ.format) &&
+        !util_format_is_depth_or_stencil(dst_templ.format)) ||
+       !util_blitter_is_copy_supported(sctx->blitter, dst, src)) {
       switch (ssrc->surface.bpe) {
       case 1:
-         dst_templ.format = PIPE_FORMAT_R8_UNORM;
-         src_templ.format = PIPE_FORMAT_R8_UNORM;
+         dst_templ.format = src_templ.format = PIPE_FORMAT_R8_UINT;
          break;
       case 2:
-         dst_templ.format = PIPE_FORMAT_R8G8_UNORM;
-         src_templ.format = PIPE_FORMAT_R8G8_UNORM;
+         dst_templ.format = src_templ.format = PIPE_FORMAT_R16_UINT;
          break;
       case 4:
-         dst_templ.format = PIPE_FORMAT_R8G8B8A8_UNORM;
-         src_templ.format = PIPE_FORMAT_R8G8B8A8_UNORM;
+         dst_templ.format = src_templ.format = PIPE_FORMAT_R32_UINT;
          break;
       case 8:
-         dst_templ.format = PIPE_FORMAT_R16G16B16A16_UINT;
-         src_templ.format = PIPE_FORMAT_R16G16B16A16_UINT;
+         dst_templ.format = src_templ.format = PIPE_FORMAT_R32G32_UINT;
          break;
       case 16:
-         dst_templ.format = PIPE_FORMAT_R32G32B32A32_UINT;
-         src_templ.format = PIPE_FORMAT_R32G32B32A32_UINT;
+         dst_templ.format = src_templ.format = PIPE_FORMAT_R32G32B32A32_UINT;
          break;
       default:
          fprintf(stderr, "Unhandled format %s with blocksize %u\n",
@@ -1014,18 +1037,17 @@ void si_resource_copy_region(struct pipe_context *ctx, struct pipe_resource *dst
    /* SNORM blitting has precision issues on some chips. Use the SINT
     * equivalent instead, which doesn't force DCC decompression.
     */
-   if (util_format_is_snorm(dst_templ.format)) {
+   if (util_format_is_snorm(dst_templ.format))
       dst_templ.format = src_templ.format = util_format_snorm_to_sint(dst_templ.format);
-   }
 
    vi_disable_dcc_if_incompatible_format(sctx, dst, dst_level, dst_templ.format);
    vi_disable_dcc_if_incompatible_format(sctx, src, src_level, src_templ.format);
 
    /* Initialize the surface. */
-   dst_view = ctx->create_surface(ctx, dst, &dst_templ);
+   dst_view = sctx->b.create_surface(&sctx->b, dst, &dst_templ);
 
    /* Initialize the sampler view. */
-   src_view = ctx->create_sampler_view(ctx, src, &src_templ);
+   src_view = sctx->b.create_sampler_view(&sctx->b, src, &src_templ);
 
    u_box_3d(dstx, dsty, dstz, abs(src_box->width), abs(src_box->height), abs(src_box->depth),
             &dstbox);
@@ -1034,7 +1056,7 @@ void si_resource_copy_region(struct pipe_context *ctx, struct pipe_resource *dst
    si_blitter_begin(sctx, SI_COPY);
    util_blitter_blit_generic(sctx->blitter, dst_view, &dstbox, src_view, src_box, src->width0,
                              src->height0, PIPE_MASK_RGBAZS, PIPE_TEX_FILTER_NEAREST, NULL,
-                             false, false, 0);
+                             false, false, 0, NULL);
    si_blitter_end(sctx);
 
    pipe_surface_reference(&dst_view, NULL);
@@ -1081,7 +1103,8 @@ static bool resolve_formats_compatible(enum pipe_format src, enum pipe_format ds
    return *need_rgb_to_bgr;
 }
 
-bool si_msaa_resolve_blit_via_CB(struct pipe_context *ctx, const struct pipe_blit_info *info)
+bool si_msaa_resolve_blit_via_CB(struct pipe_context *ctx, const struct pipe_blit_info *info,
+                                 bool fail_if_slow)
 {
    struct si_context *sctx = (struct si_context *)ctx;
 
@@ -1091,18 +1114,48 @@ bool si_msaa_resolve_blit_via_CB(struct pipe_context *ctx, const struct pipe_bli
 
    struct si_texture *src = (struct si_texture *)info->src.resource;
    struct si_texture *dst = (struct si_texture *)info->dst.resource;
-   ASSERTED struct si_texture *stmp;
    unsigned dst_width = u_minify(info->dst.resource->width0, info->dst.level);
    unsigned dst_height = u_minify(info->dst.resource->height0, info->dst.level);
    enum pipe_format format = info->src.format;
-   struct pipe_resource *tmp, templ;
-   struct pipe_blit_info blit;
+   unsigned num_channels = util_format_description(format)->nr_channels;
 
    /* Check basic requirements for hw resolve. */
    if (!(info->src.resource->nr_samples > 1 && info->dst.resource->nr_samples <= 1 &&
          !util_format_is_pure_integer(format) && !util_format_is_depth_or_stencil(format) &&
          util_max_layer(info->src.resource, 0) == 0))
       return false;
+
+   /* Return if this is slower than alternatives. */
+   if (fail_if_slow) {
+      /* CB_RESOLVE is much slower without FMASK. */
+      if (sctx->screen->debug_flags & DBG(NO_FMASK))
+         return false;
+
+      /* Verified on: Tahiti, Hawaii, Tonga, Vega10, Navi10, Navi21 */
+      switch (sctx->gfx_level) {
+      case GFX6:
+         return false;
+
+      case GFX7:
+         if (src->surface.bpe != 16)
+            return false;
+         break;
+
+      case GFX8:
+      case GFX9:
+      case GFX10:
+         return false;
+
+      case GFX10_3:
+         if (!(src->surface.bpe == 8 && src->buffer.b.b.nr_samples == 8 && num_channels == 4) &&
+             !(src->surface.bpe == 16 && src->buffer.b.b.nr_samples == 4))
+            return false;
+         break;
+
+      default:
+         unreachable("unexpected gfx version");
+      }
+   }
 
    /* Hardware MSAA resolve doesn't work if SPI format = NORM16_ABGR and
     * the format is R16G16. Use R16A16, which does work.
@@ -1128,35 +1181,32 @@ bool si_msaa_resolve_blit_via_CB(struct pipe_context *ctx, const struct pipe_bli
       /* Check the remaining constraints. */
       if (src->surface.micro_tile_mode != dst->surface.micro_tile_mode ||
           need_rgb_to_bgr) {
+         /* Changing the microtile mode is not possible with GFX10. */
+         if (sctx->gfx_level >= GFX10)
+            return false;
+
          /* The next fast clear will switch to this mode to
           * get direct hw resolve next time if the mode is
           * different now.
-          *
-          * TODO-GFX10: This does not work in GFX10 because MSAA
-          * is restricted to 64KB_R_X and 64KB_Z_X swizzle modes.
-          * In some cases we could change the swizzle of the
-          * destination texture instead, but the more general
-          * solution is to implement compute shader resolve.
           */
          if (src->surface.micro_tile_mode != dst->surface.micro_tile_mode)
             src->last_msaa_resolve_target_micro_mode = dst->surface.micro_tile_mode;
          if (need_rgb_to_bgr)
             src->swap_rgb_to_bgr_on_next_clear = true;
 
-         goto resolve_to_temp;
+         return false;
       }
 
       /* Resolving into a surface with DCC is unsupported. Since
        * it's being overwritten anyway, clear it to uncompressed.
-       * This is still the fastest codepath even with this clear.
        */
       if (vi_dcc_enabled(dst, info->dst.level)) {
          struct si_clear_info clear_info;
 
          if (!vi_dcc_get_clear_info(sctx, dst, info->dst.level, DCC_UNCOMPRESSED, &clear_info))
-            goto resolve_to_temp;
+            return false;
 
-         si_execute_clears(sctx, &clear_info, 1, SI_CLEAR_TYPE_DCC);
+         si_execute_clears(sctx, &clear_info, 1, SI_CLEAR_TYPE_DCC, info->render_condition_enable);
          dst->dirty_level_mask &= ~(1 << info->dst.level);
       }
 
@@ -1165,50 +1215,7 @@ bool si_msaa_resolve_blit_via_CB(struct pipe_context *ctx, const struct pipe_bli
       return true;
    }
 
-resolve_to_temp:
-   /* Shader-based resolve is VERY SLOW. Instead, resolve into
-    * a temporary texture and blit.
-    */
-   memset(&templ, 0, sizeof(templ));
-   templ.target = PIPE_TEXTURE_2D;
-   templ.format = info->src.resource->format;
-   templ.width0 = info->src.resource->width0;
-   templ.height0 = info->src.resource->height0;
-   templ.depth0 = 1;
-   templ.array_size = 1;
-   templ.usage = PIPE_USAGE_DEFAULT;
-   templ.flags = SI_RESOURCE_FLAG_FORCE_MSAA_TILING | SI_RESOURCE_FLAG_FORCE_MICRO_TILE_MODE |
-                 SI_RESOURCE_FLAG_MICRO_TILE_MODE_SET(src->surface.micro_tile_mode) |
-                 SI_RESOURCE_FLAG_DISABLE_DCC | SI_RESOURCE_FLAG_DRIVER_INTERNAL;
-
-   /* The src and dst microtile modes must be the same. */
-   if (sctx->gfx_level <= GFX8 && src->surface.micro_tile_mode == RADEON_MICRO_MODE_DISPLAY)
-      templ.bind = PIPE_BIND_SCANOUT;
-   else
-      templ.bind = 0;
-
-   tmp = ctx->screen->resource_create(ctx->screen, &templ);
-   if (!tmp)
-      return false;
-   stmp = (struct si_texture *)tmp;
-   /* Match the channel order of src. */
-   stmp->swap_rgb_to_bgr = src->swap_rgb_to_bgr;
-
-   assert(!stmp->surface.is_linear);
-   assert(src->surface.micro_tile_mode == stmp->surface.micro_tile_mode);
-
-   /* resolve */
-   si_do_CB_resolve(sctx, info, tmp, 0, 0, format);
-
-   /* blit */
-   blit = *info;
-   blit.src.resource = tmp;
-   blit.src.box.z = 0;
-
-   ctx->blit(ctx, &blit);
-
-   pipe_resource_reference(&tmp, NULL);
-   return true;
+   return false;
 }
 
 static void si_blit(struct pipe_context *ctx, const struct pipe_blit_info *info)
@@ -1242,7 +1249,7 @@ static void si_blit(struct pipe_context *ctx, const struct pipe_blit_info *info)
       if (sscreen->async_compute_context) {
          si_compute_copy_image((struct si_context*)sctx->screen->async_compute_context,
                                info->dst.resource, 0, info->src.resource, 0, 0, 0, 0,
-                               &info->src.box, 0);
+                               &info->src.box, false);
          si_flush_gfx_cs((struct si_context*)sctx->screen->async_compute_context, 0, NULL);
          simple_mtx_unlock(&sscreen->async_compute_context_lock);
          return;
@@ -1254,23 +1261,13 @@ static void si_blit(struct pipe_context *ctx, const struct pipe_blit_info *info)
    if (unlikely(sctx->sqtt_enabled))
       sctx->sqtt_next_event = EventCmdResolveImage;
 
-   if (si_msaa_resolve_blit_via_CB(ctx, info))
+   if (si_msaa_resolve_blit_via_CB(ctx, info, true))
       return;
 
    if (unlikely(sctx->sqtt_enabled))
       sctx->sqtt_next_event = EventCmdCopyImage;
 
-   /* Using compute for copying to a linear texture in GTT is much faster than
-    * going through RBs (render backends). This improves DRI PRIME performance.
-    */
-   if (util_can_blit_via_copy_region(info, false, sctx->render_cond != NULL)) {
-      si_resource_copy_region(ctx, info->dst.resource, info->dst.level,
-                              info->dst.box.x, info->dst.box.y, info->dst.box.z,
-                              info->src.resource, info->src.level, &info->src.box);
-      return;
-   }
-
-   if (si_compute_blit(sctx, info, false))
+   if (si_compute_blit(sctx, info, NULL, 0, 0, SI_OP_SYNC_BEFORE_AFTER | SI_OP_FAIL_IF_SLOW))
       return;
 
    si_gfx_blit(ctx, info);
@@ -1295,8 +1292,75 @@ void si_gfx_blit(struct pipe_context *ctx, const struct pipe_blit_info *info)
    if (unlikely(sctx->sqtt_enabled))
       sctx->sqtt_next_event = EventCmdBlitImage;
 
+   /* Use a custom MSAA resolving pixel shader. */
+   void *fs = NULL;
+   if (!util_format_is_depth_or_stencil(info->dst.resource->format) &&
+       !util_format_is_depth_or_stencil(info->src.resource->format) &&
+       !util_format_is_pure_integer(info->dst.format) &&
+       info->dst.resource->nr_samples <= 1 &&
+       info->src.resource->nr_samples >= 2 &&
+       !info->sample0_only &&
+       (info->filter == PIPE_TEX_FILTER_NEAREST ||
+        /* No scaling */
+        (info->dst.box.width == abs(info->src.box.width) &&
+         info->dst.box.height == abs(info->src.box.height)))) {
+      union ac_ps_resolve_key key;
+      key.key = 0;
+
+      /* LLVM is slower on GFX10.3 and older because it doesn't form VMEM clauses and it's more
+       * difficult to force them with optimization barriers when FMASK is used.
+       */
+      key.use_aco = true;
+      key.src_is_array = info->src.resource->target == PIPE_TEXTURE_1D_ARRAY ||
+                         info->src.resource->target == PIPE_TEXTURE_2D_ARRAY ||
+                         info->src.resource->target == PIPE_TEXTURE_CUBE ||
+                         info->src.resource->target == PIPE_TEXTURE_CUBE_ARRAY;
+      key.log_samples = util_logbase2(info->src.resource->nr_samples);
+      key.last_dst_channel = util_format_get_last_component(info->dst.format);
+      key.last_src_channel = util_format_get_last_component(info->src.format);
+      key.last_src_channel = MIN2(key.last_src_channel, key.last_dst_channel);
+      key.x_clamp_to_edge = si_should_blit_clamp_to_edge(info, BITFIELD_BIT(0));
+      key.y_clamp_to_edge = si_should_blit_clamp_to_edge(info, BITFIELD_BIT(1));
+      key.a16 = sctx->gfx_level >= GFX9 && util_is_box_sint16(&info->dst.box) &&
+                util_is_box_sint16(&info->src.box);
+      unsigned max_dst_chan_size = util_format_get_max_channel_size(info->dst.format);
+      unsigned max_src_chan_size = util_format_get_max_channel_size(info->src.format);
+
+      if (key.use_aco && util_format_is_float(info->dst.format) && max_dst_chan_size == 32) {
+         /* TODO: ACO doesn't meet precision expectations of this test when the destination format
+          * is R32G32B32A32_FLOAT, the source format is R8G8B8A8_UNORM, and the resolving math uses
+          * FP16. It's theoretically arguable whether FP16 is legal in this case. LLVM passes
+          * the test.
+          *
+          * piglit/bin/copyteximage CUBE -samples=2 -auto
+          */
+         key.d16 = 0;
+      } else {
+         /* Resolving has precision issues all the way down to R11G11B10_FLOAT. */
+         key.d16 = ((!key.use_aco && !sctx->screen->use_aco && sctx->gfx_level >= GFX8) ||
+                    /* ACO doesn't support D16 on GFX8 */
+                    ((key.use_aco || sctx->screen->use_aco) && sctx->gfx_level >= GFX9)) &&
+                   MIN2(max_dst_chan_size, max_src_chan_size) <= 10;
+      }
+
+      fs = _mesa_hash_table_u64_search(sctx->ps_resolve_shaders, key.key);
+      if (!fs) {
+         struct ac_ps_resolve_options options = {
+            .nir_options = sctx->b.screen->get_compiler_options(sctx->b.screen, PIPE_SHADER_IR_NIR,
+                                                                PIPE_SHADER_FRAGMENT),
+            .info = &sctx->screen->info,
+            .use_aco = sctx->screen->use_aco,
+            .no_fmask = sctx->screen->debug_flags & DBG(NO_FMASK),
+            .print_key = si_can_dump_shader(sctx->screen, MESA_SHADER_FRAGMENT, SI_DUMP_SHADER_KEY),
+         };
+
+         fs = si_create_shader_state(sctx, ac_create_resolve_ps(&options, &key));
+         _mesa_hash_table_u64_insert(sctx->ps_resolve_shaders, key.key, fs);
+      }
+   }
+
    si_blitter_begin(sctx, SI_BLIT | (info->render_condition_enable ? 0 : SI_DISABLE_RENDER_COND));
-   util_blitter_blit(sctx->blitter, info);
+   util_blitter_blit(sctx->blitter, info, fs);
    si_blitter_end(sctx);
 }
 
@@ -1336,7 +1400,7 @@ static void si_flush_resource(struct pipe_context *ctx, struct pipe_resource *re
    struct si_context *sctx = (struct si_context *)ctx;
    struct si_texture *tex = (struct si_texture *)res;
 
-   if (res->target == PIPE_BUFFER)
+   if (sctx->gfx_level >= GFX12 || res->target == PIPE_BUFFER)
       return;
 
    if (!tex->is_depth && (tex->cmask_buffer || vi_dcc_enabled(tex, 0))) {
@@ -1352,6 +1416,8 @@ static void si_flush_resource(struct pipe_context *ctx, struct pipe_resource *re
 
 void si_flush_implicit_resources(struct si_context *sctx)
 {
+   assert(sctx->gfx_level < GFX12);
+
    hash_table_foreach(sctx->dirty_implicit_resources, entry) {
       si_flush_resource(&sctx->b, entry->data);
       pipe_resource_reference((struct pipe_resource **)&entry->data, NULL);
@@ -1361,6 +1427,7 @@ void si_flush_implicit_resources(struct si_context *sctx)
 
 void si_decompress_dcc(struct si_context *sctx, struct si_texture *tex)
 {
+   assert(sctx->gfx_level < GFX12);
    assert(!tex->is_depth);
 
    /* If graphics is disabled, we can't decompress DCC, but it shouldn't

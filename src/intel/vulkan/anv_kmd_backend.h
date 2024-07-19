@@ -37,9 +37,9 @@ struct anv_cmd_buffer;
 struct anv_device;
 struct anv_queue;
 struct anv_query_pool;
+struct anv_async_submit;
 struct anv_utrace_submit;
 struct anv_sparse_submission;
-struct anv_trtt_batch_bo;
 
 enum anv_vm_bind_op {
    /* bind vma specified in anv_vm_bind */
@@ -56,6 +56,20 @@ struct anv_vm_bind {
    uint64_t bo_offset; /* Also known as the memory offset. */
    uint64_t size;
    enum anv_vm_bind_op op;
+};
+
+/* These flags apply only to the vm_bind() ioctl backend operations, not to
+ * the higher-level concept of resource address binding. In other words: they
+ * don't apply to TR-TT, which also uses other structs with "vm_bind" in their
+ * names.
+ */
+enum anv_vm_bind_flags {
+   ANV_VM_BIND_FLAG_NONE = 0,
+   /* The most recent bind_timeline wait point is waited for during every
+    * command submission. This flag allows the vm_bind operation to create a
+    * new timeline point and signal it upon completion.
+    */
+   ANV_VM_BIND_FLAG_SIGNAL_BIND_TIMELINE = 1 << 0,
 };
 
 struct anv_kmd_backend {
@@ -76,11 +90,12 @@ struct anv_kmd_backend {
 
    /*
     * Bind things however you want.
-    * This is intended for sparse resources, so it does not use the
-    * bind_timeline interface: synchronization is up to the callers.
+    * This is intended for sparse resources, so it's a little lower level and
+    * the _bo variants.
     */
    VkResult (*vm_bind)(struct anv_device *device,
-                       struct anv_sparse_submission *submit);
+                       struct anv_sparse_submission *submit,
+                       enum anv_vm_bind_flags flags);
 
    /*
     * Fully bind or unbind a BO.
@@ -91,12 +106,8 @@ struct anv_kmd_backend {
    VkResult (*vm_bind_bo)(struct anv_device *device, struct anv_bo *bo);
    VkResult (*vm_unbind_bo)(struct anv_device *device, struct anv_bo *bo);
 
-   VkResult (*execute_simple_batch)(struct anv_queue *queue,
-                                    struct anv_bo *batch_bo,
-                                    uint32_t batch_bo_size,
-                                    bool is_companion_rcs_batch);
-   VkResult (*execute_trtt_batch)(struct anv_sparse_submission *submit,
-                                  struct anv_trtt_batch_bo *trtt_bbo);
+   /* The caller is expected to hold device->mutex when calling this vfunc.
+    */
    VkResult (*queue_exec_locked)(struct anv_queue *queue,
                                  uint32_t wait_count,
                                  const struct vk_sync_wait *waits,
@@ -107,8 +118,14 @@ struct anv_kmd_backend {
                                  struct anv_query_pool *perf_query_pool,
                                  uint32_t perf_query_pass,
                                  struct anv_utrace_submit *utrace_submit);
-   VkResult (*queue_exec_trace)(struct anv_queue *queue,
-                                struct anv_utrace_submit *submit);
+   /* The caller is not expected to hold device->mutex when calling this
+    * vfunc.
+    */
+   VkResult (*queue_exec_async)(struct anv_async_submit *submit,
+                                uint32_t wait_count,
+                                const struct vk_sync_wait *waits,
+                                uint32_t signal_count,
+                                const struct vk_sync_signal *signals);
    uint32_t (*bo_alloc_flags_to_bo_flags)(struct anv_device *device,
                                           enum anv_bo_alloc_flags alloc_flags);
 };

@@ -1,27 +1,9 @@
-/**********************************************************
- * Copyright 2008-2023 VMware, Inc.  All rights reserved.
- *
- * Permission is hereby granted, free of charge, to any person
- * obtaining a copy of this software and associated documentation
- * files (the "Software"), to deal in the Software without
- * restriction, including without limitation the rights to use, copy,
- * modify, merge, publish, distribute, sublicense, and/or sell copies
- * of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be
- * included in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
- * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
- * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
- * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
- *
- **********************************************************/
+/*
+ * Copyright (c) 2008-2024 Broadcom. All Rights Reserved.
+ * The term “Broadcom” refers to Broadcom Inc.
+ * and/or its subsidiaries.
+ * SPDX-License-Identifier: MIT
+ */
 
 #include "git_sha1.h" /* For MESA_GIT_SHA1 */
 #include "compiler/nir/nir.h"
@@ -53,7 +35,7 @@
 #define MESA_GIT_SHA1 "(unknown git revision)"
 #endif
 
-#ifdef DEBUG
+#if MESA_DEBUG
 int SVGA_DEBUG = 0;
 
 static const struct debug_named_value svga_debug_flags[] = {
@@ -93,8 +75,8 @@ svga_get_name( struct pipe_screen *pscreen )
 {
    const char *build = "", *llvm = "", *mutex = "";
    static char name[100];
-#ifdef DEBUG
-   /* Only return internal details in the DEBUG version:
+#if MESA_DEBUG
+   /* Only return internal details in the MESA_DEBUG version:
     */
    build = "build: DEBUG;";
    mutex = "mutex: " PIPE_ATOMIC ";";
@@ -1051,7 +1033,7 @@ svga_screen_create(struct svga_winsys_screen *sws)
    struct svga_screen *svgascreen;
    struct pipe_screen *screen;
 
-#ifdef DEBUG
+#if MESA_DEBUG
    SVGA_DEBUG = debug_get_flags_option("SVGA_DEBUG", svga_debug_flags, 0 );
 #endif
 
@@ -1328,7 +1310,7 @@ svga_winsys_screen(struct pipe_screen *screen)
 }
 
 
-#ifdef DEBUG
+#if MESA_DEBUG
 struct svga_screen *
 svga_screen(struct pipe_screen *screen)
 {

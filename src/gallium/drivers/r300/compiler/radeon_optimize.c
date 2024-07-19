@@ -1,29 +1,7 @@
 /*
- * Copyright (C) 2009 Nicolai Haehnle.
+ * Copyright 2009 Nicolai Haehnle.
  * Copyright 2010 Tom Stellard <tstellar@gmail.com>
- *
- * All Rights Reserved.
- *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the
- * "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish,
- * distribute, sublicense, and/or sell copies of the Software, and to
- * permit persons to whom the Software is furnished to do so, subject to
- * the following conditions:
- *
- * The above copyright notice and this permission notice (including the
- * next paragraph) shall be included in all copies or substantial
- * portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE COPYRIGHT OWNER(S) AND/OR ITS SUPPLIERS BE
- * LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
- * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
- * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
+ * SPDX-License-Identifier: MIT
  */
 
 #include "util/u_math.h"
@@ -645,15 +623,20 @@ static int peephole_mad_presub_bias(
 	struct rc_src_register src1_reg = inst_mad->U.I.SrcReg[1];
 	if ((src1_reg.Negate & inst_mad->U.I.DstReg.WriteMask) != 0 || src1_reg.Abs)
 		return 0;
-        struct rc_constant *constant = &c->Program.Constants.Constants[src1_reg.Index];
-	if (constant->Type != RC_CONSTANT_IMMEDIATE)
-		return 0;
-        for (i = 0; i < 4; i++) {
-		if (!(inst_mad->U.I.DstReg.WriteMask & (1 << i)))
-			continue;
-		swz = GET_SWZ(src1_reg.Swizzle, i);
-		if (swz >= RC_SWIZZLE_ZERO || constant->u.Immediate[swz] != 2.0)
+	if (src1_reg.File == RC_FILE_INLINE) {
+		if (rc_inline_to_float(src1_reg.Index) != 2.0f)
+			 return 0;
+	} else {
+	        struct rc_constant *constant = &c->Program.Constants.Constants[src1_reg.Index];
+		if (constant->Type != RC_CONSTANT_IMMEDIATE)
 			return 0;
+	        for (i = 0; i < 4; i++) {
+			if (!(inst_mad->U.I.DstReg.WriteMask & (1 << i)))
+				continue;
+			swz = GET_SWZ(src1_reg.Swizzle, i);
+			if (swz >= RC_SWIZZLE_ZERO || constant->u.Immediate[swz] != 2.0)
+				return 0;
+		}
 	}
 
 	/* Check src0. */
@@ -724,9 +707,28 @@ static int peephole_mul_omod(
 	for (i = 0; i < 2; i++) {
 		unsigned int j;
 		if (inst_mul->U.I.SrcReg[i].File != RC_FILE_CONSTANT
-			&& inst_mul->U.I.SrcReg[i].File != RC_FILE_TEMPORARY) {
+			&& inst_mul->U.I.SrcReg[i].File != RC_FILE_TEMPORARY
+			&& inst_mul->U.I.SrcReg[i].File != RC_FILE_NONE) {
 			return 0;
 		}
+
+		/* The only relevant case with constant swizzles we should check for
+		 * is multiply by one half.
+		 */
+		if (inst_mul->U.I.SrcReg[i].File == RC_FILE_NONE) {
+			for (j = 0; j < 4; j++) {
+				swz = GET_SWZ(inst_mul->U.I.SrcReg[i].Swizzle, j);
+				if (swz == RC_SWIZZLE_UNUSED) {
+					continue;
+				}
+				if (swz != RC_SWIZZLE_HALF) {
+					return 0;
+				} else {
+					omod_op = RC_OMOD_DIV_2;
+				}
+			}
+		}
+
 		if (inst_mul->U.I.SrcReg[i].File == RC_FILE_TEMPORARY) {
 			if (temp_index != -1) {
 				/* The instruction has two temp sources */
@@ -765,30 +767,32 @@ static int peephole_mul_omod(
 		}
 	}
 
-	if (!rc_src_reg_is_immediate(c, inst_mul->U.I.SrcReg[const_index].File,
-				inst_mul->U.I.SrcReg[const_index].Index)) {
-		return 0;
-	}
-	const_value = rc_get_constant_value(c,
-			inst_mul->U.I.SrcReg[const_index].Index,
-			inst_mul->U.I.SrcReg[const_index].Swizzle,
-			inst_mul->U.I.SrcReg[const_index].Negate,
-			chan);
+	if (omod_op == RC_OMOD_DISABLE) {
+		if (!rc_src_reg_is_immediate(c, inst_mul->U.I.SrcReg[const_index].File,
+					inst_mul->U.I.SrcReg[const_index].Index)) {
+			return 0;
+		}
+		const_value = rc_get_constant_value(c,
+				inst_mul->U.I.SrcReg[const_index].Index,
+				inst_mul->U.I.SrcReg[const_index].Swizzle,
+				inst_mul->U.I.SrcReg[const_index].Negate,
+				chan);
 
-	if (const_value == 2.0f) {
-		omod_op = RC_OMOD_MUL_2;
-	} else if (const_value == 4.0f) {
-		omod_op = RC_OMOD_MUL_4;
-	} else if (const_value == 8.0f) {
-		omod_op = RC_OMOD_MUL_8;
-	} else if (const_value == (1.0f / 2.0f)) {
-		omod_op = RC_OMOD_DIV_2;
-	} else if (const_value == (1.0f / 4.0f)) {
-		omod_op = RC_OMOD_DIV_4;
-	} else if (const_value == (1.0f / 8.0f)) {
-		omod_op = RC_OMOD_DIV_8;
-	} else {
-		return 0;
+		if (const_value == 2.0f) {
+			omod_op = RC_OMOD_MUL_2;
+		} else if (const_value == 4.0f) {
+			omod_op = RC_OMOD_MUL_4;
+		} else if (const_value == 8.0f) {
+			omod_op = RC_OMOD_MUL_8;
+		} else if (const_value == (1.0f / 2.0f)) {
+			omod_op = RC_OMOD_DIV_2;
+		} else if (const_value == (1.0f / 4.0f)) {
+			omod_op = RC_OMOD_DIV_4;
+		} else if (const_value == (1.0f / 8.0f)) {
+			omod_op = RC_OMOD_DIV_8;
+		} else {
+			return 0;
+		}
 	}
 
 	writer_list = rc_variable_list_get_writers_one_reader(var_list,
@@ -810,6 +814,15 @@ static int peephole_mul_omod(
 		if (var->Inst->U.I.SaturateMode != RC_SATURATE_NONE) {
 			return 0;
 		}
+
+		/* Empirical testing shows that DDX/DDY directly into output
+		 * with non-identity omod is problematic.
+		 */
+		if ((info->Opcode == RC_OPCODE_DDX || info->Opcode == RC_OPCODE_DDY) &&
+			inst_mul->U.I.DstReg.File == RC_FILE_OUTPUT) {
+			return 0;
+		}
+
 		for (inst = inst_mul->Prev; inst != var->Inst;
 							inst = inst->Prev) {
 			rc_for_all_reads_mask(inst, omod_filter_reader_cb,
@@ -837,9 +850,12 @@ static int peephole_mul_omod(
 	/* Rewrite the instructions */
 	for (var = writer_list->Item; var; var = var->Friend) {
 		struct rc_variable * writer = var;
-		unsigned conversion_swizzle = rc_make_conversion_swizzle(
-					writemask_sum,
-					inst_mul->U.I.DstReg.WriteMask);
+		unsigned conversion_swizzle = RC_SWIZZLE_UUUU;
+		for (chan = 0; chan < 4; chan++) {
+			unsigned swz = GET_SWZ(inst_mul->U.I.SrcReg[temp_index].Swizzle, chan);
+			if (swz <= RC_SWIZZLE_W)
+				SET_SWZ(conversion_swizzle, swz, chan);
+		}
 		writer->Inst->U.I.Omod = omod_op;
 		writer->Inst->U.I.DstReg.File = inst_mul->U.I.DstReg.File;
 		writer->Inst->U.I.DstReg.Index = inst_mul->U.I.DstReg.Index;
@@ -857,11 +873,9 @@ static int peephole_mul_omod(
  * 	0 if inst is still part of the program.
  * 	1 if inst is no longer part of the program.
  */
-static int peephole(struct radeon_compiler * c, struct rc_instruction * inst)
+int
+rc_opt_presubtract(struct radeon_compiler *c, struct rc_instruction *inst, void *data)
 {
-	if (!c->has_presub)
-		return 0;
-
 	switch(inst->U.I.Opcode) {
 	case RC_OPCODE_ADD:
 	{
@@ -1410,7 +1424,7 @@ static void transform_vertex_ROUND(struct radeon_compiler* c,
 }
 
 /**
- * Apply various optimizations specific to the A0 adress register loads.
+ * Apply various optimizations specific to the A0 address register loads.
  */
 static void optimize_A0_loads(struct radeon_compiler * c) {
 	struct rc_instruction * inst = c->Program.Instructions.Next;
@@ -1479,14 +1493,6 @@ void rc_optimize(struct radeon_compiler * c, void *user)
 
 	if (c->type != RC_FRAGMENT_PROGRAM) {
 		return;
-	}
-
-	/* Presubtract operations. */
-	inst = c->Program.Instructions.Next;
-	while(inst != &c->Program.Instructions) {
-		struct rc_instruction * cur = inst;
-		inst = inst->Next;
-		peephole(c, cur);
 	}
 
 	/* Output modifiers. */

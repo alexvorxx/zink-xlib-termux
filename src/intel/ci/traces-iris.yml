@@ -95,29 +95,6 @@ traces:
       checksum: 06d587a2b934295da6ad874b750b9c9d
     gl-intel-cml:
       checksum: 06d587a2b934295da6ad874b750b9c9d
-  gputest/pixmark-piano-v2.trace:
-    gl-intel-apl:
-      label: [crash]
-      checksum: 3899d6cd893b7c3ef6baa637cbd79690
-      text: |-
-        Sometimes hangchecks -- has triggered on glk at least, but is a common
-        trigger of hangchecks across multiple drivers because it's a very slow scene
-        to render.
-    gl-intel-glk:
-      label: [crash]
-      checksum: 3899d6cd893b7c3ef6baa637cbd79690
-    gl-intel-amly:
-      label: [crash]
-      checksum: 3899d6cd893b7c3ef6baa637cbd79690
-    gl-intel-kbl:
-      label: [crash]
-      checksum: 3899d6cd893b7c3ef6baa637cbd79690
-    gl-intel-whl:
-      label: [crash]
-      checksum: 3899d6cd893b7c3ef6baa637cbd79690
-    gl-intel-cml:
-      label: [crash]
-      checksum: 3899d6cd893b7c3ef6baa637cbd79690
   gputest/triangle-v2.trace:
     gl-intel-apl:
       checksum: 0a1524303e0772f6d869e4875fe1f401
@@ -418,17 +395,17 @@ traces:
       checksum: 757e0c9a37ecfc5a2efb10505f98ad95
   ror/ror-default.trace:
     gl-intel-apl:
-      checksum: dde3a4118bca61afdb5fcd94c30e61cd
+      checksum: e604a0d1ecea40e53431e0aa5e6c8276
     gl-intel-glk:
-      checksum: dde3a4118bca61afdb5fcd94c30e61cd
+      checksum: e604a0d1ecea40e53431e0aa5e6c8276
     gl-intel-amly:
-      checksum: dde3a4118bca61afdb5fcd94c30e61cd
+      checksum: e604a0d1ecea40e53431e0aa5e6c8276
     gl-intel-kbl:
-      checksum: dde3a4118bca61afdb5fcd94c30e61cd
+      checksum: e604a0d1ecea40e53431e0aa5e6c8276
     gl-intel-whl:
-      checksum: dde3a4118bca61afdb5fcd94c30e61cd
+      checksum: e604a0d1ecea40e53431e0aa5e6c8276
     gl-intel-cml:
-      checksum: dde3a4118bca61afdb5fcd94c30e61cd
+      checksum: e604a0d1ecea40e53431e0aa5e6c8276
   valve/counterstrike-source-v2.trace:
     gl-intel-apl:
       checksum: 838ed7482efd5e9d7bde2b67e62314c4
@@ -503,17 +480,17 @@ traces:
       checksum: 6a0e17d98eca33e80810b6158e998aa1
   blender/blender-demo-ellie_pose.trace:
     gl-intel-apl:
-      checksum: f11aa01f5ef3a563567e2a85998c418e
+      checksum: 7d0da76cdf72ff785a1ecc6d4e404e0c
     gl-intel-glx:
-      checksum: f11aa01f5ef3a563567e2a85998c418e
+      checksum: 7d0da76cdf72ff785a1ecc6d4e404e0c
     gl-intel-amly:
-      checksum: f11aa01f5ef3a563567e2a85998c418e
+      checksum: 7d0da76cdf72ff785a1ecc6d4e404e0c
     gl-intel-kbl:
-      checksum: f11aa01f5ef3a563567e2a85998c418e
+      checksum: 7d0da76cdf72ff785a1ecc6d4e404e0c
     gl-intel-whl:
-      checksum: f11aa01f5ef3a563567e2a85998c418e
+      checksum: 7d0da76cdf72ff785a1ecc6d4e404e0c
     gl-intel-cml:
-      checksum: f11aa01f5ef3a563567e2a85998c418e
+      checksum: 7d0da76cdf72ff785a1ecc6d4e404e0c
   unvanquished/unvanquished-lowest.trace:
     gl-intel-apl:
       checksum: 884096b6dd40e2f500d0837501287fac

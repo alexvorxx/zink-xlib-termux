@@ -30,9 +30,6 @@ deqp_args = [
 ]
 fraction = 3
 
-# Note that KHR-GL3* test sets include all tests from the previous
-# version, so we only need to run one test list (unlike dEQP-GLES,
-# where the test sets are separate).
 [[deqp]]
 deqp = "/deqp/external/openglcts/modules/glcts"
 caselists = [

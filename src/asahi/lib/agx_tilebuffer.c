@@ -46,8 +46,21 @@ agx_select_tile_size(unsigned bytes_per_pixel)
    unreachable("No supported tile size meets the bytes per pixel requirement");
 }
 
+static unsigned
+agx_shared_layout_from_tile_size(struct agx_tile_size t)
+{
+   if (t.width == 32 && t.height == 32)
+      return AGX_SHARED_LAYOUT_32X32;
+   else if (t.width == 32 && t.height == 16)
+      return AGX_SHARED_LAYOUT_32X16;
+   else if (t.width == 16 && t.height == 16)
+      return AGX_SHARED_LAYOUT_16X16;
+   else
+      unreachable("Invalid tile size");
+}
+
 struct agx_tilebuffer_layout
-agx_build_tilebuffer_layout(enum pipe_format *formats, uint8_t nr_cbufs,
+agx_build_tilebuffer_layout(const enum pipe_format *formats, uint8_t nr_cbufs,
                             uint8_t nr_samples, bool layered)
 {
    struct agx_tilebuffer_layout tib = {
@@ -59,6 +72,12 @@ agx_build_tilebuffer_layout(enum pipe_format *formats, uint8_t nr_cbufs,
 
    for (unsigned rt = 0; rt < nr_cbufs; ++rt) {
       tib.logical_format[rt] = formats[rt];
+
+      /* If there are gaps in the layout, don't allocate holes. Obscure,
+       * PIPE_FORMAT_NONE has a size of 1, not 0.
+       */
+      if (formats[rt] == PIPE_FORMAT_NONE)
+         continue;
 
       /* Require natural alignment for tilebuffer allocations. This could be
        * optimized, but this shouldn't be a problem in practice.
@@ -114,6 +133,8 @@ agx_build_tilebuffer_layout(enum pipe_format *formats, uint8_t nr_cbufs,
    tib.sample_size_B = ALIGN_POT(offset_B, 8);
 
    tib.tile_size = agx_select_tile_size(tib.sample_size_B * nr_samples);
+
+   agx_tilebuffer_pack_usc(&tib);
    return tib;
 }
 
@@ -136,19 +157,6 @@ agx_tilebuffer_supports_mask(struct agx_tilebuffer_layout *tib, unsigned rt)
    return agx_internal_format_supports_mask((enum agx_internal_formats)fmt);
 }
 
-static unsigned
-agx_shared_layout_from_tile_size(struct agx_tile_size t)
-{
-   if (t.width == 32 && t.height == 32)
-      return AGX_SHARED_LAYOUT_32X32;
-   else if (t.width == 32 && t.height == 16)
-      return AGX_SHARED_LAYOUT_32X16;
-   else if (t.width == 16 && t.height == 16)
-      return AGX_SHARED_LAYOUT_16X16;
-   else
-      unreachable("Invalid tile size");
-}
-
 uint32_t
 agx_tilebuffer_total_size(struct agx_tilebuffer_layout *tib)
 {
@@ -157,13 +165,18 @@ agx_tilebuffer_total_size(struct agx_tilebuffer_layout *tib)
 }
 
 void
-agx_usc_tilebuffer(struct agx_usc_builder *b, struct agx_tilebuffer_layout *tib)
+agx_tilebuffer_pack_usc(struct agx_tilebuffer_layout *tib)
 {
-   agx_usc_pack(b, SHARED, cfg) {
-      cfg.uses_shared_memory = true;
-      cfg.layout = agx_shared_layout_from_tile_size(tib->tile_size);
-      cfg.sample_stride_in_8_bytes = tib->sample_size_B / 8;
-      cfg.sample_count = tib->nr_samples;
-      cfg.bytes_per_threadgroup = agx_tilebuffer_total_size(tib);
+   agx_pack(&tib->usc, USC_SHARED, cfg) {
+      if (tib->nr_samples > 0) {
+         cfg.uses_shared_memory = true;
+         cfg.layout = agx_shared_layout_from_tile_size(tib->tile_size);
+         cfg.sample_stride_in_8_bytes = tib->sample_size_B / 8;
+         cfg.sample_count = tib->nr_samples;
+         cfg.bytes_per_threadgroup = agx_tilebuffer_total_size(tib);
+      } else {
+         cfg.layout = AGX_SHARED_LAYOUT_VERTEX_COMPUTE;
+         cfg.bytes_per_threadgroup = 65536;
+      }
    }
 }

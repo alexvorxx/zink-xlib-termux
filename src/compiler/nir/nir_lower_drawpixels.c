@@ -231,6 +231,8 @@ lower_drawpixels_instr(nir_builder *b, nir_instr *instr, void *cb_data)
    case nir_intrinsic_load_input: {
       if (nir_intrinsic_io_semantics(intr).location == VARYING_SLOT_TEX0)
          return lower_texcoord(b, state, intr);
+      if (nir_intrinsic_io_semantics(intr).location == VARYING_SLOT_COL0)
+         return lower_color(b, state, intr);
       break;
    }
    default:
@@ -252,7 +254,6 @@ nir_lower_drawpixels(nir_shader *shader,
    assert(shader->info.stage == MESA_SHADER_FRAGMENT);
 
    return nir_shader_instructions_pass(shader, lower_drawpixels_instr,
-                                       nir_metadata_block_index |
-                                          nir_metadata_dominance,
+                                       nir_metadata_control_flow,
                                        &state);
 }

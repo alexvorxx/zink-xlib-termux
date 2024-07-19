@@ -52,7 +52,7 @@ intel_set_ps_dispatch_state(struct GENX(3DSTATE_PS) *ps,
    bool enable_16 = prog_data->dispatch_16;
    bool enable_32 = prog_data->dispatch_32;
 
-#if GFX_VER >= 9
+#if GFX_VER >= 9 && GFX_VER < 20
    /* SKL PRMs, Volume 2a: Command Reference: Instructions:
     *    3DSTATE_PS_BODY::8 Pixel Dispatch Enable:
     *
@@ -64,7 +64,7 @@ intel_set_ps_dispatch_state(struct GENX(3DSTATE_PS) *ps,
        ps->RenderTargetResolveType == RESOLVE_PARTIAL ||
        ps->RenderTargetResolveType == RESOLVE_FULL)
       enable_8 = false;
-#elif GFX_VER >= 8
+#elif GFX_VER == 8
    /* BDW has the same wording as SKL, except some of the fields mentioned
     * don't exist...
     */
@@ -161,19 +161,6 @@ intel_set_ps_dispatch_state(struct GENX(3DSTATE_PS) *ps,
    ps->_16PixelDispatchEnable = enable_16;
    ps->_32PixelDispatchEnable = enable_32;
 #endif
-}
-
-#endif
-
-#if GFX_VERx10 >= 125
-
-UNUSED static int
-preferred_slm_allocation_size(const struct intel_device_info *devinfo)
-{
-   if (devinfo->platform == INTEL_PLATFORM_LNL && devinfo->revision == 0)
-      return SLM_ENCODES_128K;
-
-   return 0;
 }
 
 #endif

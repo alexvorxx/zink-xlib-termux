@@ -14,7 +14,7 @@ Taken from (https://github.com/termux/termux-packages/issues/10103#issuecomment-
 
   $ pkg install -y clang lld binutils cmake autoconf automake libtool '*ndk*' make python git libandroid-shmem-static ninja llvm bison flex libx11 xorgproto libdrm libpixman libxfixes libjpeg-turbo xtrans libxxf86vm xorg-xrandr xorg-font-util xorg-util-macros libxfont2 libxkbfile libpciaccess xcb-util-renderutil xcb-util-image xcb-util-keysyms xcb-util-wm xorg-xkbcomp xkeyboard-config libxdamage libxinerama libxshmfence
 
-  $ pip install meson mako
+  $ pip install meson mako pyyaml
 
 Build Mesa Zink
 ---------------
@@ -71,7 +71,7 @@ Bug reports
 -----------
 
 If you think something isn't working properly, please file a bug report
-(`docs/bugs.rst <https://mesa3d.org/bugs.html>`_).
+(`docs/bugs.rst <https://docs.mesa3d.org/bugs.html>`_).
 
 
 Contributing
@@ -79,6 +79,6 @@ Contributing
 
 Contributions are welcome, and step-by-step instructions can be found in our
 documentation (`docs/submittingpatches.rst
-<https://mesa3d.org/submittingpatches.html>`_).
+<https://docs.mesa3d.org/submittingpatches.html>`_).
 
 Note that Mesa uses gitlab for patches submission, review and discussions.

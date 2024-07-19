@@ -313,7 +313,10 @@ get_reg_specified(struct ra_ctx *ctx, struct ir3_register *reg, physreg_t physre
 static unsigned
 reg_file_size(struct ir3_register *reg)
 {
-   return RA_SHARED_SIZE;
+   if (reg->flags & IR3_REG_HALF)
+      return RA_SHARED_HALF_SIZE;
+   else
+      return RA_SHARED_SIZE;
 }
 
 static physreg_t
@@ -516,6 +519,13 @@ try_demote_instruction(struct ra_ctx *ctx, struct ir3_instruction *instr)
    /* First, check restrictions. */
    switch (opc_cat(instr->opc)) {
    case 1:
+      /* MOVMSK is special and can't be demoted. It also has no sources so must
+       * go before the check below.
+       */
+      if (instr->opc == OPC_MOVMSK)
+         return false;
+
+      assert(instr->srcs_count >= 1);
       if (!(instr->srcs[0]->flags & (IR3_REG_CONST | IR3_REG_IMMED)))
          return false;
       break;
@@ -751,10 +761,14 @@ can_demote_src(struct ir3_instruction *instr)
    case OPC_META_COLLECT:
       return false;
    case OPC_MOV:
-      /* non-shared -> shared floating-point conversions don't work */
+      /* non-shared -> shared floating-point conversions and
+       * 8-bit sign extension don't work.
+       */
       return (!(instr->dsts[0]->flags & IR3_REG_SHARED) ||
-          (full_type(instr->cat1.src_type) != TYPE_F32 &&
-           full_type(instr->cat1.dst_type) != TYPE_F32));
+              !((full_type(instr->cat1.src_type) == TYPE_F32 ||
+                 full_type(instr->cat1.dst_type) == TYPE_F32) ||
+                (instr->cat1.src_type == TYPE_U8 &&
+                 full_type(instr->cat1.dst_type) == TYPE_S32)));
    default:
       return (!is_alu(instr) && !is_sfu(instr)) ||
          !(instr->dsts[0]->flags & IR3_REG_SHARED);
@@ -946,11 +960,14 @@ handle_split(struct ra_ctx *ctx, struct ir3_instruction *split)
       struct ir3_instruction *spill_split =
          ir3_instr_create(split->block, OPC_META_SPLIT, 1, 1);
       struct ir3_register *dst = __ssa_dst(spill_split);
-      ir3_src_create(spill_split, INVALID_REG, IR3_REG_SSA)->def =
-         src_interval->spill_def;
+      struct ir3_register *src =
+         ir3_src_create(spill_split, INVALID_REG, IR3_REG_SSA);
+      src->def = src_interval->spill_def;
+      src->wrmask = src_interval->spill_def->wrmask;
       spill_split->split.off = split->split.off;
       ir3_instr_move_after(spill_split, split);
       dst_interval->spill_def = dst;
+      list_del(&split->node);
       return;
    }
 
@@ -1182,7 +1199,7 @@ handle_block(struct ra_ctx *ctx, struct ir3_block *block)
    if (block->predecessors_count > 1)
       record_pred_live_outs(ctx, block);
 
-   foreach_instr (instr, &block->instr_list) {
+   foreach_instr_safe (instr, &block->instr_list) {
       di(instr, "processing");
 
       handle_instr(ctx, instr);
@@ -1381,9 +1398,10 @@ finalize(struct ir3 *ir)
 }
 
 void
-ir3_ra_shared(struct ir3_shader_variant *v, struct ir3_liveness *live)
+ir3_ra_shared(struct ir3_shader_variant *v, struct ir3_liveness **live_ptr)
 {
    struct ra_ctx ctx;
+   struct ir3_liveness *live = *live_ptr;
 
    ra_ctx_init(&ctx);
    ctx.intervals = rzalloc_array(NULL, struct ra_interval,
@@ -1411,5 +1429,17 @@ ir3_ra_shared(struct ir3_shader_variant *v, struct ir3_liveness *live)
 
    ir3_ra_validate(v, RA_FULL_SIZE, RA_HALF_SIZE, live->block_count, true);
    finalize(v->ir);
+
+   /* Recalculate liveness and register pressure now that additional values have
+    * been added.
+    * TODO we should only do this if any values have been spilled/reloaded.
+    * Note: since we don't have to recreate merge sets, we have to manually copy
+    * interval_offset to the new liveness struct.
+    */
+   unsigned interval_offset = live->interval_offset;
+   void *live_mem_ctx = ralloc_parent(live);
+   ralloc_free(live);
+   *live_ptr = ir3_calc_liveness(live_mem_ctx, v->ir);
+   (*live_ptr)->interval_offset = interval_offset;
 }
 

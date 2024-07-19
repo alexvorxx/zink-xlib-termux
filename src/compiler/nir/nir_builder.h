@@ -44,6 +44,9 @@ typedef struct nir_builder {
     * and header phis are not updated). */
    bool update_divergence;
 
+   /* Float_controls2 bits. See nir_alu_instr for details. */
+   uint32_t fp_fast_math;
+
    nir_shader *shader;
    nir_function_impl *impl;
 } nir_builder;
@@ -182,6 +185,7 @@ nir_shader_intrinsics_pass(nir_shader *shader,
 }
 
 void nir_builder_instr_insert(nir_builder *build, nir_instr *instr);
+void nir_builder_instr_insert_at_top(nir_builder *build, nir_instr *instr);
 
 static inline nir_instr *
 nir_builder_last_instr(nir_builder *build)
@@ -250,9 +254,7 @@ nir_undef(nir_builder *build, unsigned num_components, unsigned bit_size)
    if (!undef)
       return NULL;
 
-   nir_instr_insert(nir_before_impl(build->impl), &undef->instr);
-   if (build->update_divergence)
-      nir_update_instr_divergence(build->shader, &undef->instr);
+   nir_builder_instr_insert_at_top(build, &undef->instr);
 
    return &undef->def;
 }
@@ -414,28 +416,66 @@ nir_imm_ivec2(nir_builder *build, int x, int y)
 }
 
 static inline nir_def *
-nir_imm_ivec3(nir_builder *build, int x, int y, int z)
+nir_imm_ivec3_intN(nir_builder *build, int x, int y, int z, unsigned bit_size)
 {
    nir_const_value v[3] = {
-      nir_const_value_for_int(x, 32),
-      nir_const_value_for_int(y, 32),
-      nir_const_value_for_int(z, 32),
+      nir_const_value_for_int(x, bit_size),
+      nir_const_value_for_int(y, bit_size),
+      nir_const_value_for_int(z, bit_size),
    };
 
-   return nir_build_imm(build, 3, 32, v);
+   return nir_build_imm(build, 3, bit_size, v);
+}
+
+static inline nir_def *
+nir_imm_uvec2_intN(nir_builder *build, unsigned x, unsigned y,
+                   unsigned bit_size)
+{
+   nir_const_value v[2] = {
+      nir_const_value_for_uint(x, bit_size),
+      nir_const_value_for_uint(y, bit_size),
+   };
+
+   return nir_build_imm(build, 2, bit_size, v);
+}
+
+static inline nir_def *
+nir_imm_uvec3_intN(nir_builder *build, unsigned x, unsigned y, unsigned z,
+                   unsigned bit_size)
+{
+   nir_const_value v[3] = {
+      nir_const_value_for_uint(x, bit_size),
+      nir_const_value_for_uint(y, bit_size),
+      nir_const_value_for_uint(z, bit_size),
+   };
+
+   return nir_build_imm(build, 3, bit_size, v);
+}
+
+static inline nir_def *
+nir_imm_ivec3(nir_builder *build, int x, int y, int z)
+{
+   return nir_imm_ivec3_intN(build, x, y, z, 32);
+}
+
+static inline nir_def *
+nir_imm_ivec4_intN(nir_builder *build, int x, int y, int z, int w,
+                   unsigned bit_size)
+{
+   nir_const_value v[4] = {
+      nir_const_value_for_int(x, bit_size),
+      nir_const_value_for_int(y, bit_size),
+      nir_const_value_for_int(z, bit_size),
+      nir_const_value_for_int(w, bit_size),
+   };
+
+   return nir_build_imm(build, 4, bit_size, v);
 }
 
 static inline nir_def *
 nir_imm_ivec4(nir_builder *build, int x, int y, int z, int w)
 {
-   nir_const_value v[4] = {
-      nir_const_value_for_int(x, 32),
-      nir_const_value_for_int(y, 32),
-      nir_const_value_for_int(z, 32),
-      nir_const_value_for_int(w, 32),
-   };
-
-   return nir_build_imm(build, 4, 32, v);
+   return nir_imm_ivec4_intN(build, x, y, z, w, 32);
 }
 
 nir_def *
@@ -574,6 +614,7 @@ nir_mov_alu(nir_builder *build, nir_alu_src src, unsigned num_components)
    nir_def_init(&mov->instr, &mov->def, num_components,
                 nir_src_bit_size(src.src));
    mov->exact = build->exact;
+   mov->fp_fast_math = build->fp_fast_math;
    mov->src[0] = src;
    nir_builder_instr_insert(build, &mov->instr);
 
@@ -867,6 +908,30 @@ nir_isub_imm(nir_builder *build, uint64_t y, nir_def *x)
 }
 
 static inline nir_def *
+nir_imax_imm(nir_builder *build, nir_def *x, int64_t y)
+{
+   return nir_imax(build, x, nir_imm_intN_t(build, y, x->bit_size));
+}
+
+static inline nir_def *
+nir_imin_imm(nir_builder *build, nir_def *x, int64_t y)
+{
+   return nir_imin(build, x, nir_imm_intN_t(build, y, x->bit_size));
+}
+
+static inline nir_def *
+nir_umax_imm(nir_builder *build, nir_def *x, uint64_t y)
+{
+   return nir_umax(build, x, nir_imm_intN_t(build, y, x->bit_size));
+}
+
+static inline nir_def *
+nir_umin_imm(nir_builder *build, nir_def *x, uint64_t y)
+{
+   return nir_umin(build, x, nir_imm_intN_t(build, y, x->bit_size));
+}
+
+static inline nir_def *
 _nir_mul_imm(nir_builder *build, nir_def *x, uint64_t y, bool amul)
 {
    assert(x->bit_size <= 64);
@@ -921,6 +986,12 @@ static inline nir_def *
 nir_fdiv_imm(nir_builder *build, nir_def *x, double y)
 {
    return nir_fdiv(build, x, nir_imm_floatN_t(build, y, x->bit_size));
+}
+
+static inline nir_def *
+nir_fpow_imm(nir_builder *build, nir_def *x, double y)
+{
+   return nir_fpow(build, x, nir_imm_floatN_t(build, y, x->bit_size));
 }
 
 static inline nir_def *
@@ -1601,6 +1672,16 @@ nir_build_deref_follower(nir_builder *b, nir_deref_instr *parent,
                                                  leader->cast.ptr_stride,
                                                  leader->cast.align_mul,
                                                  leader->cast.align_offset);
+
+   case nir_deref_type_ptr_as_array: {
+      assert(parent->deref_type == nir_deref_type_array ||
+             parent->deref_type == nir_deref_type_ptr_as_array ||
+             parent->deref_type == nir_deref_type_cast);
+      nir_def *index = nir_i2iN(b, leader->arr.index.ssa,
+                                parent->def.bit_size);
+      return nir_build_deref_ptr_as_array(b, parent, index);
+   }
+
    default:
       unreachable("Invalid deref instruction type");
    }
@@ -1832,7 +1913,7 @@ nir_decl_reg(nir_builder *b, unsigned num_components, unsigned bit_size,
    nir_intrinsic_set_divergent(decl, true);
    nir_def_init(&decl->instr, &decl->def, 1, 32);
 
-   nir_instr_insert(nir_before_impl(b->impl), &decl->instr);
+   nir_builder_instr_insert_at_top(b, &decl->instr);
 
    return &decl->def;
 }
@@ -2031,15 +2112,25 @@ nir_goto(nir_builder *build, struct nir_block *target)
 }
 
 static inline void
-nir_goto_if(nir_builder *build, struct nir_block *target, nir_src cond,
+nir_goto_if(nir_builder *build, struct nir_block *target, nir_def *cond,
             struct nir_block *else_target)
 {
    assert(!build->impl->structured);
    nir_jump_instr *jump = nir_jump_instr_create(build->shader, nir_jump_goto_if);
-   jump->condition = cond;
+   jump->condition = nir_src_for_ssa(cond);
    jump->target = target;
    jump->else_target = else_target;
    nir_builder_instr_insert(build, &jump->instr);
+}
+
+static inline void
+nir_break_if(nir_builder *build, nir_def *cond)
+{
+   nir_if *nif = nir_push_if(build, cond);
+   {
+      nir_jump(build, nir_jump_break);
+   }
+   nir_pop_if(build, nif);
 }
 
 static inline void
@@ -2054,6 +2145,24 @@ nir_build_call(nir_builder *build, nir_function *func, size_t count,
    }
 
    nir_builder_instr_insert(build, &call->instr);
+}
+
+static inline void
+nir_discard(nir_builder *build)
+{
+   if (build->shader->options->discard_is_demote)
+      nir_demote(build);
+   else
+      nir_terminate(build);
+}
+
+static inline void
+nir_discard_if(nir_builder *build, nir_def *src)
+{
+   if (build->shader->options->discard_is_demote)
+      nir_demote_if(build, src);
+   else
+      nir_terminate_if(build, src);
 }
 
 /*
@@ -2083,6 +2192,14 @@ nir_scoped_memory_barrier(nir_builder *b,
 
 nir_def *
 nir_gen_rect_vertices(nir_builder *b, nir_def *z, nir_def *w);
+
+/* Emits a printf in the same way nir_lower_printf(). Each of the variadic
+ * argument is a pointer to a nir_def value.
+ */
+void nir_printf_fmt(nir_builder *b,
+                    bool use_printf_base_identifier,
+                    unsigned ptr_bit_size,
+                    const char *fmt, ...);
 
 #ifdef __cplusplus
 } /* extern "C" */

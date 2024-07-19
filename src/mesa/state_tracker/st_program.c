@@ -382,7 +382,12 @@ st_prog_to_nir_postprocess(struct st_context *st, nir_shader *nir,
 
    NIR_PASS(_, nir, st_nir_lower_wpos_ytransform, prog, screen);
    NIR_PASS(_, nir, nir_lower_system_values);
-   NIR_PASS(_, nir, nir_lower_compute_system_values, NULL);
+
+   struct nir_lower_compute_system_values_options cs_options = {
+      .has_base_global_invocation_id = false,
+      .has_base_workgroup_id = false,
+   };
+   NIR_PASS(_, nir, nir_lower_compute_system_values, &cs_options);
 
    /* Optimise NIR */
    NIR_PASS(_, nir, nir_opt_constant_folding);
@@ -582,7 +587,6 @@ static const struct nir_shader_compiler_options draw_nir_options = {
    .lower_fsat = true,
    .lower_bitfield_insert = true,
    .lower_bitfield_extract = true,
-   .lower_fdot = true,
    .lower_fdph = true,
    .lower_ffma16 = true,
    .lower_ffma32 = true,
@@ -630,7 +634,7 @@ static const struct nir_shader_compiler_options draw_nir_options = {
 static struct nir_shader *
 get_nir_shader(struct st_context *st, struct gl_program *prog, bool is_draw)
 {
-   if (!is_draw && prog->nir) {
+   if ((!is_draw || !st->ctx->Const.PackedDriverUniformStorage) && prog->nir) {
       nir_shader *nir = prog->nir;
 
       /* The first shader variant takes ownership of NIR, so that there is
@@ -646,7 +650,8 @@ get_nir_shader(struct st_context *st, struct gl_program *prog, bool is_draw)
    const struct nir_shader_compiler_options *options =
       is_draw ? &draw_nir_options : st_get_nir_compiler_options(st, prog->info.stage);
 
-   if (is_draw) {
+   if (is_draw && st->ctx->Const.PackedDriverUniformStorage &&
+       (!prog->shader_program || prog->shader_program->data->LinkStatus != LINKING_SKIPPED)) {
       assert(prog->base_serialized_nir);
       blob_reader_init(&blob_reader, prog->base_serialized_nir, prog->base_serialized_nir_size);
    } else {
@@ -665,9 +670,7 @@ lower_ucp(struct st_context *st,
    if (nir->info.outputs_written & VARYING_BIT_CLIP_DIST0)
       NIR_PASS(_, nir, nir_lower_clip_disable, ucp_enables);
    else {
-      struct pipe_screen *screen = st->screen;
-      bool can_compact = screen->get_param(screen,
-                                           PIPE_CAP_NIR_COMPACT_ARRAYS);
+      bool can_compact = nir->options->compact_arrays;
       bool use_eye = st->ctx->_Shader->CurrentProgram[MESA_SHADER_VERTEX] != NULL;
 
       gl_state_index16 clipplane_state[MAX_CLIP_PLANES][STATE_LENGTH] = {{0}};
@@ -1444,7 +1447,7 @@ st_program_string_notify( struct gl_context *ctx,
    } else if (target == GL_VERTEX_PROGRAM_ARB) {
       if (!st_translate_vertex_program(st, prog))
          return false;
-      if (st->lower_point_size &&
+      if (st->add_point_size &&
           gl_nir_can_add_pointsize_to_program(&st->ctx->Const, prog)) {
          prog->skip_pointsize_xfb = true;
          NIR_PASS(_, prog->nir, gl_nir_add_point_size);

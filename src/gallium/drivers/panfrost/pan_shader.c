@@ -85,9 +85,7 @@ lower_load_poly_line_smooth_enabled(nir_shader *nir,
             continue;
 
          b.cursor = nir_before_instr(instr);
-         nir_def_rewrite_uses(&intrin->def, nir_imm_true(&b));
-
-         nir_instr_remove(instr);
+         nir_def_replace(&intrin->def, nir_imm_true(&b));
          nir_instr_free(instr);
       }
    }
@@ -416,16 +414,21 @@ panfrost_create_shader_state(struct pipe_context *pctx,
    struct panfrost_device *dev = pan_device(pctx->screen);
    pan_shader_preprocess(nir, panfrost_device_gpu_id(dev));
 
+   /* Vertex shaders get passed images through the vertex attribute descriptor
+    * array. We need to add an offset to all image intrinsics so they point
+    * to the right attribute.
+    */
+   if (nir->info.stage == MESA_SHADER_VERTEX && dev->arch <= 7) {
+      NIR_PASS_V(nir, pan_lower_image_index,
+                 util_bitcount64(nir->info.inputs_read));
+   }
+
    /* If this shader uses transform feedback, compile the transform
     * feedback program. This is a special shader variant.
     */
    struct panfrost_context *ctx = pan_context(pctx);
 
    if (so->nir->xfb_info) {
-      nir_shader *xfb = nir_shader_clone(NULL, so->nir);
-      xfb->info.name = ralloc_asprintf(xfb, "%s@xfb", xfb->info.name);
-      xfb->info.internal = true;
-
       so->xfb = calloc(1, sizeof(struct panfrost_compiled_shader));
       so->xfb->key.vs_is_xfb = true;
 

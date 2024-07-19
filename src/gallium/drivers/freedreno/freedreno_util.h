@@ -172,7 +172,7 @@ struct __perf_time_state {
        ? os_time_get_nano()                                                    \
        : 0)
 
-#define DEFINE_CAST(parent, child)                                             \
+#define FD_DEFINE_CAST(parent, child)                                          \
    static inline struct child *child(struct parent *x)                         \
    {                                                                           \
       return (struct child *)x;                                                \
@@ -401,7 +401,7 @@ __OUT_IB5(struct fd_ringbuffer *ring, struct fd_ringbuffer *target)
  */
 #define HW_QUERY_BASE_REG REG_AXXX_CP_SCRATCH_REG4
 
-#ifdef DEBUG
+#if MESA_DEBUG
 #define __EMIT_MARKER 1
 #else
 #define __EMIT_MARKER 0

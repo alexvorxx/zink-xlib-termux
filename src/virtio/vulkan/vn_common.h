@@ -120,7 +120,6 @@ enum vn_perf {
    VN_PERF_NO_ASYNC_QUEUE_SUBMIT = 1ull << 2,
    VN_PERF_NO_EVENT_FEEDBACK = 1ull << 3,
    VN_PERF_NO_FENCE_FEEDBACK = 1ull << 4,
-   VN_PERF_NO_MEMORY_SUBALLOC = 1ull << 5,
    VN_PERF_NO_CMD_BATCHING = 1ull << 6,
    VN_PERF_NO_SEMAPHORE_FEEDBACK = 1ull << 7,
    VN_PERF_NO_QUERY_FEEDBACK = 1ull << 8,
@@ -182,9 +181,6 @@ struct vn_refcount {
 struct vn_env {
    uint64_t debug;
    uint64_t perf;
-   /* zero will be overridden to UINT32_MAX as no limit */
-   uint32_t draw_cmd_batch_limit;
-   uint32_t relax_base_sleep_us;
 };
 extern struct vn_env vn_env;
 
@@ -207,10 +203,47 @@ struct vn_watchdog {
    atomic_bool alive;
 };
 
+enum vn_relax_reason {
+   VN_RELAX_REASON_RING_SEQNO,
+   VN_RELAX_REASON_TLS_RING_SEQNO,
+   VN_RELAX_REASON_RING_SPACE,
+   VN_RELAX_REASON_FENCE,
+   VN_RELAX_REASON_SEMAPHORE,
+   VN_RELAX_REASON_QUERY,
+};
+
+/* vn_relax_profile defines the driver side polling behavior
+ *
+ * - base_sleep_us:
+ *   - the minimum polling interval after initial busy waits
+ *
+ * - busy_wait_order:
+ *   - initial 2 ^ busy_wait_order times thrd_yield()
+ *
+ * - warn_order:
+ *   - number of polls at order N:
+ *     - fn_cnt(N) = 2 ^ N
+ *   - interval of poll at order N:
+ *     - fn_step(N) = base_sleep_us * (2 ^ (N - busy_wait_order))
+ *   - warn occasionally if we have slept at least:
+ *     - for (i = busy_wait_order; i < warn_order; i++)
+ *          total_sleep += fn_cnt(i) * fn_step(i)
+ *
+ * - abort_order:
+ *   - similar to warn_order, but would abort() instead
+ */
+struct vn_relax_profile {
+   uint32_t base_sleep_us;
+   uint32_t busy_wait_order;
+   uint32_t warn_order;
+   uint32_t abort_order;
+};
+
 struct vn_relax_state {
    struct vn_instance *instance;
    uint32_t iter;
-   const char *reason;
+   const struct vn_relax_profile profile;
+   const char *reason_str;
 };
 
 /* TLS ring
@@ -363,7 +396,7 @@ vn_watchdog_fini(struct vn_watchdog *watchdog)
 }
 
 struct vn_relax_state
-vn_relax_init(struct vn_instance *instance, const char *reason);
+vn_relax_init(struct vn_instance *instance, enum vn_relax_reason reason);
 
 void
 vn_relax(struct vn_relax_state *state);

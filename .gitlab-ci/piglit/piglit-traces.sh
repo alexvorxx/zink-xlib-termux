@@ -8,7 +8,7 @@ set -ex
 export PAGER=cat  # FIXME: export everywhere
 
 INSTALL=$(realpath -s "$PWD"/install)
-S3_ARGS="--token-file ${CI_JOB_JWT_FILE}"
+S3_ARGS="--token-file ${S3_JWT_FILE}"
 
 RESULTS=$(realpath -s "$PWD"/results)
 mkdir -p "$RESULTS"
@@ -47,14 +47,15 @@ export WINEDLLOVERRIDES="mscoree=d;mshtml=d"  # FIXME: drop, not needed anymore?
 # Modifiying here directly LD_LIBRARY_PATH may cause problems when
 # using a command wrapper. Hence, we will just set it when running the
 # command.
-export __LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$INSTALL/lib/"
+export __LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$INSTALL/lib/:$INSTALL/lib/dri"
 if [ -n "${VK_DRIVER}" ]; then
   # Set environment for DXVK.
   export DXVK_LOG_LEVEL="info"
   export DXVK_LOG="$RESULTS/dxvk"
   [ -d "$DXVK_LOG" ] || mkdir -pv "$DXVK_LOG"
   export DXVK_STATE_CACHE=0
-  export VK_ICD_FILENAMES="$INSTALL/share/vulkan/icd.d/${VK_DRIVER}_icd.${VK_CPU:-$(uname -m)}.json"
+  ARCH=$(uname -m)
+  export VK_DRIVER_FILES="$INSTALL/share/vulkan/icd.d/${VK_DRIVER}_icd.$ARCH.json"
 fi
 
 # Sanity check to ensure that our environment is sufficient to make our tests
@@ -117,8 +118,7 @@ else
       mkdir -p /tmp/.X11-unix
 
       env \
-        VK_ICD_FILENAMES="/install/share/vulkan/icd.d/${VK_DRIVER}_icd.$(uname -m).json" \
-	weston -Bheadless-backend.so --use-gl -Swayland-0 --xwayland --idle-time=0 &
+        weston -Bheadless-backend.so --use-gl -Swayland-0 --xwayland --idle-time=0 &
 
       while [ ! -S "$WESTON_X11_SOCK" ]; do sleep 1; done
     }
@@ -188,6 +188,15 @@ RUN_CMD="export LD_LIBRARY_PATH=$__LD_LIBRARY_PATH; $SANITY_MESA_VERSION_CMD && 
 # have), you could get a corrupted local trace that would spuriously fail the
 # run.
 rm -rf replayer-db
+
+# ANGLE: download compiled ANGLE runtime and the compiled restricted traces (all-in-one package)
+if [ -n "$PIGLIT_REPLAY_ANGLE_TAG" ]; then
+  ARCH="amd64"
+  FILE="angle-bin-${ARCH}-${PIGLIT_REPLAY_ANGLE_TAG}.tar.zst"
+  ci-fairy s3cp $S3_ARGS "https://s3.freedesktop.org/mesa-tracie-private/${FILE}" "${FILE}"
+  mkdir -p replayer-db/angle
+  tar --zstd -xf ${FILE} -C replayer-db/angle/
+fi
 
 if ! eval $RUN_CMD;
 then

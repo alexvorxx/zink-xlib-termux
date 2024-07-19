@@ -1,25 +1,7 @@
 /*
  * Copyright © 2018 Valve Corporation
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
- * IN THE SOFTWARE.
- *
+ * SPDX-License-Identifier: MIT
  */
 
 #include "aco_ir.h"
@@ -97,9 +79,8 @@ insert_parallelcopies(ssa_elimination_ctx& ctx)
       }
 
       std::vector<aco_ptr<Instruction>>::iterator it = std::next(block.instructions.begin(), idx);
-      aco_ptr<Pseudo_instruction> pc{
-         create_instruction<Pseudo_instruction>(aco_opcode::p_parallelcopy, Format::PSEUDO,
-                                                logical_phi_info.size(), logical_phi_info.size())};
+      aco_ptr<Instruction> pc{create_instruction(aco_opcode::p_parallelcopy, Format::PSEUDO,
+                                                 logical_phi_info.size(), logical_phi_info.size())};
       unsigned i = 0;
       for (auto& phi_info : logical_phi_info) {
          pc->definitions[i] = phi_info.def;
@@ -107,7 +88,7 @@ insert_parallelcopies(ssa_elimination_ctx& ctx)
          i++;
       }
       /* this shouldn't be needed since we're only copying vgprs */
-      pc->tmp_in_scc = false;
+      pc->pseudo().tmp_in_scc = false;
       block.instructions.insert(it, std::move(pc));
    }
 
@@ -122,18 +103,17 @@ insert_parallelcopies(ssa_elimination_ctx& ctx)
       --it;
       assert((*it)->isBranch());
       PhysReg scratch_sgpr = (*it)->definitions[0].physReg();
-      aco_ptr<Pseudo_instruction> pc{
-         create_instruction<Pseudo_instruction>(aco_opcode::p_parallelcopy, Format::PSEUDO,
-                                                linear_phi_info.size(), linear_phi_info.size())};
+      aco_ptr<Instruction> pc{create_instruction(aco_opcode::p_parallelcopy, Format::PSEUDO,
+                                                 linear_phi_info.size(), linear_phi_info.size())};
       unsigned i = 0;
       for (auto& phi_info : linear_phi_info) {
          pc->definitions[i] = phi_info.def;
          pc->operands[i] = phi_info.op;
          i++;
       }
-      pc->tmp_in_scc = block.scc_live_out;
-      pc->scratch_sgpr = scratch_sgpr;
-      pc->needs_scratch_reg = true;
+      pc->pseudo().tmp_in_scc = block.scc_live_out;
+      pc->pseudo().scratch_sgpr = scratch_sgpr;
+      pc->pseudo().needs_scratch_reg = true;
       block.instructions.insert(it, std::move(pc));
    }
 }
@@ -418,7 +398,8 @@ try_optimize_branching_sequence(ssa_elimination_ctx& ctx, Block& block, const in
     */
    const bool can_reassign =
       vopc || (exec_copy->opcode == aco_opcode::p_parallelcopy &&
-               (exec_val->isSALU() || exec_val->opcode == aco_opcode::p_parallelcopy));
+               (exec_val->isSALU() || exec_val->opcode == aco_opcode::p_parallelcopy ||
+                exec_val->opcode == aco_opcode::p_create_vector));
 
    /* The reassignment is not worth it when both the original exec needs to be copied
     * and the new exec copy can't be removed. In this case we'd end up with more instructions.
@@ -473,8 +454,8 @@ try_optimize_branching_sequence(ssa_elimination_ctx& ctx, Block& block, const in
             return;
          } else {
             aco_ptr<Instruction> tmp = std::move(exec_val);
-            exec_val.reset(create_instruction<VALU_instruction>(
-               tmp->opcode, tmp->format, tmp->operands.size(), tmp->definitions.size() + 1));
+            exec_val.reset(create_instruction(tmp->opcode, tmp->format, tmp->operands.size(),
+                                              tmp->definitions.size() + 1));
             std::copy(tmp->operands.cbegin(), tmp->operands.cend(), exec_val->operands.begin());
             std::copy(tmp->definitions.cbegin(), tmp->definitions.cend(),
                       exec_val->definitions.begin());
@@ -522,14 +503,15 @@ try_optimize_branching_sequence(ssa_elimination_ctx& ctx, Block& block, const in
       exec_copy.reset();
    } else {
       /* Reassign the copy to write the register of the original value. */
-      exec_copy.reset(
-         create_instruction<Pseudo_instruction>(aco_opcode::p_parallelcopy, Format::PSEUDO, 1, 1));
+      exec_copy.reset(create_instruction(aco_opcode::p_parallelcopy, Format::PSEUDO, 1, 1));
       exec_copy->definitions[0] = exec_wr_def;
       exec_copy->operands[0] = Operand(exec, ctx.program->lane_mask);
    }
 
-   if (exec_val->opcode == aco_opcode::p_parallelcopy && exec_val->operands[0].isConstant() &&
-       exec_val->operands[0].constantValue()) {
+   bool has_nonzero_op =
+      std::any_of(exec_val->operands.begin(), exec_val->operands.end(),
+                  [](const Operand& op) -> bool { return op.isConstant() && op.constantValue(); });
+   if (exec_val->isPseudo() && has_nonzero_op) {
       /* Remove the branch instruction when exec is constant non-zero. */
       aco_ptr<Instruction>& branch = block.instructions.back();
       if (branch->opcode == aco_opcode::p_cbranch_z && branch->operands[0].physReg() == exec)
@@ -543,7 +525,7 @@ try_optimize_branching_sequence(ssa_elimination_ctx& ctx, Block& block, const in
        */
       const auto it = std::next(block.instructions.begin(), save_original_exec_idx);
       aco_ptr<Instruction> copy(
-         create_instruction<Pseudo_instruction>(aco_opcode::p_parallelcopy, Format::PSEUDO, 1, 1));
+         create_instruction(aco_opcode::p_parallelcopy, Format::PSEUDO, 1, 1));
       copy->definitions[0] = exec_copy_def;
       copy->operands[0] = Operand(exec, ctx.program->lane_mask);
       block.instructions.insert(it, std::move(copy));

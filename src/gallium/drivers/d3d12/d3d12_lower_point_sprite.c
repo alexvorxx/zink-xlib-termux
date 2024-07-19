@@ -285,10 +285,6 @@ d3d12_lower_point_sprite(nir_shader *shader,
    }
 
    state.num_point_coords = count;
-   if (count) {
-      dxil_reassign_driver_locations(shader, nir_var_shader_out,
-                                     next_inputs_read);
-   }
 
    nir_foreach_function_impl(impl, shader) {
       nir_builder builder = nir_builder_create(impl);
@@ -301,8 +297,7 @@ d3d12_lower_point_sprite(nir_shader *shader,
          }
       }
 
-      nir_metadata_preserve(impl, nir_metadata_block_index |
-                                  nir_metadata_dominance);
+      nir_metadata_preserve(impl, nir_metadata_control_flow);
    }
 
    util_dynarray_fini(&state.output_writes);

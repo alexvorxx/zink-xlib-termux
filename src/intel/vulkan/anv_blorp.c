@@ -91,6 +91,18 @@ upload_blorp_shader(struct blorp_batch *batch, uint32_t stage,
    return true;
 }
 
+static void
+upload_dynamic_state(struct blorp_context *context,
+                     const void *data, uint32_t size,
+                     uint32_t alignment, enum blorp_dynamic_state name)
+{
+   struct anv_device *device = context->driver_ctx;
+
+   device->blorp.dynamic_states[name] =
+      anv_state_pool_emit_data(&device->dynamic_state_pool,
+                               size, alignment, data);
+}
+
 void
 anv_device_init_blorp(struct anv_device *device)
 {
@@ -98,20 +110,33 @@ anv_device_init_blorp(struct anv_device *device)
       .use_mesh_shading = device->vk.enabled_extensions.EXT_mesh_shader,
       .use_unrestricted_depth_range =
          device->vk.enabled_extensions.EXT_depth_range_unrestricted,
+      .use_cached_dynamic_states = true,
    };
 
-   blorp_init_brw(&device->blorp, device, &device->isl_dev,
+   blorp_init_brw(&device->blorp.context, device, &device->isl_dev,
                   device->physical->compiler, &config);
-   device->blorp.lookup_shader = lookup_blorp_shader;
-   device->blorp.upload_shader = upload_blorp_shader;
-   device->blorp.enable_tbimr = device->physical->instance->enable_tbimr;
-   device->blorp.exec = anv_genX(device->info, blorp_exec);
+   device->blorp.context.lookup_shader = lookup_blorp_shader;
+   device->blorp.context.upload_shader = upload_blorp_shader;
+   device->blorp.context.enable_tbimr = device->physical->instance->enable_tbimr;
+   device->blorp.context.exec = anv_genX(device->info, blorp_exec);
+   device->blorp.context.upload_dynamic_state = upload_dynamic_state;
+
+   anv_genX(device->info, blorp_init_dynamic_states)(&device->blorp.context);
 }
 
 void
 anv_device_finish_blorp(struct anv_device *device)
 {
-   blorp_finish(&device->blorp);
+#ifdef HAVE_VALGRIND
+   /* We only need to free these to prevent valgrind errors.  The backing
+    * BO will go away in a couple of lines so we don't actually leak.
+    */
+   for (uint32_t i = 0; i < ARRAY_SIZE(device->blorp.dynamic_states); i++) {
+      anv_state_pool_free(&device->dynamic_state_pool,
+                          device->blorp.dynamic_states[i]);
+   }
+#endif
+   blorp_finish(&device->blorp.context);
 }
 
 static void
@@ -134,7 +159,7 @@ anv_blorp_batch_init(struct anv_cmd_buffer *cmd_buffer,
    assert((flags & BLORP_BATCH_USE_BLITTER) == 0 ||
           (flags & BLORP_BATCH_USE_COMPUTE) == 0);
 
-   blorp_batch_init(&cmd_buffer->device->blorp, batch, cmd_buffer, flags);
+   blorp_batch_init(&cmd_buffer->device->blorp.context, batch, cmd_buffer, flags);
 }
 
 static void
@@ -1519,10 +1544,20 @@ exec_ccs_op(struct anv_cmd_buffer *cmd_buffer,
     * that the contents of the previous draw hit the render target before we
     * resolve and then use a second PIPE_CONTROL after the resolve to ensure
     * that it is completed before any additional drawing occurs.
+    *
+    * Bspec 57340 (r59562):
+    *
+    *   Synchronization:
+    *      Due to interaction of scaled clearing rectangle with pixel
+    *      scoreboard, we require one of the following commands to be issued.
+    *      (Rows of PIPE_CONTROL command in the table)
+    *
+    * Requiring tile cache flush bit has been dropped since Xe2.
     */
    anv_add_pending_pipe_bits(cmd_buffer,
                              ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT |
-                             ANV_PIPE_TILE_CACHE_FLUSH_BIT |
+                             (devinfo->verx10 < 200 ?
+                                ANV_PIPE_TILE_CACHE_FLUSH_BIT : 0) |
                              (devinfo->verx10 == 120 ?
                                 ANV_PIPE_DEPTH_STALL_BIT : 0) |
                              (devinfo->verx10 == 125 ?
@@ -1673,10 +1708,20 @@ exec_mcs_op(struct anv_cmd_buffer *cmd_buffer,
     * that the contents of the previous draw hit the render target before we
     * resolve and then use a second PIPE_CONTROL after the resolve to ensure
     * that it is completed before any additional drawing occurs.
+    *
+    * Bspec 57340 (r59562):
+    *
+    *   Synchronization:
+    *      Due to interaction of scaled clearing rectangle with pixel
+    *      scoreboard, we require one of the following commands to be issued.
+    *      (Rows of PIPE_CONTROL command in the table)
+    *
+    * Requiring tile cache flush bit has been dropped since Xe2.
     */
    anv_add_pending_pipe_bits(cmd_buffer,
                              ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT |
-                             ANV_PIPE_TILE_CACHE_FLUSH_BIT |
+                             (devinfo->verx10 < 200 ?
+                                ANV_PIPE_TILE_CACHE_FLUSH_BIT : 0) |
                              (devinfo->verx10 == 120 ?
                                 ANV_PIPE_DEPTH_STALL_BIT : 0) |
                              (devinfo->verx10 == 125 ?
@@ -1807,12 +1852,14 @@ clear_color_attachment(struct anv_cmd_buffer *cmd_buffer,
                      &clear_color);
       }
 
-      anv_cmd_buffer_mark_image_fast_cleared(cmd_buffer, iview->image,
-                                             iview->planes[0].isl.format,
-                                             clear_color);
-      anv_cmd_buffer_load_clear_color_from_image(cmd_buffer,
-                                                 att->surface_state.state,
-                                                 iview->image);
+      if (cmd_buffer->device->info->ver < 20) {
+         anv_cmd_buffer_mark_image_fast_cleared(cmd_buffer, iview->image,
+                                                iview->planes[0].isl.format,
+                                                clear_color);
+         anv_cmd_buffer_load_clear_color_from_image(cmd_buffer,
+                                                    att->surface_state.state,
+                                                    iview->image);
+      }
       return;
    }
 

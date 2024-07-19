@@ -1,22 +1,5 @@
 # Copyright © 2018 Collabora Ltd
-
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+# SPDX-License-Identifier: MIT
 
 files_libzink = files(
   'zink_lower_cubemap_to_array.c',
@@ -82,11 +65,17 @@ if host_machine.system() == 'darwin'
   # MoltenVK options
   if with_moltenvk_dir != ''
     fs = import('fs')
+    # Vulkan SDK 1.3.250 to 1.3.268 support
     moltenvk_includes = join_paths(with_moltenvk_dir, 'MoltenVK', 'include')
     if not fs.is_dir(moltenvk_includes)
+      # Vulkan SDK 1.3.275 onwards support
       moltenvk_includes = join_paths(with_moltenvk_dir, 'macos', 'include')
       if not fs.is_dir(moltenvk_includes)
-        error(f'moltenvk includes cannot be found in moltenvk-dir="@with_moltenvk_dir@"')
+        # MoltenVK from brew support
+        moltenvk_includes = join_paths(with_moltenvk_dir, 'include')
+        if not fs.is_dir(moltenvk_includes)
+          error(f'moltenvk includes cannot be found in moltenvk-dir="@with_moltenvk_dir@"')
+        endif
       endif
     endif
     inc_zink_vk += include_directories(moltenvk_includes)

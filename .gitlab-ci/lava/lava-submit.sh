@@ -30,7 +30,7 @@ artifacts/ci-common/generate-env.sh | tee results/job-rootfs-overlay/set-job-env
 section_end variables
 
 tar zcf job-rootfs-overlay.tar.gz -C results/job-rootfs-overlay/ .
-ci-fairy s3cp --token-file "${CI_JOB_JWT_FILE}" job-rootfs-overlay.tar.gz "https://${JOB_ROOTFS_OVERLAY_PATH}"
+ci-fairy s3cp --token-file "${S3_JWT_FILE}" job-rootfs-overlay.tar.gz "https://${JOB_ROOTFS_OVERLAY_PATH}"
 
 ARTIFACT_URL="${FDO_HTTP_CACHE_URI:-}https://${PIPELINE_ARTIFACTS_BASE}/${S3_ARTIFACT_NAME:?}.tar.zst"
 
@@ -49,8 +49,9 @@ PYTHONPATH=artifacts/ artifacts/lava/lava_job_submitter.py \
 	--first-stage-init artifacts/ci-common/init-stage1.sh \
 	--ci-project-dir "${CI_PROJECT_DIR}" \
 	--device-type "${DEVICE_TYPE}" \
+	--farm "${FARM}" \
 	--dtb-filename "${DTB}" \
-	--jwt-file "${CI_JOB_JWT_FILE}" \
+	--jwt-file "${S3_JWT_FILE}" \
 	--kernel-image-name "${KERNEL_IMAGE_NAME}" \
 	--kernel-image-type "${KERNEL_IMAGE_TYPE}" \
 	--boot-method "${BOOT_METHOD}" \

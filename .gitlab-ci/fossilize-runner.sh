@@ -10,8 +10,8 @@ fi
 INSTALL=$PWD/install
 
 # Set up the driver environment.
-export LD_LIBRARY_PATH="$INSTALL/lib/"
-export VK_ICD_FILENAMES="$INSTALL/share/vulkan/icd.d/${VK_DRIVER}_icd.x86_64.json"
+export LD_LIBRARY_PATH="$INSTALL/lib/:$INSTALL/lib/dri"
+export VK_DRIVER_FILES="$INSTALL/share/vulkan/icd.d/${VK_DRIVER}_icd.x86_64.json"
 
 # To store Fossilize logs on failure.
 RESULTS="$PWD/results"

@@ -739,11 +739,8 @@ ChipFamily Gfx11Lib::HwlConvertChipFamily(
             {
             }
             break;
+
         case FAMILY_GFX1150:
-            if  (false
-                 || ASICREV_IS_GFX1150(chipRevision)
-                 || ASICREV_IS_GFX1151(chipRevision)
-                )
             {
                 m_settings.isGfx1150 = 1;
             }
@@ -1006,7 +1003,9 @@ UINT_32 Gfx11Lib::GetMetaBlkSize(
                 if ((pipeRotateLog2 > 0)  &&
                     (elemLog2 == 4)       &&
                     (numSamplesLog2 == 3) &&
-                    (IsZOrderSwizzle(swizzleMode) || (GetEffectiveNumPipes() > 3)))
+                    (IsZOrderSwizzle(swizzleMode) ||
+                     IsRtOptSwizzle(swizzleMode)  ||
+                     (GetEffectiveNumPipes() > 3)))
                 {
                     overlapLog2++;
                 }
@@ -1024,6 +1023,17 @@ UINT_32 Gfx11Lib::GetMetaBlkSize(
                 // For htile surfaces, pad meta block size to 2K * num_pipes
                 metablkSizeLog2 = Max(metablkSizeLog2, 11 + numPipesLog2);
             }
+
+            /* This chunk is not part of upstream addrlib. See !28268 */
+            const INT_32 compFragLog2 = numSamplesLog2;
+
+            if  (IsRtOptSwizzle(swizzleMode) && (compFragLog2 > 1) && (pipeRotateLog2 >= 1))
+            {
+                const INT_32 tmp = 8 + m_pipesLog2 + Max(pipeRotateLog2, compFragLog2 - 1);
+
+                metablkSizeLog2 = Max(metablkSizeLog2, tmp);
+            }
+            /* End of the non-upstream chunk. */
         }
 
         const INT_32 metablkBitsLog2 =
@@ -3457,7 +3467,7 @@ ADDR_E_RETURNCODE Gfx11Lib::ComputeSurfaceInfoMacroTiled(
                 if (IsZOrderSwizzle(pIn->swizzleMode) && (index <= 1))
                 {
                     fixedTailMaxDim.w /= Block256_2d[index].w / Block256_2d[2].w;
-                    fixedTailMaxDim.h /= Block256_2d[index].w / Block256_2d[2].w;
+                    fixedTailMaxDim.h /= Block256_2d[index].h / Block256_2d[2].h;
                 }
 
                 for (UINT_32 i = 0; i < pIn->numMipLevels; i++)

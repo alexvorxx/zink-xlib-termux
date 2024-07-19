@@ -28,6 +28,7 @@ struct vn_device {
 
    struct vn_instance *instance;
    struct vn_physical_device *physical_device;
+   uint32_t device_mask;
    struct vn_renderer *renderer;
    struct vn_ring *primary_ring;
 
@@ -37,8 +38,6 @@ struct vn_device {
    /* unique queue family indices in which to create the device queues */
    uint32_t *queue_families;
    uint32_t queue_family_count;
-
-   struct vn_device_memory_pool memory_pools[VK_MAX_MEMORY_TYPES];
 
    struct vn_feedback_pool feedback_pool;
 

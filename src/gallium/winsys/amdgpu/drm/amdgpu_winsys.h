@@ -229,7 +229,7 @@ struct amdgpu_winsys {
    bool noop_cs;
    bool reserve_vmid;
    bool zero_all_vram_allocs;
-#ifdef DEBUG
+#if MESA_DEBUG
    bool debug_all_bos;
 
    /* List of all allocated buffers */

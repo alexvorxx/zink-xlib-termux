@@ -314,7 +314,6 @@ u_pipe_screen_get_param_defaults(struct pipe_screen *pscreen,
    case PIPE_CAP_MIXED_COLOR_DEPTH_BITS:
    case PIPE_CAP_SHADER_ARRAY_COMPONENTS:
    case PIPE_CAP_STREAM_OUTPUT_INTERLEAVE_BUFFERS:
-   case PIPE_CAP_SHADER_CAN_READ_OUTPUTS:
    case PIPE_CAP_NATIVE_FENCE_FD:
       return 0;
 
@@ -359,7 +358,6 @@ u_pipe_screen_get_param_defaults(struct pipe_screen *pscreen,
    case PIPE_CAP_POST_DEPTH_COVERAGE:
    case PIPE_CAP_BINDLESS_TEXTURE:
    case PIPE_CAP_NIR_SAMPLERS_AS_DEREF:
-   case PIPE_CAP_NIR_COMPACT_ARRAYS:
    case PIPE_CAP_QUERY_SO_OVERFLOW:
    case PIPE_CAP_MEMOBJ:
    case PIPE_CAP_LOAD_CONSTBUF:
@@ -553,6 +551,10 @@ u_pipe_screen_get_param_defaults(struct pipe_screen *pscreen,
    case PIPE_CAP_ASTC_VOID_EXTENTS_NEED_DENORM_FLUSH:
    case PIPE_CAP_HAS_CONST_BW:
       return 0;
+
+   case PIPE_CAP_TEXTURE_SAMPLER_INDEPENDENT:
+      /* this is expected of gallium drivers, but some just don't support it */
+      return 1;
 
    case PIPE_CAP_PERFORMANCE_MONITOR:
       return pscreen->get_driver_query_info && pscreen->get_driver_query_group_info &&

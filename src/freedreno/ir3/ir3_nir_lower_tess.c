@@ -312,7 +312,7 @@ ir3_nir_lower_to_explicit_output(nir_shader *shader,
       lower_block_to_explicit_output(block, &b, &state);
 
    nir_metadata_preserve(impl,
-                         nir_metadata_block_index | nir_metadata_dominance);
+                         nir_metadata_control_flow);
 
    v->output_size = state.map.stride;
 }
@@ -348,8 +348,7 @@ lower_block_to_explicit_input(nir_block *block, nir_builder *b,
          b->cursor = nir_before_instr(&intr->instr);
 
          nir_def *iid = build_invocation_id(b, state);
-         nir_def_rewrite_uses(&intr->def, iid);
-         nir_instr_remove(&intr->instr);
+         nir_def_replace(&intr->def, iid);
          break;
       }
 
@@ -648,17 +647,6 @@ lower_tess_ctrl_block(nir_block *block, nir_builder *b, struct state *state)
    }
 }
 
-static void
-emit_tess_epilouge(nir_builder *b, struct state *state)
-{
-   /* Insert endpatch instruction:
-    *
-    * TODO we should re-work this to use normal flow control.
-    */
-
-   nir_end_patch_ir3(b);
-}
-
 void
 ir3_nir_lower_tess_ctrl(nir_shader *shader, struct ir3_shader_variant *v,
                         unsigned topology)
@@ -723,12 +711,6 @@ ir3_nir_lower_tess_ctrl(nir_shader *shader, struct ir3_shader_variant *v,
    nir_cf_reinsert(&body, b.cursor);
 
    b.cursor = nir_after_cf_list(&nif->then_list);
-
-   /* Insert conditional exit for threads invocation id != 0 */
-   nir_def *iid0_cond = nir_ieq_imm(&b, iid, 0);
-   nir_cond_end_ir3(&b, iid0_cond);
-
-   emit_tess_epilouge(&b, &state);
 
    nir_pop_if(&b, nif);
 

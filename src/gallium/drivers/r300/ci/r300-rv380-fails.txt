@@ -3,7 +3,6 @@ dEQP-GLES2.functional.clipping.line.wide_line_clip_viewport_corner,Fail
 dEQP-GLES2.functional.clipping.point.wide_point_clip,Fail
 dEQP-GLES2.functional.clipping.point.wide_point_clip_viewport_center,Fail
 dEQP-GLES2.functional.clipping.point.wide_point_clip_viewport_corner,Fail
-dEQP-GLES2.functional.draw.draw_elements.indices.user_ptr.index_byte,Fail
 dEQP-GLES2.functional.fbo.completeness.renderable.texture.color0.rgb_half_float_oes,Fail
 dEQP-GLES2.functional.fbo.render.repeated_clear.tex2d_rgb,Fail
 dEQP-GLES2.functional.fbo.render.repeated_clear.tex2d_rgba,Fail
@@ -99,12 +98,10 @@ dEQP-GLES2.functional.uniform_api.random.81,Fail
 dEQP-GLES2.functional.uniform_api.value.assigned.by_pointer.render.array_in_struct.mat4_mat2_both,Fail
 dEQP-GLES2.functional.uniform_api.value.assigned.by_pointer.render.array_in_struct.mat4_mat2_fragment,Fail
 dEQP-GLES2.functional.uniform_api.value.assigned.by_pointer.render.multiple_nested_structs_arrays.both,Fail
-dEQP-GLES2.functional.uniform_api.value.assigned.by_pointer.render.multiple_nested_structs_arrays.fragment,Fail
 dEQP-GLES2.functional.uniform_api.value.assigned.by_pointer.render.nested_structs_arrays.mat4_mat2_fragment,Fail
 dEQP-GLES2.functional.uniform_api.value.assigned.by_pointer.render.struct_in_array.mat4_mat2_both,Fail
 dEQP-GLES2.functional.uniform_api.value.assigned.by_pointer.render.struct_in_array.mat4_mat2_fragment,Fail
 dEQP-GLES2.functional.uniform_api.value.assigned.by_value.render.multiple_nested_structs_arrays.both,Fail
-dEQP-GLES2.functional.uniform_api.value.assigned.by_value.render.multiple_nested_structs_arrays.fragment,Fail
 
 # This bunch is not reproducible outside of CI
 KHR-GLES2.shaders.aggressive_optimizations.sin_vec3_frag,Fail

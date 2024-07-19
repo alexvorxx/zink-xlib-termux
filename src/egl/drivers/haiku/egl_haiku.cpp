@@ -53,7 +53,7 @@ extern "C" {
 #include "target-helpers/inline_sw_helper.h"
 }
 
-#ifdef DEBUG
+#if MESA_DEBUG
 #define TRACE(x...) printf("egl_haiku: " x)
 #define CALLED()    TRACE("CALLED: %s\n", __PRETTY_FUNCTION__)
 #else

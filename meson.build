@@ -1,22 +1,5 @@
 # Copyright © 2017-2020 Intel Corporation
-
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+# SPDX-License-Identifier: MIT
 
 project(
   'mesa',
@@ -44,6 +27,11 @@ null_dep = dependency('', required : false)
 if get_option('layout') != 'mirror'
   error('`mirror` is the only build directory layout supported')
 endif
+
+with_mesa_debug = get_option('buildtype') == 'debug'
+
+# This means the final value of b_ndebug==true
+with_mesa_ndebug = get_option('b_ndebug') == 'true' or (get_option('buildtype') == 'release' and get_option('b_ndebug') == 'if-release')
 
 # Arguments for the preprocessor, put these in a separate array from the C and
 # C++ (cpp in meson terminology) arguments since they need to be added to the
@@ -122,9 +110,9 @@ with_gles2 = get_option('gles2') \
   .require(with_shared_glapi, error_message : 'OpengGL ES 2.x requires shared-glapi') \
   .allowed()
 
-pre_args += '-DHAVE_OPENGL=@0@'.format(with_opengl ? '1' : '0')
-pre_args += '-DHAVE_OPENGL_ES_1=@0@'.format(with_gles1 ? '1' : '0')
-pre_args += '-DHAVE_OPENGL_ES_2=@0@'.format(with_gles2 ? '1' : '0')
+pre_args += '-DHAVE_OPENGL=@0@'.format(with_opengl.to_int())
+pre_args += '-DHAVE_OPENGL_ES_1=@0@'.format(with_gles1.to_int())
+pre_args += '-DHAVE_OPENGL_ES_2=@0@'.format(with_gles2.to_int())
 
 with_any_opengl = with_opengl or with_gles1 or with_gles2
 # Only build shared_glapi if at least one OpenGL API is enabled
@@ -135,7 +123,7 @@ system_has_kms_drm = ['openbsd', 'netbsd', 'freebsd', 'gnu/kfreebsd', 'dragonfly
 gallium_drivers = get_option('gallium-drivers')
 if gallium_drivers.contains('auto')
   if system_has_kms_drm
-    # TODO: PPC, Sparc
+    # TODO: Sparc
     if ['x86', 'x86_64'].contains(host_machine.cpu_family())
       gallium_drivers = [
         'r300', 'r600', 'radeonsi', 'nouveau', 'virgl', 'svga', 'swrast',
@@ -147,7 +135,7 @@ if gallium_drivers.contains('auto')
         'tegra', 'virgl', 'lima', 'panfrost', 'swrast', 'iris',
         'zink'
       ]
-    elif ['mips', 'mips64', 'riscv32', 'riscv64'].contains(host_machine.cpu_family())
+    elif ['mips', 'mips64', 'ppc', 'ppc64', 'riscv32', 'riscv64'].contains(host_machine.cpu_family())
       gallium_drivers = [
         'r300', 'r600', 'radeonsi', 'nouveau', 'virgl', 'swrast', 'zink'
       ]
@@ -177,12 +165,20 @@ elif gallium_drivers.contains('all')
    ]
 endif
 
+# compatibility for meson configurations asking for 'swrast'
+with_swrast = gallium_drivers.contains('swrast')
+if with_swrast
+  warning('`gallium-drivers=swrast` is a deprecated alias for `gallium-drivers=softpipe,llvmpipe` and will be removed in version 25.0')
+endif
+
 with_gallium_radeonsi = gallium_drivers.contains('radeonsi')
 with_gallium_r300 = gallium_drivers.contains('r300')
 with_gallium_r600 = gallium_drivers.contains('r600')
 with_gallium_nouveau = gallium_drivers.contains('nouveau')
 with_gallium_freedreno = gallium_drivers.contains('freedreno')
-with_gallium_softpipe = gallium_drivers.contains('swrast')
+with_gallium_softpipe = with_swrast or gallium_drivers.contains('softpipe')
+#with_gallium_llvmpipe = with_swrast or gallium_drivers.contains('llvmpipe')
+with_gallium_llvmpipe = gallium_drivers.contains('llvmpipe')
 with_gallium_vc4 = gallium_drivers.contains('vc4')
 with_gallium_v3d = gallium_drivers.contains('v3d')
 with_gallium_panfrost = gallium_drivers.contains('panfrost')
@@ -200,6 +196,12 @@ with_gallium_asahi = gallium_drivers.contains('asahi')
 foreach gallium_driver : gallium_drivers
   pre_args += '-DHAVE_@0@'.format(gallium_driver.to_upper())
 endforeach
+
+# compatibility for "swrast" as an internal-ish driver name
+with_gallium_swrast = with_gallium_softpipe or with_gallium_llvmpipe
+if with_gallium_swrast
+  pre_args += '-DHAVE_SWRAST'
+endif
 
 with_gallium = gallium_drivers.length() != 0
 with_gallium_kmsro = system_has_kms_drm and [
@@ -219,7 +221,7 @@ if _vulkan_drivers.contains('auto')
       _vulkan_drivers = ['amd', 'intel', 'intel_hasvk', 'nouveau', 'swrast']
     elif ['arm', 'aarch64'].contains(host_machine.cpu_family())
       _vulkan_drivers = ['swrast', 'intel']
-    elif ['mips', 'mips64', 'riscv32', 'riscv64'].contains(host_machine.cpu_family())
+    elif ['mips', 'mips64', 'ppc', 'ppc64', 'riscv32', 'riscv64'].contains(host_machine.cpu_family())
       _vulkan_drivers = ['amd', 'swrast']
     elif ['loongarch64'].contains(host_machine.cpu_family())
       _vulkan_drivers = ['amd', 'swrast']
@@ -259,6 +261,8 @@ with_any_vk = _vulkan_drivers.length() != 0
 if with_any_vk and host_machine.system() == 'windows' and meson.version().version_compare('< 1.3')
   error('Vulkan drivers on Windows require meson 1.3 or newer')
 endif
+
+with_any_llvmpipe = with_gallium_llvmpipe or with_swrast_vk
 
 freedreno_kmds = get_option('freedreno-kmds')
 if freedreno_kmds.length() != 0 and freedreno_kmds != [ 'msm' ] and with_freedreno_vk
@@ -319,9 +323,6 @@ if with_nouveau_vk
   pre_args += '-DHAVE_NVK'
 endif
 
-if with_swrast_vk and not with_gallium_softpipe
-  error('swrast vulkan requires gallium swrast')
-endif
 if with_gallium_tegra and not with_gallium_nouveau
   error('tegra driver requires nouveau driver')
 endif
@@ -330,7 +331,6 @@ if with_aco_tests and not with_amd_vk
 endif
 
 with_microsoft_clc = get_option('microsoft-clc').enabled()
-with_clc = with_microsoft_clc or with_intel_clc or with_gallium_asahi
 with_spirv_to_dxil = get_option('spirv-to-dxil')
 
 if host_machine.system() == 'darwin'
@@ -394,6 +394,7 @@ endif
 
 with_platform_android = _platforms.contains('android')
 with_platform_x11 = _platforms.contains('x11')
+with_platform_xcb = _platforms.contains('xcb')
 with_platform_wayland = _platforms.contains('wayland')
 with_platform_haiku = _platforms.contains('haiku')
 with_platform_windows = _platforms.contains('windows')
@@ -428,7 +429,7 @@ if with_glx == 'dri'
 endif
 
 if not with_opengl and with_glx != 'disabled'
-  error('Building GLX without OpenGL is not supported.') \
+  error('Building GLX without OpenGL is not supported.')
 endif
 
 if not (with_dri or with_gallium or with_glx != 'disabled')
@@ -526,8 +527,8 @@ if with_glx != 'disabled'
   elif with_glx == 'xlib'
     if not with_gallium
       error('xlib based GLX requires at least one gallium driver')
-    elif not with_gallium_softpipe
-     # error('xlib based GLX requires softpipe or llvmpipe.')
+    elif not with_gallium_swrast
+      #error('xlib based GLX requires softpipe or llvmpipe.')
     elif with_dri
       error('xlib conflicts with any dri driver')
     endif
@@ -538,20 +539,19 @@ if with_glx != 'disabled'
   endif
 endif
 
-with_glvnd = get_option('glvnd')
+_glvnd = get_option('glvnd') \
+  .require(not with_platform_windows,
+           error_message: 'glvnd cannot be used on Windows') \
+  .require(with_glx != 'xlib',
+           error_message: 'Cannot build glvnd support for GLX that is not DRI based.') \
+  .require(with_glx != 'disabled' or with_egl,
+           error_message: 'glvnd requires DRI based GLX and/or EGL') \
+  .require(get_option('egl-lib-suffix') == '',
+           error_message: '''EGL lib suffix can't be used with libglvnd''')
+dep_glvnd = dependency('libglvnd', version : '>= 1.3.2', required : _glvnd)
+with_glvnd = dep_glvnd.found()
+pre_args += '-DUSE_LIBGLVND=@0@'.format(with_glvnd.to_int())
 glvnd_vendor_name = get_option('glvnd-vendor-name')
-if with_glvnd
-  if with_platform_windows
-    error('glvnd cannot be used on Windows')
-  elif with_glx == 'xlib'
-    error('Cannot build glvnd support for GLX that is not DRI based.')
-  elif with_glx == 'disabled' and not with_egl
-    error('glvnd requires DRI based GLX and/or EGL')
-  endif
-  if get_option('egl-lib-suffix') != ''
-    error('''EGL lib suffix can't be used with libglvnd''')
-  endif
-endif
 
 if with_vulkan_icd_dir == ''
   with_vulkan_icd_dir = join_paths(get_option('datadir'), 'vulkan/icd.d')
@@ -580,7 +580,7 @@ if with_gallium_d3d12 or with_microsoft_clc or with_microsoft_vk
   dep_dxheaders = dependency('directx-headers', required : false)
   if not dep_dxheaders.found()
     dep_dxheaders = dependency('DirectX-Headers',
-      version : '>= 1.611.0',
+      version : '>= 1.613.0',
       fallback : ['DirectX-Headers', 'dep_dxheaders'],
       required : with_gallium_d3d12 or with_microsoft_vk
     )
@@ -619,8 +619,22 @@ if vdpau_drivers_path == ''
   vdpau_drivers_path = join_paths(get_option('libdir'), 'vdpau')
 endif
 
-prog_glslang = find_program('glslangValidator', native : true, required : with_vulkan_overlay_layer or with_aco_tests or with_amd_vk or with_intel_vk)
+# GLSL has interesting version output and Meson doesn't parse it correctly as of
+# Meson 1.4.0
+prog_glslang = find_program('glslangValidator', native : true,
+                            required : with_vulkan_overlay_layer or with_aco_tests or with_amd_vk or with_intel_vk)
 if prog_glslang.found()
+  # Check if glslang has depfile support. Support was added in 11.3.0, but
+  # Windows path support was broken until 11.9.0.
+  # 
+  # It is intentional to check the build machine, since we need to ensure that
+  # glslang will output valid paths on the build platform
+  _glslang_check = build_machine.system() == 'windows' ? '>= 11.9.0' : '>= 11.3.0'
+  if run_command(prog_glslang, ['--version'], check : false).stdout().split(':')[2].version_compare(_glslang_check)
+    glslang_depfile = ['--depfile', '@DEPFILE@']
+  else
+    glslang_depfile = []
+  endif
   if run_command(prog_glslang, [ '--quiet', '--version' ], check : false).returncode() == 0
     glslang_quiet = ['--quiet']
   else
@@ -677,10 +691,8 @@ else
   with_gallium_omx = _omx
 endif
 
-pre_args += [
-  '-DENABLE_ST_OMX_BELLAGIO=' + (with_gallium_omx == 'bellagio' ? '1' : '0'),
-  '-DENABLE_ST_OMX_TIZONIA=' + (with_gallium_omx == 'tizonia' ? '1' : '0'),
-]
+pre_args += '-DENABLE_ST_OMX_BELLAGIO=@0@'.format((with_gallium_omx == 'bellagio').to_int())
+pre_args += '-DENABLE_ST_OMX_TIZONIA=@0@'.format((with_gallium_omx == 'tizonia').to_int())
 
 
 omx_drivers_path = get_option('omx-libs-path')
@@ -749,7 +761,7 @@ endif
 
 with_gallium_st_nine =  get_option('gallium-nine')
 if with_gallium_st_nine
-  if not with_gallium_softpipe
+  if not with_gallium_swrast
     error('The nine state tracker requires gallium softpipe/llvmpipe.')
   elif not [
              with_gallium_crocus,
@@ -772,7 +784,7 @@ if with_gallium_st_nine
 endif
 with_gallium_st_d3d10umd =  get_option('gallium-d3d10umd')
 if with_gallium_st_d3d10umd
-  if not with_gallium_softpipe
+  if not with_gallium_swrast
     error('The d3d10umd state tracker requires gallium softpipe/llvmpipe.')
   endif
 endif
@@ -817,10 +829,10 @@ if _opencl != 'disabled'
     error('The Clover OpenCL state tracker requires rtti')
   endif
 
-  with_gallium_opencl = true
+  with_gallium_clover = true
   with_opencl_icd = _opencl == 'icd'
 else
-  with_gallium_opencl = false
+  with_gallium_clover = false
   with_opencl_icd = false
 endif
 
@@ -830,18 +842,19 @@ if with_gallium_rusticl
     error('rusticl requires at least one gallium driver.')
   endif
 
-  if meson.version().version_compare('< 1.3.1')
-    error('rusticl requires meson 1.3.1 or newer')
+  if meson.version().version_compare('< 1.4.0')
+    error('rusticl requires meson 1.4.0 or newer')
   endif
 
   add_languages('rust', required: true)
   rustc = meson.get_compiler('rust')
-
-  with_clc = true
 endif
 
+with_clover_spirv = with_gallium_clover and get_option('opencl-spirv')
+with_clc = with_microsoft_clc or with_intel_clc or with_gallium_asahi or with_gallium_rusticl or with_clover_spirv
+
 dep_clc = null_dep
-if with_gallium_opencl or with_clc
+if with_gallium_clover or with_clc
   dep_clc = dependency('libclc')
 endif
 
@@ -877,7 +890,7 @@ if with_shared_glapi and not with_glx_indirect_rendering
   # Imply !defined(GLX_INDIRECT_RENDERING)
   with_glapi_export_proto_entry_points = true
 endif
-pre_args += '-DGLAPI_EXPORT_PROTO_ENTRY_POINTS=@0@'.format(with_glapi_export_proto_entry_points ? '1' : '0')
+pre_args += '-DGLAPI_EXPORT_PROTO_ENTRY_POINTS=@0@'.format(with_glapi_export_proto_entry_points.to_int())
 
 with_android_stub = get_option('android-stub')
 if with_android_stub and not with_platform_android
@@ -951,9 +964,19 @@ if cc.get_define('ETIME', prefix : '#include <errno.h>') == ''
   pre_args += '-DETIME=ETIMEDOUT'
 endif
 
-# Define DEBUG for debug builds only (debugoptimized is not included on this one)
-if get_option('buildtype') == 'debug'
-  pre_args += '-DDEBUG'
+# Define MESA_DEBUG to 1 for debug builds only (debugoptimized is not included on this one);
+# otherwise define MESA_DEBUG to 0
+pre_args += '-DMESA_DEBUG=@0@'.format(with_mesa_debug.to_int())
+
+with_split_debug = get_option('split-debug') \
+  .disable_if(not cc.has_argument('-gsplit-dwarf'),
+    error_message : 'split-debug requires compiler -gsplit-dwarf support') \
+  .disable_if(not cc.has_link_argument('-Wl,--gdb-index'),
+    error_message : 'split-debug requires the linker argument -Wl,--gdb-index')
+
+if with_split_debug.allowed() and get_option('debug')
+  add_project_arguments('-gsplit-dwarf', language : ['c', 'cpp'])
+  add_project_link_arguments('-Wl,--gdb-index', language : ['c', 'cpp'])
 endif
 
 with_shader_cache = get_option('shader-cache') \
@@ -1140,7 +1163,7 @@ else
   # Variables that are only used for assertions are considered unused when assertions
   # are disabled. Don't treat this as an error, since we build with -Werror even if
   # assertions are disabled.
-  if get_option('b_ndebug') == 'true' or (get_option('buildtype') == 'release' and get_option('b_ndebug') == 'if-release')
+  if with_mesa_ndebug
     _trial_c += ['-Wno-unused-variable', '-Wno-unused-but-set-variable', '/wd4189']
     _trial_cpp += ['-Wno-unused-variable', '-Wno-unused-but-set-variable', '/wd4189']
   endif
@@ -1368,7 +1391,7 @@ if not ['linux'].contains(host_machine.system())
 endif
 
 foreach h : ['xlocale.h', 'linux/futex.h', 'endian.h', 'dlfcn.h', 'sys/shm.h',
-             'cet.h', 'pthread_np.h', 'renderdoc_app.h', 'sys/inotify.h']
+             'cet.h', 'pthread_np.h', 'sys/inotify.h', 'linux/udmabuf.h']
   if cc.check_header(h)
     pre_args += '-DHAVE_@0@'.format(h.to_upper().underscorify())
   endif
@@ -1641,7 +1664,7 @@ dep_libdrm_amdgpu = null_dep
 dep_libdrm_radeon = null_dep
 dep_libdrm_intel = null_dep
 
-_drm_amdgpu_ver = '2.4.119'
+_drm_amdgpu_ver = '2.4.121'
 _drm_radeon_ver = '2.4.71'
 _drm_intel_ver = '2.4.75'
 _drm_ver = '2.4.109'
@@ -1708,7 +1731,7 @@ if with_amd_vk or with_gallium_radeonsi or with_gallium_r600
     llvm_modules += 'asmparser'
   endif
 endif
-if with_gallium_opencl
+if with_gallium_clover
   llvm_modules += [
     'linker', 'coverage', 'instrumentation', 'ipo', 'irreader',
     'lto', 'option', 'objcarcopts', 'profiledata'
@@ -1722,18 +1745,20 @@ if with_clc
   # all-targets is needed to support static linking LLVM build with multiple targets.
   # windowsdriver is needded with LLVM>=15 and frontendhlsl is needed with LLVM>=16,
   # but we don't know what LLVM version we are using yet
-  llvm_optional_modules += ['all-targets', 'windowsdriver', 'frontendhlsl']
+  llvm_optional_modules += ['all-targets', 'windowsdriver', 'frontendhlsl', 'frontenddriver']
 endif
 draw_with_llvm = get_option('draw-use-llvm')
+llvm_with_orcjit = get_option('llvm-orcjit')
 if draw_with_llvm
   llvm_modules += 'native'
   # lto is needded with LLVM>=15, but we don't know what LLVM verrsion we are using yet
   llvm_optional_modules += ['lto']
 endif
+amd_with_llvm = get_option('amd-use-llvm')
 
-if with_amd_vk or with_gallium_radeonsi or with_clc
+if with_amd_vk or with_gallium_radeonsi or with_clc or llvm_with_orcjit
   _llvm_version = '>= 15.0.0'
-elif with_gallium_opencl
+elif with_gallium_clover
   _llvm_version = '>= 11.0.0'
 else
   _llvm_version = '>= 5.0.0'
@@ -1754,7 +1779,7 @@ if _llvm.allowed()
     modules : llvm_modules,
     optional_modules : llvm_optional_modules,
     required : (
-      with_amd_vk or with_gallium_radeonsi or with_gallium_opencl or with_clc
+      with_amd_vk or with_gallium_radeonsi or with_gallium_clover or with_clc
       or _llvm.enabled()
     ),
     static : not _shared_llvm,
@@ -1769,6 +1794,10 @@ if with_llvm
 
   if with_swrast_vk and not draw_with_llvm
     error('Lavapipe requires LLVM draw support.')
+  endif
+
+  if with_gallium_r600 and not amd_with_llvm
+    error('R600 requires LLVM AMD support.')
   endif
 
   if host_machine.system() != 'windows'
@@ -1802,18 +1831,22 @@ elif with_amd_vk and with_aco_tests
   error('ACO tests require LLVM, but LLVM is disabled.')
 elif with_swrast_vk
   error('The following drivers require LLVM: Lavapipe. One of these is enabled, but LLVM is disabled.')
-elif with_gallium_opencl
+elif with_gallium_llvmpipe
+  #error('The following drivers require LLVM: llvmpipe. It is enabled, but LLVM is disabled.')
+elif with_gallium_clover
   error('The OpenCL "Clover" state tracker requires LLVM, but LLVM is disabled.')
 elif with_clc
   error('The CLC compiler requires LLVM, but LLVM is disabled.')
 else
   draw_with_llvm = false
 endif
-pre_args += '-DLLVM_AVAILABLE=' + (with_llvm ? '1' : '0')
-pre_args += '-DDRAW_LLVM_AVAILABLE=' + (with_llvm and draw_with_llvm ? '1' : '0')
+amd_with_llvm = amd_with_llvm and with_llvm
+pre_args += '-DLLVM_AVAILABLE=@0@'.format(with_llvm.to_int())
+pre_args += '-DDRAW_LLVM_AVAILABLE=@0@'.format((with_llvm and draw_with_llvm).to_int())
+pre_args += '-DAMD_LLVM_AVAILABLE=@0@'.format(amd_with_llvm.to_int())
+pre_args += '-DGALLIVM_USE_ORCJIT=@0@'.format((with_llvm and llvm_with_orcjit).to_int())
 
-with_opencl_spirv = (_opencl != 'disabled' and get_option('opencl-spirv')) or with_clc
-if with_opencl_spirv
+if with_clover_spirv or with_clc
   chosen_llvm_version_array = dep_llvm.version().split('.')
   chosen_llvm_version_major = chosen_llvm_version_array[0].to_int()
   chosen_llvm_version_minor = chosen_llvm_version_array[1].to_int()
@@ -1862,6 +1895,9 @@ if with_clc
     if dep_llvm.version().version_compare('>= 16.0')
       clang_modules += 'clangASTMatchers'
     endif
+    if dep_llvm.version().version_compare('>= 18.0')
+      clang_modules += 'clangAPINotes'
+    endif
 
     dep_clang = []
     foreach m : clang_modules
@@ -1887,12 +1923,6 @@ elif with_gallium_radeonsi
   error('Gallium driver radeonsi requires libelf')
 endif
 
-dep_glvnd = null_dep
-if with_glvnd
-  dep_glvnd = dependency('libglvnd', version : '>= 1.3.2')
-  pre_args += '-DUSE_LIBGLVND=1'
-endif
-
 dep_valgrind = dependency('valgrind', required : get_option('valgrind'))
 if dep_valgrind.found()
   pre_args += '-DHAVE_VALGRIND'
@@ -1905,6 +1935,23 @@ if ['address', 'address,undefined'].contains(get_option('b_sanitize'))
   asan_c_args = ['-DBUILT_WITH_ASAN=1']
 else
   asan_c_args = ['-DBUILT_WITH_ASAN=0']
+endif
+
+# ThreadSanitizer can't deal with futexes, and reports races for cases we don't care about
+# so add a define to work silence these issues.
+if get_option('b_sanitize') == 'thread'
+  pre_args += '-DTHREAD_SANITIZER=1'
+  # meson versions prior to 1.4 will warn "Consider using the built-in option for sanitizers ..." 
+  # later on because it only checks whether the option starts with "-fsanitize",
+  # but there is no built-in option for adding a blacklist
+  tsan_blacklist = '-fsanitize-blacklist=@0@'.format(join_paths(meson.project_source_root(), 'build-support', 'tsan-blacklist.txt'))
+  if cc.has_argument(tsan_blacklist)
+    pre_args += tsan_blacklist
+  else
+    warning('Compiler does not support "-fsanitize-blacklist", expected race conditions will not be surpressed')
+  endif
+else
+  pre_args += '-DTHREAD_SANITIZER=0'
 endif
 
 yacc_is_bison = true
@@ -1974,7 +2021,7 @@ if dep_unwind.found()
 endif
 
 if with_osmesa
-  if not with_gallium_softpipe
+  if not with_gallium_swrast
     error('OSMesa gallium requires gallium softpipe or llvmpipe.')
   endif
   if host_machine.system() == 'windows'
@@ -1994,7 +2041,7 @@ if with_platform_wayland
   else
     wl_scanner_arg = 'code'
   endif
-  dep_wl_protocols = dependency('wayland-protocols', version : '>= 1.30')
+  dep_wl_protocols = dependency('wayland-protocols', version : '>= 1.34')
   dep_wayland_client = dependency('wayland-client', version : '>=1.18')
   dep_wayland_server = dependency('wayland-server', version : '>=1.18')
   if with_egl
@@ -2047,6 +2094,7 @@ if host_machine.cpu_family() == 'x86_64' and cc.get_id() == 'gcc'
 endif
 
 with_dri3_modifiers = false
+with_dri3_explicit_sync = false
 with_xcb_keysyms = false
 if with_platform_x11
   if with_glx == 'xlib'
@@ -2090,6 +2138,10 @@ if with_platform_x11
           dep_xcb_present.version().version_compare('>= 1.13'))
         with_dri3_modifiers = true
       endif
+      if (dep_xcb_dri3.version().version_compare('>= 1.17') and
+          dep_xcb_present.version().version_compare('>= 1.17'))
+        with_dri3_explicit_sync = true
+      endif
       dep_xcb_shm = dependency('xcb-shm')
       dep_xcb_sync = dependency('xcb-sync')
       dep_xshmfence = dependency('xshmfence', version : '>= 1.1')
@@ -2131,6 +2183,9 @@ if with_dri3
 endif
 if with_dri3_modifiers
   pre_args += '-DHAVE_DRI3_MODIFIERS'
+endif
+if with_dri3_explicit_sync
+  pre_args += '-DHAVE_DRI3_EXPLICIT_SYNC'
 endif
 if with_gallium_drisw_kms
   pre_args += '-DHAVE_DRISW_KMS'
@@ -2231,6 +2286,12 @@ endif
 # as GCC LTO drops them. See: https://bugs.freedesktop.org/show_bug.cgi?id=109391
 gcc_lto_quirk = (cc.get_id() == 'gcc') ? ['-fno-lto'] : []
 
+# As of GCC 13.2.1, Venus build with optimization level plain/0 and LTO does not
+# compile properly: https://gitlab.freedesktop.org/mesa/mesa/-/issues/11006
+if with_virtio_vk and cc.get_id() == 'gcc' and (get_option('optimization') == '0' or get_option('optimization') == 'plain') and get_option('b_lto') == true
+  error('Venus does not compile properly with GCC + optimization level plain/0 + LTO.')
+endif
+
 devenv = environment()
 
 dir_compiler_nir = join_paths(meson.current_source_dir(), 'src/compiler/nir/')
@@ -2242,6 +2303,12 @@ subdir('bin')
 subdir('src')
 
 meson.add_devenv(devenv)
+
+sphinx = find_program('sphinx-build', version : '>= 4.3',
+                      required: get_option('html-docs'))
+if sphinx.found()
+  subdir('docs')
+endif
 
 summary(
   {
@@ -2367,7 +2434,7 @@ if with_gallium
   if with_gallium_st_nine
     gallium_frontends += 'nine'
   endif
-  if with_gallium_opencl
+  if with_gallium_clover
     gallium_frontends += 'clover'
   endif
   if with_gallium_rusticl

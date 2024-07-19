@@ -763,7 +763,7 @@ glx_screen_cleanup(struct glx_screen *psc)
 ** If that works then fetch the per screen configs data.
 */
 static Bool
-AllocAndFetchScreenConfigs(Display * dpy, struct glx_display * priv, Bool zink)
+AllocAndFetchScreenConfigs(Display * dpy, struct glx_display * priv, Bool zink, Bool driver_name_is_inferred)
 {
    struct glx_screen *psc;
    GLint i, screens;
@@ -783,19 +783,19 @@ AllocAndFetchScreenConfigs(Display * dpy, struct glx_display * priv, Bool zink)
 #if defined(GLX_USE_DRM)
 #if defined(HAVE_DRI3)
       if (priv->dri3Display)
-         psc = priv->dri3Display->createScreen(i, priv);
+         psc = priv->dri3Display->createScreen(i, priv, driver_name_is_inferred);
 #endif /* HAVE_DRI3 */
       if (psc == NULL && priv->dri2Display)
-	 psc = priv->dri2Display->createScreen(i, priv);
+	      psc = priv->dri2Display->createScreen(i, priv, driver_name_is_inferred);
 #endif /* GLX_USE_DRM */
 
 #ifdef GLX_USE_WINDOWSGL
       if (psc == NULL && priv->windowsdriDisplay)
-	 psc = priv->windowsdriDisplay->createScreen(i, priv);
+	      psc = priv->windowsdriDisplay->createScreen(i, priv, driver_name_is_inferred);
 #endif
 
       if ((psc == GLX_LOADER_USE_ZINK || psc == NULL) && priv->driswDisplay)
-	 psc = priv->driswDisplay->createScreen(i, priv);
+	      psc = priv->driswDisplay->createScreen(i, priv, psc == GLX_LOADER_USE_ZINK ? false : driver_name_is_inferred);
 #endif /* GLX_DIRECT_RENDERING && !GLX_USE_APPLEGL */
 
 #if defined(GLX_USE_APPLE)
@@ -885,11 +885,11 @@ __glXInitialize(Display * dpy)
 
    Bool zink = False;
    Bool try_zink = False;
+   const char *env = getenv("MESA_LOADER_DRIVER_OVERRIDE");
 
 #if defined(GLX_DIRECT_RENDERING) && (!defined(GLX_USE_APPLEGL) || defined(GLX_USE_APPLE))
    Bool glx_direct = !debug_get_bool_option("LIBGL_ALWAYS_INDIRECT", false);
    Bool glx_accel = !debug_get_bool_option("LIBGL_ALWAYS_SOFTWARE", false);
-   const char *env = getenv("MESA_LOADER_DRIVER_OVERRIDE");
 
    zink = env && !strcmp(env, "zink");
    try_zink = False;
@@ -907,7 +907,8 @@ __glXInitialize(Display * dpy)
     ** (e.g., those called in AllocAndFetchScreenConfigs).
     */
 #if defined(GLX_USE_DRM)
-   if (glx_direct && glx_accel && !zink) {
+   if (glx_direct && glx_accel &&
+       (!zink || debug_get_bool_option("LIBGL_KOPPER_DISABLE", false))) {
 #if defined(HAVE_DRI3)
       if (!debug_get_bool_option("LIBGL_DRI3_DISABLE", false)) {
          dpyPriv->dri3Display = dri3_create_display(dpy);
@@ -918,9 +919,11 @@ __glXInitialize(Display * dpy)
 #endif /* HAVE_DRI3 */
       if (!debug_get_bool_option("LIBGL_DRI2_DISABLE", false))
          dpyPriv->dri2Display = dri2CreateDisplay(dpy);
+#if defined(HAVE_ZINK)
       if (!dpyPriv->dri3Display && !dpyPriv->dri2Display)
          try_zink = !debug_get_bool_option("LIBGL_KOPPER_DISABLE", false) &&
                     !getenv("GALLIUM_DRIVER");
+#endif /* HAVE_ZINK */
    }
 #endif /* GLX_USE_DRM */
    if (glx_direct)
@@ -940,14 +943,14 @@ __glXInitialize(Display * dpy)
    }
 #endif
 
-   if (!AllocAndFetchScreenConfigs(dpy, dpyPriv, zink | try_zink)) {
+   if (!AllocAndFetchScreenConfigs(dpy, dpyPriv, zink | try_zink, zink || try_zink ? try_zink : !env)) {
       Bool fail = True;
 #if defined(GLX_DIRECT_RENDERING) && (!defined(GLX_USE_APPLEGL) || defined(GLX_USE_APPLE))
       if (try_zink) {
          free(dpyPriv->screens);
          dpyPriv->driswDisplay->destroyDisplay(dpyPriv->driswDisplay);
          dpyPriv->driswDisplay = driswCreateDisplay(dpy, TRY_ZINK_NO);
-         fail = !AllocAndFetchScreenConfigs(dpy, dpyPriv, False);
+         fail = !AllocAndFetchScreenConfigs(dpy, dpyPriv, False, true);
       }
 #endif
       if (fail) {

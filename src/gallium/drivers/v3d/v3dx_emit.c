@@ -358,19 +358,33 @@ v3dX(emit_state)(struct pipe_context *pctx)
                                 V3D_LINE_RASTERIZATION_PERP_END_CAPS :
                                 V3D_LINE_RASTERIZATION_DIAMOND_EXIT;
 
+                        if (config.enable_forward_facing_primitive &&
+                            config.enable_reverse_facing_primitive &&
+                            v3d->rasterizer->base.fill_front != v3d->rasterizer->base.fill_back) {
+                                mesa_logw_once("Setting a different polygon mode for "
+                                               "front and back faces is not supported");
+                        }
+
+                        if (config.enable_forward_facing_primitive) {
+                                if (v3d->rasterizer->base.fill_front != PIPE_POLYGON_MODE_FILL) {
+                                        config.direct3d_wireframe_triangles_mode = true;
+                                        config.direct3d_point_fill_mode =
+                                                v3d->rasterizer->base.fill_front == PIPE_POLYGON_MODE_POINT;
+                                }
+                        } else {
+                                if (v3d->rasterizer->base.fill_back != PIPE_POLYGON_MODE_FILL) {
+                                        config.direct3d_wireframe_triangles_mode = true;
+                                        config.direct3d_point_fill_mode =
+                                                v3d->rasterizer->base.fill_back == PIPE_POLYGON_MODE_POINT;
+                                }
+                        }
+
 #if V3D_VERSION >= 71
-                        /* The following follows the logic implemented in v3dv
-                         * plus the definition of depth_clip_near/far and
-                         * depth_clamp.
-                         *
-                         * Note: some extensions are not supported by v3d
-                         * (like ARB_depth_clamp) that would affect this, but
-                         * the values on rasterizer are taking that into
-                         * account.
-                         */
                         config.z_clipping_mode = v3d->rasterizer->base.depth_clip_near ||
                            v3d->rasterizer->base.depth_clip_far ?
                            V3D_Z_CLIP_MODE_MIN_ONE_TO_ONE : V3D_Z_CLIP_MODE_NONE;
+
+                        config.z_clamp_mode = v3d->rasterizer->base.depth_clamp;
 #endif
                 }
         }

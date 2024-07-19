@@ -26,7 +26,7 @@
 static struct hash_table *dev_tab = NULL;
 static simple_mtx_t dev_tab_mutex = SIMPLE_MTX_INITIALIZER;
 
-#ifdef DEBUG
+#if MESA_DEBUG
 DEBUG_GET_ONCE_BOOL_OPTION(all_bos, "RADEON_ALL_BOS", false)
 #endif
 
@@ -51,7 +51,7 @@ static bool do_winsys_init(struct amdgpu_winsys *aws,
    aws->check_vm = strstr(debug_get_option("R600_DEBUG", ""), "check_vm") != NULL ||
                   strstr(debug_get_option("AMD_DEBUG", ""), "check_vm") != NULL;
    aws->noop_cs = aws->info.family_overridden || debug_get_bool_option("RADEON_NOOP", false);
-#ifdef DEBUG
+#if MESA_DEBUG
    aws->debug_all_bos = debug_get_option_all_bos();
 #endif
    aws->reserve_vmid = strstr(debug_get_option("R600_DEBUG", ""), "reserve_vmid") != NULL ||
@@ -89,7 +89,7 @@ static void do_winsys_deinit(struct amdgpu_winsys *aws)
    pb_cache_deinit(&aws->bo_cache);
    _mesa_hash_table_destroy(aws->bo_export_table, NULL);
    simple_mtx_destroy(&aws->sws_list_lock);
-#ifdef DEBUG
+#if MESA_DEBUG
    simple_mtx_destroy(&aws->global_bo_list_lock);
 #endif
    simple_mtx_destroy(&aws->bo_export_table_lock);
@@ -320,6 +320,10 @@ static bool
 amdgpu_cs_set_pstate(struct radeon_cmdbuf *rcs, enum radeon_ctx_pstate pstate)
 {
    struct amdgpu_cs *cs = amdgpu_cs(rcs);
+
+   if (!cs->aws->info.has_stable_pstate)
+      return false;
+
    uint32_t amdgpu_pstate = radeon_to_amdgpu_pstate(pstate);
    return amdgpu_cs_ctx_stable_pstate(cs->ctx->ctx,
       AMDGPU_CTX_OP_SET_STABLE_PSTATE, amdgpu_pstate, NULL) == 0;
@@ -357,7 +361,7 @@ amdgpu_drm_winsys_get_fd(struct radeon_winsys *rws)
 
 PUBLIC struct radeon_winsys *
 amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
-                     radeon_screen_create_t screen_create)
+		     radeon_screen_create_t screen_create)
 {
    struct amdgpu_screen_winsys *sws;
    struct amdgpu_winsys *aws;
@@ -430,7 +434,7 @@ amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
       int device_fd = amdgpu_device_get_fd(dev);
       if (!are_file_descriptions_equal(device_fd, fd)) {
          sws->kms_handles = _mesa_hash_table_create(NULL, kms_handle_hash,
-                                                    kms_handle_equals);
+                                                   kms_handle_equals);
          if (!sws->kms_handles)
             goto fail;
          /* We could avoid storing the fd and use amdgpu_device_get_fd() where
@@ -479,13 +483,13 @@ amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
 
       /* init reference */
       pipe_reference_init(&aws->reference, 1);
-#ifdef DEBUG
+#if MESA_DEBUG
       list_inithead(&aws->global_bo_list);
 #endif
       aws->bo_export_table = util_hash_table_create_ptr_keys();
 
       (void) simple_mtx_init(&aws->sws_list_lock, mtx_plain);
-#ifdef DEBUG
+#if MESA_DEBUG
       (void) simple_mtx_init(&aws->global_bo_list_lock, mtx_plain);
 #endif
       (void) simple_mtx_init(&aws->bo_fence_lock, mtx_plain);

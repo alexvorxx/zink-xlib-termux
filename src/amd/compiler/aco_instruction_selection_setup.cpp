@@ -1,25 +1,7 @@
 /*
  * Copyright © 2018 Valve Corporation
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
- * IN THE SOFTWARE.
- *
+ * SPDX-License-Identifier: MIT
  */
 
 #include "aco_instruction_selection.h"
@@ -28,41 +10,13 @@
 #include "common/sid.h"
 
 #include "nir_control_flow.h"
+#include "nir_builder.h"
 
 #include <vector>
 
 namespace aco {
 
 namespace {
-
-bool
-is_loop_header_block(nir_block* block)
-{
-   return block->cf_node.parent->type == nir_cf_node_loop &&
-          block == nir_loop_first_block(nir_cf_node_as_loop(block->cf_node.parent));
-}
-
-/* similar to nir_block_is_unreachable(), but does not require dominance information */
-bool
-is_block_reachable(nir_function_impl* impl, nir_block* known_reachable, nir_block* block)
-{
-   if (block == nir_start_block(impl) || block == known_reachable)
-      return true;
-
-   /* skip loop back-edges */
-   if (is_loop_header_block(block)) {
-      nir_loop* loop = nir_cf_node_as_loop(block->cf_node.parent);
-      nir_block* preheader = nir_block_cf_tree_prev(nir_loop_first_block(loop));
-      return is_block_reachable(impl, known_reachable, preheader);
-   }
-
-   set_foreach (block->predecessors, entry) {
-      if (is_block_reachable(impl, known_reachable, (nir_block*)entry->key))
-         return true;
-   }
-
-   return false;
-}
 
 /* Check whether the given SSA def is only used by cross-lane instructions. */
 bool
@@ -109,25 +63,24 @@ only_used_by_cross_lane_instrs(nir_def* ssa, bool follow_phis = true)
 /* If one side of a divergent IF ends in a branch and the other doesn't, we
  * might have to emit the contents of the side without the branch at the merge
  * block instead. This is so that we can use any SGPR live-out of the side
- * without the branch without creating a linear phi in the invert or merge block. */
+ * without the branch without creating a linear phi in the invert or merge block.
+ *
+ * This also removes any unreachable merge blocks.
+ */
 bool
 sanitize_if(nir_function_impl* impl, nir_if* nif)
 {
-   // TODO: skip this if the condition is uniform and there are no divergent breaks/continues?
-
    nir_block* then_block = nir_if_last_then_block(nif);
    nir_block* else_block = nir_if_last_else_block(nif);
-   bool then_jump = nir_block_ends_in_jump(then_block) ||
-                    !is_block_reachable(impl, nir_if_first_then_block(nif), then_block);
-   bool else_jump = nir_block_ends_in_jump(else_block) ||
-                    !is_block_reachable(impl, nir_if_first_else_block(nif), else_block);
-   if (then_jump == else_jump)
+   bool then_jump = nir_block_ends_in_jump(then_block);
+   bool else_jump = nir_block_ends_in_jump(else_block);
+   if (!then_jump && !else_jump)
       return false;
 
    /* If the continue from block is empty then return as there is nothing to
     * move.
     */
-   if (nir_cf_list_is_empty_block(else_jump ? &nif->then_list : &nif->else_list))
+   if (nir_cf_list_is_empty_block(then_jump ? &nif->else_list : &nif->then_list))
       return false;
 
    /* Even though this if statement has a jump on one side, we may still have
@@ -138,9 +91,13 @@ sanitize_if(nir_function_impl* impl, nir_if* nif)
    nir_opt_remove_phis_block(nir_cf_node_as_block(nir_cf_node_next(&nif->cf_node)));
 
    /* Finally, move the continue from branch after the if-statement. */
-   nir_block* last_continue_from_blk = else_jump ? then_block : else_block;
+   nir_block* last_continue_from_blk = then_jump ? else_block : then_block;
    nir_block* first_continue_from_blk =
-      else_jump ? nir_if_first_then_block(nif) : nir_if_first_else_block(nif);
+      then_jump ? nir_if_first_else_block(nif) : nir_if_first_then_block(nif);
+
+   /* We don't need to repair SSA. nir_remove_after_cf_node() replaces any uses with undef. */
+   if (then_jump && else_jump)
+      nir_remove_after_cf_node(&nif->cf_node);
 
    nir_cf_list tmp;
    nir_cf_extract(&tmp, nir_before_block(first_continue_from_blk),
@@ -168,6 +125,24 @@ sanitize_cf_list(nir_function_impl* impl, struct exec_list* cf_list)
          nir_loop* loop = nir_cf_node_as_loop(cf_node);
          assert(!nir_loop_has_continue_construct(loop));
          progress |= sanitize_cf_list(impl, &loop->body);
+
+         /* NIR seems to allow this, and even though the loop exit has no predecessors, SSA defs from the
+          * loop header are live. Handle this without complicating the ACO IR by creating a dummy break.
+          */
+         if (nir_cf_node_cf_tree_next(&loop->cf_node)->predecessors->entries == 0) {
+            nir_builder b = nir_builder_create(impl);
+            b.cursor = nir_after_block_before_jump(nir_loop_last_block(loop));
+
+            nir_def *cond = nir_imm_false(&b);
+            /* We don't use block divergence information, so just this is enough. */
+            cond->divergent = false;
+
+            nir_push_if(&b, cond);
+            nir_jump(&b, nir_jump_break);
+            nir_pop_if(&b, NULL);
+
+            progress = true;
+         }
          break;
       }
       case nir_cf_node_function: unreachable("Invalid cf type");
@@ -314,7 +289,7 @@ init_context(isel_context* ctx, nir_shader* shader)
    nir_metadata_preserve(impl, nir_metadata_none);
 
    /* we'll need these for isel */
-   nir_metadata_require(impl, nir_metadata_block_index);
+   nir_metadata_require(impl, nir_metadata_block_index | nir_metadata_dominance);
 
    if (ctx->options->dump_preoptir) {
       fprintf(stderr, "NIR shader before instruction selection:\n");
@@ -324,8 +299,6 @@ init_context(isel_context* ctx, nir_shader* shader)
    ctx->first_temp_id = ctx->program->peekAllocationId();
    ctx->program->allocateRange(impl->ssa_alloc);
    RegClass* regclasses = ctx->program->temp_rc.data() + ctx->first_temp_id;
-
-   std::unique_ptr<unsigned[]> nir_to_aco{new unsigned[impl->num_blocks]()};
 
    /* TODO: make this recursive to improve compile times */
    bool done = false;
@@ -337,72 +310,13 @@ init_context(isel_context* ctx, nir_shader* shader)
             case nir_instr_type_alu: {
                nir_alu_instr* alu_instr = nir_instr_as_alu(instr);
                RegType type = alu_instr->def.divergent ? RegType::vgpr : RegType::sgpr;
+
+               /* packed 16bit instructions have to be VGPR */
+               if (alu_instr->def.num_components == 2 &&
+                   nir_op_infos[alu_instr->op].output_size == 0)
+                  type = RegType::vgpr;
+
                switch (alu_instr->op) {
-               case nir_op_fmul:
-               case nir_op_fmulz:
-               case nir_op_fadd:
-               case nir_op_fsub:
-               case nir_op_ffma:
-               case nir_op_ffmaz:
-               case nir_op_fmax:
-               case nir_op_fmin:
-               case nir_op_fneg:
-               case nir_op_fabs:
-               case nir_op_fsat:
-               case nir_op_fsign:
-               case nir_op_frcp:
-               case nir_op_frsq:
-               case nir_op_fsqrt:
-               case nir_op_fexp2:
-               case nir_op_flog2:
-               case nir_op_ffract:
-               case nir_op_ffloor:
-               case nir_op_fceil:
-               case nir_op_ftrunc:
-               case nir_op_fround_even:
-               case nir_op_fsin_amd:
-               case nir_op_fcos_amd:
-               case nir_op_f2f16:
-               case nir_op_f2f16_rtz:
-               case nir_op_f2f16_rtne:
-               case nir_op_f2f32:
-               case nir_op_f2f64:
-               case nir_op_u2f16:
-               case nir_op_u2f32:
-               case nir_op_u2f64:
-               case nir_op_i2f16:
-               case nir_op_i2f32:
-               case nir_op_i2f64:
-               case nir_op_pack_half_2x16_rtz_split:
-               case nir_op_pack_half_2x16_split:
-               case nir_op_pack_unorm_2x16:
-               case nir_op_pack_snorm_2x16:
-               case nir_op_pack_uint_2x16:
-               case nir_op_pack_sint_2x16:
-               case nir_op_unpack_half_2x16_split_x:
-               case nir_op_unpack_half_2x16_split_y:
-               case nir_op_fddx:
-               case nir_op_fddy:
-               case nir_op_fddx_fine:
-               case nir_op_fddy_fine:
-               case nir_op_fddx_coarse:
-               case nir_op_fddy_coarse:
-               case nir_op_fquantize2f16:
-               case nir_op_ldexp:
-               case nir_op_frexp_sig:
-               case nir_op_frexp_exp:
-               case nir_op_cube_amd:
-               case nir_op_msad_4x8:
-               case nir_op_udot_4x8_uadd:
-               case nir_op_sdot_4x8_iadd:
-               case nir_op_sudot_4x8_iadd:
-               case nir_op_udot_4x8_uadd_sat:
-               case nir_op_sdot_4x8_iadd_sat:
-               case nir_op_sudot_4x8_iadd_sat:
-               case nir_op_udot_2x16_uadd:
-               case nir_op_sdot_2x16_iadd:
-               case nir_op_udot_2x16_uadd_sat:
-               case nir_op_sdot_2x16_iadd_sat: type = RegType::vgpr; break;
                case nir_op_f2i16:
                case nir_op_f2u16:
                case nir_op_f2i32:
@@ -414,24 +328,79 @@ init_context(isel_context* ctx, nir_shader* shader)
                case nir_op_b2f16:
                case nir_op_b2f32:
                case nir_op_mov: break;
-               case nir_op_iabs:
-               case nir_op_iadd:
-               case nir_op_iadd_sat:
-               case nir_op_uadd_sat:
-               case nir_op_isub:
-               case nir_op_isub_sat:
-               case nir_op_usub_sat:
-               case nir_op_imul:
-               case nir_op_imin:
-               case nir_op_imax:
-               case nir_op_umin:
-               case nir_op_umax:
-               case nir_op_ishl:
-               case nir_op_ishr:
-               case nir_op_ushr:
-                  /* packed 16bit instructions have to be VGPR */
-                  type = alu_instr->def.num_components == 2 ? RegType::vgpr : type;
+               case nir_op_fmulz:
+               case nir_op_ffmaz:
+               case nir_op_f2f64:
+               case nir_op_u2f64:
+               case nir_op_i2f64:
+               case nir_op_pack_unorm_2x16:
+               case nir_op_pack_snorm_2x16:
+               case nir_op_pack_uint_2x16:
+               case nir_op_pack_sint_2x16:
+               case nir_op_fddx:
+               case nir_op_fddy:
+               case nir_op_fddx_fine:
+               case nir_op_fddy_fine:
+               case nir_op_fddx_coarse:
+               case nir_op_fddy_coarse:
+               case nir_op_ldexp:
+               case nir_op_frexp_sig:
+               case nir_op_frexp_exp:
+               case nir_op_cube_amd:
+               case nir_op_msad_4x8:
+               case nir_op_mqsad_4x8:
+               case nir_op_udot_4x8_uadd:
+               case nir_op_sdot_4x8_iadd:
+               case nir_op_sudot_4x8_iadd:
+               case nir_op_udot_4x8_uadd_sat:
+               case nir_op_sdot_4x8_iadd_sat:
+               case nir_op_sudot_4x8_iadd_sat:
+               case nir_op_udot_2x16_uadd:
+               case nir_op_sdot_2x16_iadd:
+               case nir_op_udot_2x16_uadd_sat:
+               case nir_op_sdot_2x16_iadd_sat: type = RegType::vgpr; break;
+               case nir_op_fmul:
+               case nir_op_ffma:
+               case nir_op_fadd:
+               case nir_op_fsub:
+               case nir_op_fmax:
+               case nir_op_fmin:
+               case nir_op_fsat:
+               case nir_op_fneg:
+               case nir_op_fabs:
+               case nir_op_fsign:
+               case nir_op_i2f16:
+               case nir_op_i2f32:
+               case nir_op_u2f16:
+               case nir_op_u2f32:
+               case nir_op_f2f16:
+               case nir_op_f2f16_rtz:
+               case nir_op_f2f16_rtne:
+               case nir_op_f2f32:
+               case nir_op_fquantize2f16:
+               case nir_op_ffract:
+               case nir_op_ffloor:
+               case nir_op_fceil:
+               case nir_op_ftrunc:
+               case nir_op_fround_even:
+               case nir_op_frcp:
+               case nir_op_frsq:
+               case nir_op_fsqrt:
+               case nir_op_fexp2:
+               case nir_op_flog2:
+               case nir_op_fsin_amd:
+               case nir_op_fcos_amd:
+               case nir_op_pack_half_2x16_rtz_split:
+               case nir_op_pack_half_2x16_split:
+               case nir_op_unpack_half_2x16_split_x:
+               case nir_op_unpack_half_2x16_split_y: {
+                  if (ctx->program->gfx_level < GFX11_5 ||
+                      alu_instr->src[0].src.ssa->bit_size > 32) {
+                     type = RegType::vgpr;
+                     break;
+                  }
                   FALLTHROUGH;
+               }
                default:
                   for (unsigned i = 0; i < nir_op_infos[alu_instr->op].num_inputs; i++) {
                      if (regclasses[alu_instr->src[i].src.ssa->index].type() == RegType::vgpr)
@@ -468,7 +437,6 @@ init_context(isel_context* ctx, nir_shader* shader)
                case nir_intrinsic_load_push_constant:
                case nir_intrinsic_load_workgroup_id:
                case nir_intrinsic_load_num_workgroups:
-               case nir_intrinsic_load_ray_launch_size:
                case nir_intrinsic_load_sbt_base_amd:
                case nir_intrinsic_load_subgroup_id:
                case nir_intrinsic_load_num_subgroups:
@@ -486,7 +454,8 @@ init_context(isel_context* ctx, nir_shader* shader)
                case nir_intrinsic_load_scalar_arg_amd:
                case nir_intrinsic_load_lds_ngg_scratch_base_amd:
                case nir_intrinsic_load_lds_ngg_gs_out_vertex_base_amd:
-               case nir_intrinsic_load_smem_amd: type = RegType::sgpr; break;
+               case nir_intrinsic_load_smem_amd:
+               case nir_intrinsic_unit_test_uniform_amd: type = RegType::sgpr; break;
                case nir_intrinsic_load_sample_id:
                case nir_intrinsic_load_input:
                case nir_intrinsic_load_output:
@@ -506,11 +475,11 @@ init_context(isel_context* ctx, nir_shader* shader)
                case nir_intrinsic_load_local_invocation_id:
                case nir_intrinsic_load_local_invocation_index:
                case nir_intrinsic_load_subgroup_invocation:
-               case nir_intrinsic_load_ray_launch_id:
                case nir_intrinsic_load_tess_coord:
                case nir_intrinsic_write_invocation_amd:
                case nir_intrinsic_mbcnt_amd:
                case nir_intrinsic_lane_permute_16_amd:
+               case nir_intrinsic_dpp16_shift_amd:
                case nir_intrinsic_load_instance_id:
                case nir_intrinsic_ssbo_atomic:
                case nir_intrinsic_ssbo_atomic_swap:
@@ -530,9 +499,9 @@ init_context(isel_context* ctx, nir_shader* shader)
                case nir_intrinsic_gds_atomic_add_amd:
                case nir_intrinsic_bvh64_intersect_ray_amd:
                case nir_intrinsic_load_vector_arg_amd:
-               case nir_intrinsic_load_rt_dynamic_callable_stack_base_amd:
-               case nir_intrinsic_ordered_xfb_counter_add_amd:
-               case nir_intrinsic_cmat_muladd_amd: type = RegType::vgpr; break;
+               case nir_intrinsic_ordered_xfb_counter_add_gfx11_amd:
+               case nir_intrinsic_cmat_muladd_amd:
+               case nir_intrinsic_unit_test_divergent_amd: type = RegType::vgpr; break;
                case nir_intrinsic_load_shared:
                case nir_intrinsic_load_shared2_amd:
                   /* When the result of these loads is only used by cross-lane instructions,
@@ -625,8 +594,6 @@ init_context(isel_context* ctx, nir_shader* shader)
 
    ctx->program->config->spi_ps_input_ena = ctx->program->info.ps.spi_ps_input_ena;
    ctx->program->config->spi_ps_input_addr = ctx->program->info.ps.spi_ps_input_addr;
-
-   ctx->cf_info.nir_to_aco = std::move(nir_to_aco);
 
    /* align and copy constant data */
    while (ctx->program->constant_data.size() % 4u)

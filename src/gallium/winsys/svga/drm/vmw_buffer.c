@@ -1,27 +1,9 @@
-/**********************************************************
- * Copyright 2009-2023 VMware, Inc.  All rights reserved.
- *
- * Permission is hereby granted, free of charge, to any person
- * obtaining a copy of this software and associated documentation
- * files (the "Software"), to deal in the Software without
- * restriction, including without limitation the rights to use, copy,
- * modify, merge, publish, distribute, sublicense, and/or sell copies
- * of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be
- * included in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
- * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
- * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
- * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
- *
- **********************************************************/
+/*
+ * Copyright (c) 2009-2024 Broadcom. All Rights Reserved.
+ * The term “Broadcom” refers to Broadcom Inc.
+ * and/or its subsidiaries.
+ * SPDX-License-Identifier: MIT
+ */
 
 /**
  * @file
@@ -297,7 +279,7 @@ vmw_dma_bufmgr_region_ptr(struct pb_buffer *buf,
    return true;
 }
 
-#ifdef DEBUG
+#if MESA_DEBUG
 struct svga_winsys_buffer {
    struct pb_buffer *pb_buf;
    struct debug_flush_buf *fbuf;
@@ -344,7 +326,7 @@ vmw_svga_winsys_buffer_destroy(struct svga_winsys_screen *sws,
    struct pb_buffer *pbuf = vmw_pb_buffer(buf);
    (void)sws;
    pb_reference(&pbuf, NULL);
-#ifdef DEBUG
+#if MESA_DEBUG
    debug_flush_buf_reference(&buf->fbuf, NULL);
    FREE(buf);
 #endif
@@ -377,7 +359,7 @@ vmw_svga_winsys_buffer_map(struct svga_winsys_screen *sws,
 
    map = pb_map(vmw_pb_buffer(buf), pb_flags, NULL);
 
-#ifdef DEBUG
+#if MESA_DEBUG
    if (map != NULL)
       debug_flush_map(buf->fbuf, pb_flags);
 #endif
@@ -392,7 +374,7 @@ vmw_svga_winsys_buffer_unmap(struct svga_winsys_screen *sws,
 {
    (void)sws;
 
-#ifdef DEBUG
+#if MESA_DEBUG
    debug_flush_unmap(buf->fbuf);
 #endif
 

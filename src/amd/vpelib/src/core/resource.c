@@ -31,21 +31,25 @@
 #include "vpe10_resource.h"
 #endif
 
+#ifdef VPE_BUILD_1_1
+#include "vpe11_resource.h"
+#endif
+
 static const struct vpe_debug_options debug_defaults = {
-    .flags                   = {0},
-    .cm_in_bypass            = 0,
-    .vpcnvc_bypass           = 0,
-    .mpc_bypass              = 0,
-    .identity_3dlut          = 0,
-    .sce_3dlut               = 0,
-    .disable_reuse_bit       = 0,
-    .bg_bit_depth            = 0,
-    .bypass_gamcor           = 0,
-    .bypass_ogam             = 0,
-    .bypass_dpp_gamut_remap  = 0,
-    .bypass_post_csc         = 0,
-    .bg_color_fill_only      = 0,
-    .assert_when_not_support = 0,
+    .flags                                   = {0},
+    .cm_in_bypass                            = 0,
+    .vpcnvc_bypass                           = 0,
+    .mpc_bypass                              = 0,
+    .identity_3dlut                          = 0,
+    .sce_3dlut                               = 0,
+    .disable_reuse_bit                       = 0,
+    .bg_bit_depth                            = 0,
+    .bypass_gamcor                           = 0,
+    .bypass_ogam                             = 0,
+    .bypass_dpp_gamut_remap                  = 0,
+    .bypass_post_csc                         = 0,
+    .bg_color_fill_only                      = 0,
+    .assert_when_not_support                 = 0,
     .enable_mem_low_power =
         {
             .bits =
@@ -55,7 +59,6 @@ static const struct vpe_debug_options debug_defaults = {
                     .mpc  = false,
                 },
         },
-    .force_tf_calculation                    = 1,
     .expansion_mode                          = 1,
     .clamping_setting                        = 1,
     .clamping_params =
@@ -74,6 +77,7 @@ static const struct vpe_debug_options debug_defaults = {
     .mpc_crc_ctrl                            = 0,
     .visual_confirm_params                   = {{{0}}},
     .skip_optimal_tap_check                  = 0,
+    .bypass_blndgam                          = 0
 };
 
 enum vpe_ip_level vpe_resource_parse_ip_version(
@@ -84,7 +88,14 @@ enum vpe_ip_level vpe_resource_parse_ip_version(
 #if VPE_BUILD_1_X
 #if VPE_BUILD_1_0
     case VPE_VERSION(6, 1, 0):
+    case VPE_VERSION(6, 1, 3):
         ip_level = VPE_IP_LEVEL_1_0;
+        break;
+#endif
+#if VPE_BUILD_1_1
+    case VPE_VERSION(6, 1, 1):
+    case VPE_VERSION(6, 1, 2):
+        ip_level = VPE_IP_LEVEL_1_1;
         break;
 #endif
 #endif
@@ -103,6 +114,11 @@ enum vpe_status vpe_construct_resource(
 #ifdef VPE_BUILD_1_0
     case VPE_IP_LEVEL_1_0:
         status = vpe10_construct_resource(vpe_priv, res);
+        break;
+#endif
+#ifdef VPE_BUILD_1_1
+    case VPE_IP_LEVEL_1_1:
+        status = vpe11_construct_resource(vpe_priv, res);
         break;
 #endif
     default:
@@ -125,6 +141,11 @@ void vpe_destroy_resource(struct vpe_priv *vpe_priv, struct resource *res)
 #ifdef VPE_BUILD_1_0
     case VPE_IP_LEVEL_1_0:
         vpe10_destroy_resource(vpe_priv, res);
+        break;
+#endif
+#ifdef VPE_BUILD_1_1
+    case VPE_IP_LEVEL_1_1:
+        vpe11_destroy_resource(vpe_priv, res);
         break;
 #endif
     default:

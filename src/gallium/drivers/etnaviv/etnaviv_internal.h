@@ -145,6 +145,8 @@ struct etna_specs {
    unsigned num_constants;
    /* number of NN cores */
    unsigned nn_core_count;
+   /* architecture version of NN cores */
+   unsigned nn_core_version;
    /* number of MAD units per NN core */
    unsigned nn_mad_per_core;
    /* number of TP cores */
@@ -153,6 +155,12 @@ struct etna_specs {
    unsigned on_chip_sram_size;
    /* Size of SRAM behind AXI */
    unsigned axi_sram_size;
+   /* Number of bits for zero run-length compression */
+   unsigned nn_zrl_bits;
+   /* Input buffer size, determines tile size */
+   unsigned nn_input_buffer_depth;
+   /* Accumulation buffer size, determines tile size */
+   unsigned nn_accum_buffer_depth;
 };
 
 /* Compiled Gallium state. All the different compiled state atoms are woven

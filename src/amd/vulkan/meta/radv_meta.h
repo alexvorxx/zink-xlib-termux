@@ -3,31 +3,30 @@
  * based on intel anv code:
  * Copyright © 2015 Intel Corporation
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
- * IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
 #ifndef RADV_META_H
 #define RADV_META_H
 
-#include "radv_private.h"
+#include "radv_buffer.h"
+#include "radv_buffer_view.h"
+#include "radv_cmd_buffer.h"
+#include "radv_device.h"
+#include "radv_device_memory.h"
+#include "radv_entrypoints.h"
+#include "radv_image.h"
+#include "radv_image_view.h"
+#include "radv_physical_device.h"
+#include "radv_pipeline.h"
+#include "radv_pipeline_compute.h"
+#include "radv_pipeline_graphics.h"
+#include "radv_queue.h"
 #include "radv_shader.h"
+#include "radv_shader_object.h"
+#include "radv_sqtt.h"
+
+#include "vk_shader_module.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -101,7 +100,6 @@ radv_meta_dst_layout_to_layout(enum radv_meta_dst_layout layout)
 }
 
 extern const VkFormat radv_fs_key_format_exemplars[NUM_META_FS_KEYS];
-unsigned radv_format_meta_fs_key(struct radv_device *device, VkFormat format);
 
 VkResult radv_device_init_meta(struct radv_device *device);
 void radv_device_finish_meta(struct radv_device *device);
@@ -124,7 +122,7 @@ void radv_device_finish_meta_blit_state(struct radv_device *device);
 VkResult radv_device_init_meta_blit2d_state(struct radv_device *device, bool on_demand);
 void radv_device_finish_meta_blit2d_state(struct radv_device *device);
 
-VkResult radv_device_init_meta_buffer_state(struct radv_device *device);
+VkResult radv_device_init_meta_buffer_state(struct radv_device *device, bool on_demand);
 void radv_device_finish_meta_buffer_state(struct radv_device *device);
 
 VkResult radv_device_init_meta_query_state(struct radv_device *device, bool on_demand);
@@ -198,32 +196,26 @@ struct radv_meta_blit2d_rect {
 void radv_meta_begin_blit2d(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_saved_state *save);
 
 void radv_meta_blit2d(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_blit2d_surf *src_img,
-                      struct radv_meta_blit2d_buffer *src_buf, struct radv_meta_blit2d_surf *dst, unsigned num_rects,
-                      struct radv_meta_blit2d_rect *rects);
+                      struct radv_meta_blit2d_buffer *src_buf, struct radv_meta_blit2d_surf *dst,
+                      struct radv_meta_blit2d_rect *rect);
 
 void radv_meta_end_blit2d(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_saved_state *save);
 
-VkResult radv_device_init_meta_bufimage_state(struct radv_device *device);
+VkResult radv_device_init_meta_bufimage_state(struct radv_device *device, bool on_demand);
 void radv_device_finish_meta_bufimage_state(struct radv_device *device);
 void radv_meta_image_to_buffer(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_blit2d_surf *src,
-                               struct radv_meta_blit2d_buffer *dst, unsigned num_rects,
-                               struct radv_meta_blit2d_rect *rects);
+                               struct radv_meta_blit2d_buffer *dst, struct radv_meta_blit2d_rect *rect);
 
 void radv_meta_buffer_to_image_cs(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_blit2d_buffer *src,
-                                  struct radv_meta_blit2d_surf *dst, unsigned num_rects,
-                                  struct radv_meta_blit2d_rect *rects);
+                                  struct radv_meta_blit2d_surf *dst, struct radv_meta_blit2d_rect *rect);
 void radv_meta_image_to_image_cs(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_blit2d_surf *src,
-                                 struct radv_meta_blit2d_surf *dst, unsigned num_rects,
-                                 struct radv_meta_blit2d_rect *rects);
+                                 struct radv_meta_blit2d_surf *dst, struct radv_meta_blit2d_rect *rect);
 void radv_meta_clear_image_cs(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_blit2d_surf *dst,
                               const VkClearColorValue *clear_color);
 
 void radv_expand_depth_stencil(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image,
                                const VkImageSubresourceRange *subresourceRange,
                                struct radv_sample_locations_state *sample_locs);
-void radv_resummarize_depth_stencil(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image,
-                                    const VkImageSubresourceRange *subresourceRange,
-                                    struct radv_sample_locations_state *sample_locs);
 void radv_fast_clear_flush_image_inplace(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image,
                                          const VkImageSubresourceRange *subresourceRange);
 void radv_decompress_dcc(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image,
@@ -231,12 +223,11 @@ void radv_decompress_dcc(struct radv_cmd_buffer *cmd_buffer, struct radv_image *
 void radv_retile_dcc(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image);
 void radv_expand_fmask_image_inplace(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image,
                                      const VkImageSubresourceRange *subresourceRange);
-void radv_copy_vrs_htile(struct radv_cmd_buffer *cmd_buffer, struct radv_image *vrs_image, const VkRect2D *rect,
+void radv_copy_vrs_htile(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view *vrs_iview, const VkRect2D *rect,
                          struct radv_image *dst_image, struct radv_buffer *htile_buffer, bool read_htile_value);
 
 bool radv_can_use_fmask_copy(struct radv_cmd_buffer *cmd_buffer, const struct radv_image *src_image,
-                             const struct radv_image *dst_image, unsigned num_rects,
-                             const struct radv_meta_blit2d_rect *rects);
+                             const struct radv_image *dst_image, const struct radv_meta_blit2d_rect *rect);
 void radv_fmask_copy(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_blit2d_surf *src,
                      struct radv_meta_blit2d_surf *dst);
 
@@ -313,6 +304,17 @@ void radv_cmd_buffer_resolve_rendering_fs(struct radv_cmd_buffer *cmd_buffer, st
 
 void radv_depth_stencil_resolve_rendering_fs(struct radv_cmd_buffer *cmd_buffer, VkImageAspectFlags aspects,
                                              VkResolveModeFlagBits resolve_mode);
+
+VkResult radv_meta_create_compute_pipeline(struct radv_device *device, nir_shader *nir,
+                                           VkPipelineLayout pipeline_layout, VkPipeline *pipeline);
+
+VkResult radv_meta_create_pipeline_layout(struct radv_device *device, VkDescriptorSetLayout *set_layout,
+                                          uint32_t num_pc_ranges, const VkPushConstantRange *pc_ranges,
+                                          VkPipelineLayout *pipeline_layout);
+
+VkResult radv_meta_create_descriptor_set_layout(struct radv_device *device, uint32_t num_bindings,
+                                                const VkDescriptorSetLayoutBinding *bindings,
+                                                VkDescriptorSetLayout *desc_layout);
 
 #ifdef __cplusplus
 }

@@ -46,7 +46,6 @@ radeonsi-stoney-traces:x86_64:
   variables:
     EGL_PLATFORM: surfaceless
     PIGLIT_TRACES_FILE: traces-amd.yml
-    PIGLIT_REPLAY_DESCRIPTION_FILE: "/install/traces-amd.yml"
     PIGLIT_REPLAY_EXTRA_ARGS: --keep-image
 
 radv-raven-vkcts:x86_64:
@@ -70,12 +69,28 @@ amd-raven-skqp:x86_64:
 
 radv-raven-traces:x86_64:
   extends:
-    - .radv-traces
+    - .lava-piglit-traces:x86_64
     - .radv-raven-test:x86_64
     - .lava-lenovo-TPad-C13-Yoga-zork:x86_64
   variables:
     HWCI_START_XORG: 1
+    PIGLIT_PLATFORM: mixed_glx_egl  # TODO, take wine/VK in account
     PIGLIT_REPLAY_DEVICE_NAME: "vk-${GPU_VERSION}"
+    PIGLIT_TRACES_FILE: traces-amd.yml
+
+radv-raven-traces-restricted:x86_64:
+  extends:
+    - .lava-piglit-traces:x86_64
+    - .radv-raven-test:x86_64
+    - .lava-lenovo-TPad-C13-Yoga-zork:x86_64
+    - .radv-collabora-rules-restricted
+  variables:
+    HWCI_START_WESTON: 1
+    PIGLIT_REPLAY_ANGLE_TAG: "2023-02-10-1"
+    PIGLIT_TRACES_FILE: restricted-traces-amd.yml
+    PIGLIT_REPLAY_DEVICE_NAME: "vk-${GPU_VERSION}"
+    PIGLIT_REPLAY_EXTRA_ARGS: --keep-image --minio_bucket=${S3_TRACIE_PRIVATE_BUCKET} --jwt-file=${S3_JWT_FILE}
+    FDO_CI_CONCURRENT: 10
 
 radeonsi-raven-piglit-quick_gl:x86_64:
   extends:
@@ -171,7 +186,6 @@ vkcts-tahiti-valve:
     B2C_TIMEOUT_BOOT_MINUTES: 350
     B2C_TIMEOUT_OVERALL_MINUTES: 350
     B2C_TIMEOUT_BOOT_RETRIES: 0
-    RADV_PERFTEST: shader_object
 
 vkcts-polaris10-valve:
   extends:
@@ -183,7 +197,6 @@ vkcts-polaris10-valve:
     GPU_VERSION: radv-polaris10-aco
     B2C_TIMEOUT_BOOT_MINUTES: 70
     B2C_TIMEOUT_OVERALL_MINUTES: 70
-    RADV_PERFTEST: shader_object
 
 vkcts-vega10-valve:
   extends:
@@ -195,7 +208,6 @@ vkcts-vega10-valve:
     GPU_VERSION: radv-vega10-aco
     B2C_TIMEOUT_BOOT_MINUTES: 70
     B2C_TIMEOUT_OVERALL_MINUTES: 70
-    RADV_PERFTEST: shader_object
 
 vkcts-renoir-valve:
   extends:
@@ -207,7 +219,6 @@ vkcts-renoir-valve:
     GPU_VERSION: radv-renoir-aco
     B2C_TIMEOUT_BOOT_MINUTES: 130
     B2C_TIMEOUT_OVERALL_MINUTES: 130
-    RADV_PERFTEST: shader_object
 
 vkcts-navi10-valve:
   parallel: 2
@@ -217,11 +228,10 @@ vkcts-navi10-valve:
     - .radv-valve-manual-rules
   variables:
     GPU_VERSION: radv-navi10-aco
-    RADV_PERFTEST: shader_object
 
 vkcts-navi21-valve:
   timeout: 35m
-  parallel: 4
+  parallel: 3
   extends:
     - .vkcts-test-valve
     - .navi21-test-valve
@@ -230,7 +240,6 @@ vkcts-navi21-valve:
     GPU_VERSION: radv-navi21-aco
     B2C_TIMEOUT_BOOT_MINUTES: 30
     B2C_TIMEOUT_OVERALL_MINUTES: 30
-    RADV_PERFTEST: shader_object
 
 # Disabled due to its extremelly-broken nature
 .vkcts-navi21-llvm-valve:
@@ -251,12 +260,11 @@ vkcts-vangogh-valve:
   timeout: 2h 10m
   variables:
     GPU_VERSION: radv-vangogh-aco
-    RADV_PERFTEST: shader_object
 
 glcts-vangogh-valve:
   extends:
-    - .b2c-test-gl
-    - .deqp-test-valve
+    - .b2c-x86_64-test-gl
+    - .b2c-deqp-test
     - .vangogh-test-valve
     - .radeonsi-valve-manual-rules
   timeout: 40m
@@ -272,7 +280,6 @@ vkcts-navi31-valve:
   variables:
     GPU_VERSION: radv-navi31-aco
     RADV_DEBUG: nomeshshader # Disable mesh shaders until task shaders stop hanging
-    RADV_PERFTEST: shader_object
 
 ############### Fossilize
 radv-fossils:
@@ -309,66 +316,74 @@ radv-fossils:
 
 vkd3d-tahiti-valve:
   extends:
-    - .vkd3d-test-valve
+    - .b2c-test-radv-vk
+    - .b2c-vkd3d-proton-test
     - .tahiti-test-valve
     - .radv-valve-manual-rules
   variables:
-    VKD3D_PROTON_RESULTS: radv-tahiti-vkd3d
+    VKD3D_PROTON_RESULTS: radv-tahiti
     # These vkd3d-proton tests are skipped because they trigger GPU hangs.
     VKD3D_TEST_EXCLUDE: test_execute_indirect_state,test_execute_indirect_state_predication,test_undefined_descriptor_heap_mismatch_types
 
 vkd3d-polaris10-valve:
   extends:
-    - .vkd3d-test-valve
+    - .b2c-test-radv-vk
+    - .b2c-vkd3d-proton-test
     - .polaris10-test-valve-kws
     - .radv-valve-manual-rules
   variables:
-    VKD3D_PROTON_RESULTS: radv-polaris10-vkd3d
+    VKD3D_PROTON_RESULTS: radv-polaris10
 
 vkd3d-vega10-valve:
   extends:
-    - .vkd3d-test-valve
+    - .b2c-test-radv-vk
+    - .b2c-vkd3d-proton-test
     - .vega10-test-valve
     - .radv-valve-manual-rules
   variables:
-    VKD3D_PROTON_RESULTS: radv-vega10-vkd3d
+    VKD3D_PROTON_RESULTS: radv-vega10
 
 vkd3d-renoir-valve:
   extends:
-    - .vkd3d-test-valve
+    - .b2c-test-radv-vk
+    - .b2c-vkd3d-proton-test
     - .renoir-test-valve
     - .radv-valve-manual-rules
   variables:
-    VKD3D_PROTON_RESULTS: radv-renoir-vkd3d
+    VKD3D_PROTON_RESULTS: radv-renoir
 
 vkd3d-navi10-valve:
   extends:
-    - .vkd3d-test-valve
+    - .b2c-test-radv-vk
+    - .b2c-vkd3d-proton-test
     - .navi10-test-valve-mupuf
     - .radv-valve-manual-rules
   variables:
-    VKD3D_PROTON_RESULTS: radv-navi10-vkd3d
+    VKD3D_PROTON_RESULTS: radv-navi10
 
 vkd3d-navi21-valve:
   extends:
-    - .vkd3d-test-valve
+    - .b2c-test-radv-vk
+    - .b2c-vkd3d-proton-test
     - .navi21-test-valve
     - .radv-valve-manual-rules
   variables:
-    VKD3D_PROTON_RESULTS: radv-navi21-vkd3d
+    VKD3D_PROTON_RESULTS: radv-navi21
 
 vkd3d-vangogh-valve:
   extends:
-    - .vkd3d-test-valve
+    - .b2c-test-radv-vk
+    - .b2c-vkd3d-proton-test
     - .vangogh-test-valve
     - .radv-valve-manual-rules
   variables:
-    VKD3D_PROTON_RESULTS: radv-vangogh-vkd3d
+    VKD3D_PROTON_RESULTS: radv-vangogh
 
 vkd3d-navi31-valve:
   extends:
-    - .vkd3d-test-valve
+    - .b2c-test-radv-vk
+    - .b2c-vkd3d-proton-test
     - .navi31-test-valve
     - .radv-valve-manual-rules
   variables:
-    VKD3D_PROTON_RESULTS: radv-navi31-vkd3d
+    VKD3D_PROTON_RESULTS: radv-navi31

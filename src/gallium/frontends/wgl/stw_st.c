@@ -437,7 +437,6 @@ stw_st_flush(struct st_context *st,
  */
 static bool
 stw_st_framebuffer_present_locked(HDC hdc,
-                                  struct st_context *st,
                                   struct pipe_frontend_drawable *drawable,
                                   enum st_attachment_type statt)
 {
@@ -510,7 +509,7 @@ stw_st_framebuffer_flush_front(struct st_context *st,
 
    hDC = GetDC(stwfb->fb->hWnd);
 
-   ret = stw_st_framebuffer_present_locked(hDC, st, &stwfb->base, statt);
+   ret = stw_st_framebuffer_present_locked(hDC, &stwfb->base, statt);
 
    ReleaseDC(stwfb->fb->hWnd, hDC);
 
@@ -569,7 +568,7 @@ stw_st_destroy_framebuffer_locked(struct pipe_frontend_drawable *drawable)
  * Swap the buffers of the given framebuffer.
  */
 bool
-stw_st_swap_framebuffer_locked(HDC hdc, struct st_context *st,
+stw_st_swap_framebuffer_locked(HDC hdc,
                                struct pipe_frontend_drawable *drawable)
 {
    struct stw_st_framebuffer *stwfb = stw_st_framebuffer(drawable);
@@ -605,7 +604,7 @@ stw_st_swap_framebuffer_locked(HDC hdc, struct st_context *st,
    stwfb->texture_mask = mask;
 
    front = ST_ATTACHMENT_FRONT_LEFT;
-   return stw_st_framebuffer_present_locked(hdc, st, &stwfb->base, front);
+   return stw_st_framebuffer_present_locked(hdc, &stwfb->base, front);
 }
 
 

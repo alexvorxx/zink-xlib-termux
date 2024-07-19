@@ -225,7 +225,7 @@ register banks that were flipped between per draw.
 Bindless/Bindful Descriptors (a6xx+)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Starting with a6xx++, cat5 (texture) and cat6 (image/ssbo/ubo) instructions are
+Starting with a6xx++, cat5 (texture) and cat6 (image/SSBO/UBO) instructions are
 extended to support bindless descriptors.
 
 In the old bindful model, descriptors are separate for textures, samplers,
@@ -246,7 +246,7 @@ to pre-load the descriptors into cache.
    - registers: none
    - state-type: ``ST6_UBO``
    - state-block: ``SB6_xS_SHADER``
-- IBOs - global acress shader 3d stages, separate for compute shader
+- IBOs - global across shader 3d stages, separate for compute shader
    - registers: ``SP_IBO``/``SP_IBO_COUNT`` or ``SP_CS_IBO``/``SP_CS_IBO_COUNT``
    - state-type: ``ST6_SHADER``
    - state-block: ``ST6_IBO`` or ``ST6_CS_IBO`` for compute shaders
@@ -266,14 +266,14 @@ instructions as images.  Samplers use a 16byte descriptor, and UBOs use an
 
 In the bindless model, descriptors are split into 5 descriptor sets, which are
 global across shader stages (but as with bindful IBO descriptors, separate for
-3d stages vs compute stage).  Each hw descriptor is an array of descriptors
+3d stages vs compute stage).  Each HW descriptor is an array of descriptors
 of configurable size (each descriptor set can be configured for a descriptor
 pitch of 8bytes or 64bytes).  Each descriptor can be of arbitrary format (ie.
-UBOs/IBOs/textures/samplers interleaved), it's interpretation by the hw is
+UBOs/IBOs/textures/samplers interleaved), it's interpretation by the HW is
 determined by the instruction that references the descriptor.  Each descriptor
 set can contain at least 2^^16 descriptors.
 
-The hw is configured with the base address of the descriptor set via an array
+The HW is configured with the base address of the descriptor set via an array
 of "BINDLESS_BASE" registers, ie ``SP_BINDLESS_BASE[n]``/``HLSQ_BINDLESS_BASE[n]``
 for 3d shader stages, or ``SP_CS_BINDLESS_BASE[n]``/``HLSQ_CS_BINDLESS_BASE[n]``
 for compute shaders, with the descriptor pitch encoded in the low bits.
@@ -286,7 +286,7 @@ instruction.  The address of the descriptor is calculated as::
 
 .. note::
    Turnip reserves one descriptor set for internal use and exposes the other
-   four for the application via the vulkan API.
+   four for the application via the Vulkan API.
 
 Software Architecture
 ---------------------
@@ -406,7 +406,8 @@ capture from inside Mesa. Different ``FD_RD_DUMP`` options are available:
   until disabled. Writing 0 (or any other value) will disable dumps.
 
 Output dump files and trigger file (when enabled) are hard-coded to be placed
-under ``/tmp``, or ``/data/local/tmp`` under Android.
+under ``/tmp``, or ``/data/local/tmp`` under Android. `FD_RD_DUMP_TESTNAME` can
+be used to specify a more descriptive prefix for the output or trigger files.
 
 Functionality is generic to any Freedreno-based backend, but is currently only
 integrated in the MSM backend of Turnip. Using the existing ``TU_DEBUG=rd``
@@ -431,7 +432,7 @@ The format of hangrd is the same as in ordinary command stream capture.
 Replaying Command Stream
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-`replay` tool allows capturing and replaying ``rd`` to reproduce GPU faults.
+``replay`` tool allows capturing and replaying ``rd`` to reproduce GPU faults.
 Especially useful for transient GPU issues since it has much higher chances to
 reproduce them.
 
@@ -440,7 +441,7 @@ Dumping rendering results or even just memory is currently unsupported.
 - Replaying command streams requires kernel with ``MSM_INFO_SET_IOVA`` support.
 - Requires ``rd`` capture to have full snapshots of the memory (``rd_full`` is enabled).
 
-Replaying is done via `replay` tool:
+Replaying is done via ``replay`` tool:
 
 .. code-block:: sh
 
@@ -598,7 +599,7 @@ Debugging random failures
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
 In most cases random GPU faults and rendering artifacts are caused by some kind
-of undifined behaviour that falls under the following categories:
+of undefined behavior that falls under the following categories:
 
 - Usage of a stale reg value;
 - Usage of stale memory (e.g. expecting it to be zeroed when it is not);
@@ -627,11 +628,11 @@ the cases where stale data is read.
   ``cmdbuf``
     stomp registers at the start of each command buffer.
   ``renderpass``
-    stomp registers before each renderpass.
+    stomp registers before each render pass.
   ``inverse``
-    changes `TU_DEBUG_STALE_REGS_RANGE` meaning to
+    changes ``TU_DEBUG_STALE_REGS_RANGE`` meaning to
     "regs that should NOT be stomped".
 
 The best way to pinpoint the reg which causes a failure is to bisect the regs
 range. In case when a fail is caused by combination of several registers
-the `inverse` flag may be set to find the reg which prevents the failure.
+the ``inverse`` flag may be set to find the reg which prevents the failure.

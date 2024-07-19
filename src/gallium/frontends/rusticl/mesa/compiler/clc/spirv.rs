@@ -285,17 +285,44 @@ impl SPIRVBin {
 
     pub fn args(&self, name: &str) -> Vec<SPIRVKernelArg> {
         match self.kernel_info(name) {
-            None => Vec::new(),
-            Some(info) => unsafe { slice::from_raw_parts(info.args, info.num_args) }
-                .iter()
-                .map(|a| SPIRVKernelArg {
-                    name: c_string_to_string(a.name),
-                    type_name: c_string_to_string(a.type_name),
-                    access_qualifier: clc_kernel_arg_access_qualifier(a.access_qualifier),
-                    address_qualifier: a.address_qualifier,
-                    type_qualifier: clc_kernel_arg_type_qualifier(a.type_qualifier),
-                })
-                .collect(),
+            Some(info) if info.num_args > 0 => {
+                unsafe { slice::from_raw_parts(info.args, info.num_args) }
+                    .iter()
+                    .map(|a| SPIRVKernelArg {
+                        name: c_string_to_string(a.name),
+                        type_name: c_string_to_string(a.type_name),
+                        access_qualifier: clc_kernel_arg_access_qualifier(a.access_qualifier),
+                        address_qualifier: a.address_qualifier,
+                        type_qualifier: clc_kernel_arg_type_qualifier(a.type_qualifier),
+                    })
+                    .collect()
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    fn get_spirv_capabilities() -> spirv_capabilities {
+        spirv_capabilities {
+            Addresses: true,
+            Float16: true,
+            Float16Buffer: true,
+            Float64: true,
+            GenericPointer: true,
+            Groups: true,
+            GroupNonUniformShuffle: true,
+            GroupNonUniformShuffleRelative: true,
+            Int8: true,
+            Int16: true,
+            Int64: true,
+            Kernel: true,
+            ImageBasic: true,
+            ImageReadWrite: true,
+            Linkage: true,
+            LiteralSampler: true,
+            SampledBuffer: true,
+            Sampled1D: true,
+            Vector16: true,
+            ..Default::default()
         }
     }
 
@@ -303,6 +330,7 @@ impl SPIRVBin {
         library: bool,
         clc_shader: *const nir_shader,
         address_bits: u32,
+        caps: &spirv_capabilities,
         log: Option<&mut Vec<String>>,
     ) -> spirv_to_nir_options {
         let global_addr_format;
@@ -328,25 +356,8 @@ impl SPIRVBin {
             float_controls_execution_mode: float_controls::FLOAT_CONTROLS_DENORM_FLUSH_TO_ZERO_FP32
                 as u32,
 
-            caps: spirv_supported_capabilities {
-                address: true,
-                float16: true,
-                float64: true,
-                generic_pointers: true,
-                groups: true,
-                subgroup_shuffle: true,
-                int8: true,
-                int16: true,
-                int64: true,
-                kernel: true,
-                kernel_image: true,
-                kernel_image_read_write: true,
-                linkage: true,
-                literal_sampler: true,
-                printf: true,
-                ..Default::default()
-            },
-
+            printf: true,
+            capabilities: caps,
             constant_addr_format: global_addr_format,
             global_addr_format: global_addr_format,
             shared_addr_format: offset_addr_format,
@@ -367,7 +378,9 @@ impl SPIRVBin {
         log: Option<&mut Vec<String>>,
     ) -> Option<NirShader> {
         let c_entry = CString::new(entry_point.as_bytes()).unwrap();
-        let spirv_options = Self::get_spirv_options(false, libclc.get_nir(), address_bits, log);
+        let spirv_caps = Self::get_spirv_capabilities();
+        let spirv_options =
+            Self::get_spirv_options(false, libclc.get_nir(), address_bits, &spirv_caps, log);
 
         let nir = unsafe {
             spirv_to_nir(
@@ -388,7 +401,9 @@ impl SPIRVBin {
     pub fn get_lib_clc(screen: &PipeScreen) -> Option<NirShader> {
         let nir_options = screen.nir_shader_compiler_options(pipe_shader_type::PIPE_SHADER_COMPUTE);
         let address_bits = screen.compute_param(pipe_compute_cap::PIPE_COMPUTE_CAP_ADDRESS_BITS);
-        let spirv_options = Self::get_spirv_options(true, ptr::null(), address_bits, None);
+        let spirv_caps = Self::get_spirv_capabilities();
+        let spirv_options =
+            Self::get_spirv_options(false, ptr::null(), address_bits, &spirv_caps, None);
         let shader_cache = DiskCacheBorrowed::as_ptr(&screen.shader_cache());
 
         NirShader::new(unsafe {

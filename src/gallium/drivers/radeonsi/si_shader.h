@@ -114,7 +114,7 @@
 #include "shader_info.h"
 #include "ac_binary.h"
 #include "ac_gpu_info.h"
-#include "util/mesa-sha1.h"
+#include "util/mesa-blake3.h"
 #include "util/u_live_shader_cache.h"
 #include "util/u_queue.h"
 #include "si_pm4.h"
@@ -235,21 +235,6 @@ enum
 #define VS_STATE_INDEXED__SHIFT              1
 #define VS_STATE_INDEXED__MASK               0x1 /* Shared by VS and GS */
 
-/* These fields are only set in current_vs_state in si_context, and they are accessible
- * in the shader via vs_state_bits in LS/HS.
- */
-/* bit gap */
-/* TCS output patch0 offset for per-patch outputs / 4
- * - 64 outputs are implied by SI_UNIQUE_SLOT_* values.
- * - max = 32(CPs) * 64(outputs) * 16(vec4) * 64(num_patches) * 2(inputs + outputs) / 4
- *       = 1M, clamped to 32K(LDS limit) / 4 = 8K
- * - only used by si_llvm_tcs_build_end, it can be removed after NIR lowering replaces it
- */
-#define VS_STATE_TCS_OUT_PATCH0_OFFSET__SHIFT   10
-#define VS_STATE_TCS_OUT_PATCH0_OFFSET__MASK    0x3fff
-#define VS_STATE_LS_OUT_VERTEX_SIZE__SHIFT      24
-#define VS_STATE_LS_OUT_VERTEX_SIZE__MASK       0xff /* max 32 * 4 + 1 (to reduce LDS bank conflicts) */
-
 /* These fields are only set in current_gs_state in si_context, and they are accessible
  * in the shader via vs_state_bits in legacy GS, the GS copy shader, and any NGG shader.
  */
@@ -313,7 +298,7 @@ enum
 #define SI_NGG_CULL_GET_CLIP_PLANE_ENABLE(x)  (((x) >> 5) & 0xff)
 
 struct si_shader_profile {
-   uint32_t sha1[SHA1_DIGEST_LENGTH32];
+   uint32_t blake3[BLAKE3_OUT_LEN32];
    uint32_t options;
 };
 
@@ -512,6 +497,7 @@ struct si_shader_info {
    bool uses_variable_block_size;
    bool uses_grid_size;
    bool uses_tg_size;
+   bool uses_atomic_ordered_add;
    bool writes_position;
    bool writes_psize;
    bool writes_clipvertex;
@@ -625,13 +611,6 @@ struct si_shader_selector {
  */
 #pragma pack(push, 1)
 
-/* Common TCS bits between the shader key and the epilog key. */
-struct si_tcs_epilog_bits {
-   unsigned prim_mode : 3;
-   unsigned invoc0_tess_factors_are_def : 1;
-   unsigned tes_reads_tess_factors : 1;
-};
-
 /* Common PS bits between the shader key and the prolog key. */
 struct si_ps_prolog_bits {
    unsigned color_two_side : 1;
@@ -663,12 +642,8 @@ struct si_ps_epilog_bits {
 
 union si_shader_part_key {
    struct {
-      struct si_tcs_epilog_bits states;
-      unsigned wave32 : 1;
-      unsigned noop_s_barrier : 1;
-   } tcs_epilog;
-   struct {
       struct si_ps_prolog_bits states;
+      unsigned use_aco : 1;
       unsigned wave32 : 1;
       unsigned num_input_sgprs : 6;
       /* Color interpolation and two-side color selection. */
@@ -681,6 +656,7 @@ union si_shader_part_key {
    } ps_prolog;
    struct {
       struct si_ps_epilog_bits states;
+      unsigned use_aco : 1;
       unsigned wave32 : 1;
       unsigned uses_discard : 1;
       unsigned colors_written : 8;
@@ -697,7 +673,6 @@ struct si_shader_key_ge {
    union {
       struct {
          struct si_shader_selector *ls;      /* for merged LS-HS */
-         struct si_tcs_epilog_bits epilog;
       } tcs; /* tessellation control shader */
       struct {
          struct si_shader_selector *es;      /* for merged ES-GS */
@@ -734,6 +709,9 @@ struct si_shader_key_ge {
          unsigned vs_export_prim_id : 1;    /* VS and TES only */
          unsigned gs_tri_strip_adj_fix : 1; /* GS only */
       } u;
+
+      /* Gfx12: When no streamout buffers are bound, streamout must be disabled. */
+      unsigned remove_streamout : 1;
    } mono;
 
    /* Optimization flags for asynchronous compilation only. */
@@ -748,6 +726,7 @@ struct si_shader_key_ge {
       /* For NGG VS and TES. */
       unsigned ngg_culling : 13; /* SI_NGG_CULL_* */
 
+
       /* For shaders where monolithic variants have better code.
        *
        * This is a flag that has no effect on code generation,
@@ -758,6 +737,10 @@ struct si_shader_key_ge {
 
       /* VS and TCS have the same number of patch vertices. */
       unsigned same_patch_vertices:1;
+
+      /* For TCS. */
+      unsigned tes_prim_mode : 3;
+      unsigned tes_reads_tess_factors : 1;
 
       unsigned inline_uniforms:1;
 
@@ -883,7 +866,10 @@ struct si_shader {
     * in use.
     */
    uint64_t gpu_address;
-   struct si_resource *scratch_bo;
+   /* Only used on GFX6-10 where the scratch address must be inserted into the shader binary.
+    * This is the scratch address that the current shader binary contains.
+    */
+   uint64_t scratch_va;
    union si_shader_key key;
    struct util_queue_fence ready;
    bool compilation_failed;
@@ -892,6 +878,7 @@ struct si_shader {
    bool is_binary_shared;
    bool is_gs_copy_shader;
    uint8_t wave_size;
+   unsigned complete_shader_binary_size;
 
    /* The following data is all that's needed for binary shaders. */
    struct si_shader_binary binary;
@@ -976,6 +963,8 @@ struct si_shader {
          unsigned cb_shader_mask;
          unsigned db_shader_control;
          unsigned num_interp;
+         unsigned spi_gs_out_config_ps;
+         unsigned pa_sc_hisz_control;
          bool writes_samplemask;
       } ps;
    };
@@ -1004,8 +993,10 @@ bool si_create_shader_variant(struct si_screen *sscreen, struct ac_llvm_compiler
                               struct si_shader *shader, struct util_debug_callback *debug);
 void si_shader_destroy(struct si_shader *shader);
 unsigned si_shader_io_get_unique_index(unsigned semantic);
-bool si_shader_binary_upload(struct si_screen *sscreen, struct si_shader *shader,
-                             uint64_t scratch_va);
+int si_shader_binary_upload(struct si_screen *sscreen, struct si_shader *shader,
+                            uint64_t scratch_va);
+int si_shader_binary_upload_at(struct si_screen *sscreen, struct si_shader *shader,
+                               uint64_t scratch_va, int64_t bo_offset);
 bool si_can_dump_shader(struct si_screen *sscreen, gl_shader_stage stage,
                         enum si_shader_dump_type dump_type);
 void si_shader_dump(struct si_screen *sscreen, struct si_shader *shader,
@@ -1021,13 +1012,14 @@ bool si_shader_binary_open(struct si_screen *screen, struct si_shader *shader,
                            struct ac_rtld_binary *rtld);
 bool si_get_external_symbol(enum amd_gfx_level gfx_level, void *data, const char *name,
                             uint64_t *value);
+unsigned si_get_shader_prefetch_size(struct si_shader *shader);
+unsigned si_get_shader_binary_size(struct si_screen *screen, struct si_shader *shader);
 
 /* si_shader_info.c */
 void si_nir_scan_shader(struct si_screen *sscreen,  const struct nir_shader *nir,
                         struct si_shader_info *info);
 
 /* si_shader_nir.c */
-extern const struct nir_lower_subgroups_options si_nir_subgroups_options;
 void si_lower_mediump_io(struct nir_shader *nir);
 
 bool si_alu_to_scalar_packed_math_filter(const struct nir_instr *instr, const void *data);
@@ -1092,7 +1084,8 @@ static inline bool si_shader_uses_streamout(const struct si_shader *shader)
 {
    return shader->selector->stage <= MESA_SHADER_GEOMETRY &&
           shader->selector->info.enabled_streamout_buffer_mask &&
-          !shader->key.ge.opt.remove_streamout;
+          !shader->key.ge.opt.remove_streamout &&
+          !shader->key.ge.mono.remove_streamout;
 }
 
 static inline bool si_shader_uses_discard(struct si_shader *shader)

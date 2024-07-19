@@ -1,32 +1,14 @@
 /*
  * Copyright © 2018 Valve Corporation
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
- * IN THE SOFTWARE.
- *
+ * SPDX-License-Identifier: MIT
  */
 
 #include "aco_ir.h"
 
 #include "util/u_debug.h"
 
-#if LLVM_AVAILABLE
+#if AMD_LLVM_AVAILABLE
 #if defined(_MSC_VER) && defined(restrict)
 #undef restrict
 #endif
@@ -266,7 +248,7 @@ fail:
 #endif
 }
 
-#if LLVM_AVAILABLE
+#if AMD_LLVM_AVAILABLE
 std::pair<bool, size_t>
 disasm_instr(amd_gfx_level gfx_level, LLVMDisasmContextRef disasm, uint32_t* binary,
              unsigned exec_size, size_t pos, char* outline, unsigned outline_size)
@@ -384,14 +366,14 @@ print_asm_llvm(Program* program, std::vector<uint32_t>& binary, unsigned exec_si
 
    return invalid;
 }
-#endif /* LLVM_AVAILABLE */
+#endif /* AMD_LLVM_AVAILABLE */
 
 } /* end namespace */
 
 bool
 check_print_asm_support(Program* program)
 {
-#if LLVM_AVAILABLE
+#if AMD_LLVM_AVAILABLE
    if (program->gfx_level >= GFX8) {
       /* LLVM disassembler only supports GFX8+ */
       const char* name = ac_get_llvm_processor_name(program->family);
@@ -422,7 +404,7 @@ check_print_asm_support(Program* program)
 bool
 print_asm(Program* program, std::vector<uint32_t>& binary, unsigned exec_size, FILE* output)
 {
-#if LLVM_AVAILABLE
+#if AMD_LLVM_AVAILABLE
    if (program->gfx_level >= GFX8) {
       return print_asm_llvm(program, binary, exec_size, output);
    }

@@ -204,7 +204,7 @@ pub extern "C" fn nak_nir_options(
 }
 
 #[repr(C)]
-struct ShaderBin {
+pub struct ShaderBin {
     bin: nak_shader_bin,
     code: Vec<u32>,
     asm: CString,
@@ -334,6 +334,14 @@ impl ShaderBin {
             code: code,
             asm: asm,
         }
+    }
+}
+
+impl std::ops::Deref for ShaderBin {
+    type Target = nak_shader_bin;
+
+    fn deref(&self) -> &nak_shader_bin {
+        &self.bin
     }
 }
 

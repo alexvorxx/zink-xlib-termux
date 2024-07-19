@@ -417,6 +417,30 @@ create_depthstencil_pipeline(struct radv_device *device, VkImageAspectFlags aspe
    struct nir_shader *vs_nir, *fs_nir;
    VkResult result;
 
+   if (!device->meta_state.clear_depth_p_layout) {
+      const VkPushConstantRange pc_range_depth = {
+         .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+         .size = 4,
+      };
+
+      result =
+         radv_meta_create_pipeline_layout(device, NULL, 1, &pc_range_depth, &device->meta_state.clear_depth_p_layout);
+      if (result != VK_SUCCESS)
+         return result;
+   }
+
+   if (!device->meta_state.clear_depth_unrestricted_p_layout) {
+      const VkPushConstantRange pc_range_depth_unrestricted = {
+         .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+         .size = 4,
+      };
+
+      result = radv_meta_create_pipeline_layout(device, NULL, 1, &pc_range_depth_unrestricted,
+                                                &device->meta_state.clear_depth_unrestricted_p_layout);
+      if (result != VK_SUCCESS)
+         return result;
+   }
+
    build_depthstencil_shader(device, &vs_nir, &fs_nir, unrestricted);
 
    const VkPipelineVertexInputStateCreateInfo vi_state = {
@@ -548,6 +572,12 @@ emit_depthstencil_clear(struct radv_cmd_buffer *cmd_buffer, VkClearDepthStencilV
    assert(util_is_power_of_two_nonzero(samples));
    samples_log2 = ffs(samples) - 1;
 
+   result = get_depth_stencil_pipeline(device, samples_log2, aspects, can_fast_clear, &pipeline);
+   if (result != VK_SUCCESS) {
+      vk_command_buffer_set_error(&cmd_buffer->vk, result);
+      return;
+   }
+
    if (!(aspects & VK_IMAGE_ASPECT_DEPTH_BIT))
       clear_value.depth = 1.0f;
 
@@ -563,12 +593,6 @@ emit_depthstencil_clear(struct radv_cmd_buffer *cmd_buffer, VkClearDepthStencilV
    uint32_t prev_reference = cmd_buffer->state.dynamic.vk.ds.stencil.front.reference;
    if (aspects & VK_IMAGE_ASPECT_STENCIL_BIT) {
       radv_CmdSetStencilReference(cmd_buffer_h, VK_STENCIL_FACE_FRONT_BIT, clear_value.stencil);
-   }
-
-   result = get_depth_stencil_pipeline(device, samples_log2, aspects, can_fast_clear, &pipeline);
-   if (result != VK_SUCCESS) {
-      vk_command_buffer_set_error(&cmd_buffer->vk, result);
-      return;
    }
 
    radv_CmdBindPipeline(cmd_buffer_h, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
@@ -1008,25 +1032,6 @@ radv_device_init_meta_clear_state(struct radv_device *device, bool on_demand)
 {
    VkResult res;
    struct radv_meta_state *state = &device->meta_state;
-
-   const VkPushConstantRange pc_range_depth = {
-      .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-      .size = 4,
-   };
-
-   res = radv_meta_create_pipeline_layout(device, NULL, 1, &pc_range_depth, &device->meta_state.clear_depth_p_layout);
-   if (res != VK_SUCCESS)
-      return res;
-
-   const VkPushConstantRange pc_range_depth_unrestricted = {
-      .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-      .size = 4,
-   };
-
-   res = radv_meta_create_pipeline_layout(device, NULL, 1, &pc_range_depth_unrestricted,
-                                          &device->meta_state.clear_depth_unrestricted_p_layout);
-   if (res != VK_SUCCESS)
-      return res;
 
    res = init_meta_clear_dcc_comp_to_single_state(device, on_demand);
    if (res != VK_SUCCESS)

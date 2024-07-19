@@ -216,10 +216,9 @@ radv_device_finish_meta_depth_decomp_state(struct radv_device *device)
 {
    struct radv_meta_state *state = &device->meta_state;
 
-   for (uint32_t i = 0; i < ARRAY_SIZE(state->depth_decomp); ++i) {
-      radv_DestroyPipelineLayout(radv_device_to_handle(device), state->depth_decomp[i].p_layout, &state->alloc);
-
-      radv_DestroyPipeline(radv_device_to_handle(device), state->depth_decomp[i].decompress_pipeline, &state->alloc);
+   radv_DestroyPipelineLayout(radv_device_to_handle(device), state->depth_decomp.p_layout, &state->alloc);
+   for (uint32_t i = 0; i < ARRAY_SIZE(state->depth_decomp.decompress_pipeline); ++i) {
+      radv_DestroyPipeline(radv_device_to_handle(device), state->depth_decomp.decompress_pipeline[i], &state->alloc);
    }
 
    radv_DestroyPipeline(radv_device_to_handle(device), state->expand_depth_stencil_compute_pipeline, &state->alloc);
@@ -235,24 +234,21 @@ radv_device_init_meta_depth_decomp_state(struct radv_device *device, bool on_dem
    struct radv_meta_state *state = &device->meta_state;
    VkResult res = VK_SUCCESS;
 
-   for (uint32_t i = 0; i < ARRAY_SIZE(state->depth_decomp); ++i) {
+   res = radv_meta_create_pipeline_layout(device, NULL, 0, NULL, &state->depth_decomp.p_layout);
+   if (res != VK_SUCCESS)
+      return res;
+
+   if (on_demand)
+      return res;
+
+   for (uint32_t i = 0; i < ARRAY_SIZE(state->depth_decomp.decompress_pipeline); ++i) {
       uint32_t samples = 1 << i;
 
-      res = radv_meta_create_pipeline_layout(device, NULL, 0, NULL, &state->depth_decomp[i].p_layout);
-      if (res != VK_SUCCESS)
-         return res;
-
-      if (on_demand)
-         continue;
-
-      res = create_pipeline_gfx(device, samples, state->depth_decomp[i].p_layout,
-                                &state->depth_decomp[i].decompress_pipeline);
+      res = create_pipeline_gfx(device, samples, state->depth_decomp.p_layout,
+                                &state->depth_decomp.decompress_pipeline[i]);
       if (res != VK_SUCCESS)
          return res;
    }
-
-   if (on_demand)
-      return VK_SUCCESS;
 
    return create_pipeline_cs(device, &state->expand_depth_stencil_compute_pipeline);
 }
@@ -266,14 +262,14 @@ get_pipeline_gfx(struct radv_device *device, struct radv_image *image, VkPipelin
    VkResult result = VK_SUCCESS;
 
    mtx_lock(&state->mtx);
-   if (!state->depth_decomp[samples_log2].decompress_pipeline) {
-      result = create_pipeline_gfx(device, samples, state->depth_decomp[samples_log2].p_layout,
-                                   &state->depth_decomp[samples_log2].decompress_pipeline);
+   if (!state->depth_decomp.decompress_pipeline[samples_log2]) {
+      result = create_pipeline_gfx(device, samples, state->depth_decomp.p_layout,
+                                   &state->depth_decomp.decompress_pipeline[samples_log2]);
       if (result != VK_SUCCESS)
          goto fail;
    }
 
-   *pipeline_out = state->depth_decomp[samples_log2].decompress_pipeline;
+   *pipeline_out = state->depth_decomp.decompress_pipeline[samples_log2];
 
 fail:
    mtx_unlock(&state->mtx);

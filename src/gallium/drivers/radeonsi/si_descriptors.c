@@ -303,6 +303,9 @@ void si_set_mutable_tex_desc_fields(struct si_screen *sscreen, struct si_texture
 
    ac_set_mutable_tex_desc_fields(&sscreen->info, &ac_state, state);
 
+   if (!sscreen->info.has_image_opcodes)
+      return;
+
    if (sscreen->info.gfx_level == GFX9 && !is_stencil) {
       uint32_t hw_format = G_008F14_DATA_FORMAT(state[1]);
       uint16_t epitch = tex->surface.u.gfx9.epitch;

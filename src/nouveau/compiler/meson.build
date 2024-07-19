@@ -66,6 +66,18 @@ libnak_c_files = files(
   'nak_memstream.c',
 )
 
+_libacorn_rs = static_library(
+  'acorn',
+  files('acorn/lib.rs'),
+  gnu_symbol_visibility : 'hidden',
+  rust_abi : 'rust',
+  rust_args : nak_rust_args,
+)
+
+idep_acorn_rs = declare_dependency(
+  link_with : _libacorn_rs,
+)
+
 _libbitview_rs = static_library(
   'bitview',
   files('bitview/lib.rs'),

@@ -86,10 +86,40 @@ static VkResult
 create_pipeline(struct radv_device *device, int samples, VkPipeline *pipeline)
 {
    struct radv_meta_state *state = &device->meta_state;
-   nir_shader *cs = build_fmask_copy_compute_shader(device, samples);
    VkResult result;
 
+   if (!state->fmask_copy.ds_layout) {
+      const VkDescriptorSetLayoutBinding bindings[] = {
+         {
+            .binding = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+         },
+         {
+            .binding = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+         },
+      };
+
+      result = radv_meta_create_descriptor_set_layout(device, 2, bindings, &state->fmask_copy.ds_layout);
+      if (result != VK_SUCCESS)
+         return result;
+   }
+
+   if (!state->fmask_copy.p_layout) {
+      result =
+         radv_meta_create_pipeline_layout(device, &state->fmask_copy.ds_layout, 0, NULL, &state->fmask_copy.p_layout);
+      if (result != VK_SUCCESS)
+         return result;
+   }
+
+   nir_shader *cs = build_fmask_copy_compute_shader(device, samples);
+
    result = radv_meta_create_compute_pipeline(device, cs, state->fmask_copy.p_layout, pipeline);
+
    ralloc_free(cs);
    return result;
 }
@@ -131,32 +161,7 @@ radv_device_finish_meta_fmask_copy_state(struct radv_device *device)
 VkResult
 radv_device_init_meta_fmask_copy_state(struct radv_device *device, bool on_demand)
 {
-   struct radv_meta_state *state = &device->meta_state;
    VkResult result;
-
-   const VkDescriptorSetLayoutBinding bindings[] = {
-      {
-         .binding = 0,
-         .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-         .descriptorCount = 1,
-         .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-      },
-      {
-         .binding = 1,
-         .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-         .descriptorCount = 1,
-         .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-      },
-   };
-
-   result = radv_meta_create_descriptor_set_layout(device, 2, bindings, &state->fmask_copy.ds_layout);
-   if (result != VK_SUCCESS)
-      return result;
-
-   result =
-      radv_meta_create_pipeline_layout(device, &state->fmask_copy.ds_layout, 0, NULL, &state->fmask_copy.p_layout);
-   if (result != VK_SUCCESS)
-      return result;
 
    if (on_demand)
       return VK_SUCCESS;

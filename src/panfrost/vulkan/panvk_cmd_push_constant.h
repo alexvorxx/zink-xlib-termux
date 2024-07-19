@@ -37,10 +37,9 @@ panvk_cmd_prepare_push_uniforms(struct pan_pool *desc_pool_base,
 
 static inline void
 panvk_cmd_push_constants(struct panvk_push_constant_state *push,
-                         VkShaderStageFlags stages, uint32_t offset,
-                         uint32_t size, const void *values)
+                         const VkPushConstantsInfoKHR *info)
 {
-   memcpy(push->data + offset, values, size);
+   memcpy(push->data + info->offset, info->pValues, info->size);
 }
 
 #endif

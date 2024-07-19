@@ -6243,6 +6243,15 @@ pub struct ComputeShaderInfo {
 }
 
 #[derive(Debug)]
+pub struct FragmentShaderInfo {
+    pub uses_kill: bool,
+    pub does_interlock: bool,
+    pub post_depth_coverage: bool,
+    pub early_fragment_tests: bool,
+    pub uses_sample_shading: bool,
+}
+
+#[derive(Debug)]
 pub struct GeometryShaderInfo {
     pub passthrough_enable: bool,
     pub stream_out_mask: u8,
@@ -6305,7 +6314,7 @@ pub struct TessellationShaderInfo {
 pub enum ShaderStageInfo {
     Compute(ComputeShaderInfo),
     Vertex,
-    Fragment,
+    Fragment(FragmentShaderInfo),
     Geometry(GeometryShaderInfo),
     TessellationInit(TessellationInitShaderInfo),
     Tessellation(TessellationShaderInfo),
@@ -6391,11 +6400,9 @@ pub struct FragmentIoInfo {
     pub barycentric_attr_in: [u32; 4],
 
     pub reads_sample_mask: bool,
-    pub uses_kill: bool,
     pub writes_color: u32,
     pub writes_sample_mask: bool,
     pub writes_depth: bool,
-    pub does_interlock: bool,
 }
 
 impl FragmentIoInfo {

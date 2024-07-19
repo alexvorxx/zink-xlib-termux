@@ -40,7 +40,16 @@ fn init_info_from_nir(nir: &nir_shader) -> ShaderInfo {
                 })
             }
             MESA_SHADER_VERTEX => ShaderStageInfo::Vertex,
-            MESA_SHADER_FRAGMENT => ShaderStageInfo::Fragment,
+            MESA_SHADER_FRAGMENT => {
+                let info_fs = unsafe { &nir.info.__bindgen_anon_1.fs };
+                ShaderStageInfo::Fragment(FragmentShaderInfo {
+                    uses_kill: false,
+                    does_interlock: false,
+                    post_depth_coverage: info_fs.post_depth_coverage(),
+                    early_fragment_tests: info_fs.early_fragment_tests(),
+                    uses_sample_shading: info_fs.uses_sample_shading(),
+                })
+            }
             MESA_SHADER_GEOMETRY => {
                 let info_gs = unsafe { &nir.info.__bindgen_anon_1.gs };
                 let output_topology = match info_gs.output_primitive {
@@ -117,12 +126,9 @@ fn init_info_from_nir(nir: &nir_shader) -> ShaderInfo {
                 attr_in: [PixelImap::Unused; 128],
                 barycentric_attr_in: [0; 4],
                 reads_sample_mask: false,
-                uses_kill: false,
                 writes_color: 0,
                 writes_sample_mask: false,
                 writes_depth: false,
-                // TODO: Should be set if interlocks are in use. (VK_EXT_fragment_shader_interlock)
-                does_interlock: false,
             }),
             MESA_SHADER_VERTEX
             | MESA_SHADER_GEOMETRY
@@ -2347,7 +2353,7 @@ impl<'a> ShaderFromNir<'a> {
                 b.push_op(OpFSOut { srcs: srcs });
             }
             nir_intrinsic_demote => {
-                if let ShaderIoInfo::Fragment(info) = &mut self.info.io {
+                if let ShaderStageInfo::Fragment(info) = &mut self.info.stage {
                     info.uses_kill = true;
                 } else {
                     panic!("OpKill is only available in fragment shaders");
@@ -2355,7 +2361,7 @@ impl<'a> ShaderFromNir<'a> {
                 b.push_op(OpKill {});
             }
             nir_intrinsic_demote_if => {
-                if let ShaderIoInfo::Fragment(info) = &mut self.info.io {
+                if let ShaderStageInfo::Fragment(info) = &mut self.info.stage {
                     info.uses_kill = true;
                 } else {
                     panic!("OpKill is only available in fragment shaders");

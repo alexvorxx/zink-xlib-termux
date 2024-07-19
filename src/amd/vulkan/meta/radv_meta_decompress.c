@@ -96,6 +96,12 @@ create_pipeline_gfx(struct radv_device *device, uint32_t samples, VkPipelineLayo
    VkResult result;
    VkDevice device_h = radv_device_to_handle(device);
 
+   if (!device->meta_state.depth_decomp.p_layout) {
+      result = radv_meta_create_pipeline_layout(device, NULL, 0, NULL, &device->meta_state.depth_decomp.p_layout);
+      if (result != VK_SUCCESS)
+         return result;
+   }
+
    nir_shader *vs_module = radv_meta_build_nir_vs_generate_vertices(device);
    nir_shader *fs_module = radv_meta_build_nir_fs_noop(device);
 
@@ -233,10 +239,6 @@ radv_device_init_meta_depth_decomp_state(struct radv_device *device, bool on_dem
 {
    struct radv_meta_state *state = &device->meta_state;
    VkResult res = VK_SUCCESS;
-
-   res = radv_meta_create_pipeline_layout(device, NULL, 0, NULL, &state->depth_decomp.p_layout);
-   if (res != VK_SUCCESS)
-      return res;
 
    if (on_demand)
       return res;

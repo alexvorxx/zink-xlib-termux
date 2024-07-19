@@ -1529,7 +1529,7 @@ static void si_query_dmabuf_modifiers(struct pipe_screen *screen,
 
    unsigned ac_mod_count = max;
    ac_get_supported_modifiers(&sscreen->info, &(struct ac_modifier_options) {
-         .dcc = !(sscreen->debug_flags & DBG(NO_DCC)),
+         .dcc = !(sscreen->debug_flags & (DBG(NO_DCC) | DBG(NO_EXPORTED_DCC))),
          /* Do not support DCC with retiling yet. This needs explicit
           * resource flushes, but the app has no way to promise doing
           * flushes with modifiers. */

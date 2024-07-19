@@ -621,10 +621,6 @@ program@execute@scalar-comparison-ulong,Crash
 program@execute@scalar-load-long,Crash
 program@execute@scalar-load-ulong,Crash
 program@run kernel with max work item sizes,Fail
-spec@amd_performance_monitor@vc4,Fail
-spec@amd_performance_monitor@vc4@test_counter_string_normal_buffer,Fail
-spec@amd_performance_monitor@vc4@test_counter_string_single_character_buffer,Fail
-spec@amd_performance_monitor@vc4@test_counter_string_small_buffer,Fail
 
 # Failures from arm32
 arm32-KHR-GL31.texture_size_promotion.functional,Fail

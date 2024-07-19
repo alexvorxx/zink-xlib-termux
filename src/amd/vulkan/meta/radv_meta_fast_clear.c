@@ -57,7 +57,6 @@ static VkResult
 create_dcc_compress_compute(struct radv_device *device)
 {
    VkResult result = VK_SUCCESS;
-   nir_shader *cs = build_dcc_decompress_compute_shader(device);
 
    const VkDescriptorSetLayoutBinding bindings[] = {
       {
@@ -77,21 +76,19 @@ create_dcc_compress_compute(struct radv_device *device)
    result = radv_meta_create_descriptor_set_layout(
       device, 2, bindings, &device->meta_state.fast_clear_flush.dcc_decompress_compute_ds_layout);
    if (result != VK_SUCCESS)
-      goto cleanup;
+      return result;
 
    result =
       radv_meta_create_pipeline_layout(device, &device->meta_state.fast_clear_flush.dcc_decompress_compute_ds_layout, 0,
                                        NULL, &device->meta_state.fast_clear_flush.dcc_decompress_compute_p_layout);
    if (result != VK_SUCCESS)
-      goto cleanup;
+      return result;
+
+   nir_shader *cs = build_dcc_decompress_compute_shader(device);
 
    result =
       radv_meta_create_compute_pipeline(device, cs, device->meta_state.fast_clear_flush.dcc_decompress_compute_p_layout,
                                         &device->meta_state.fast_clear_flush.dcc_decompress_compute_pipeline);
-   if (result != VK_SUCCESS)
-      goto cleanup;
-
-cleanup:
    ralloc_free(cs);
    return result;
 }

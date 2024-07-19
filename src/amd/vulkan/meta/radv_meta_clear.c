@@ -955,7 +955,7 @@ init_meta_clear_dcc_comp_to_single_state(struct radv_device *device, bool on_dem
 
    result = radv_meta_create_descriptor_set_layout(device, 1, &binding, &state->clear_dcc_comp_to_single_ds_layout);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
    const VkPushConstantRange pc_range = {
       .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
@@ -965,7 +965,7 @@ init_meta_clear_dcc_comp_to_single_state(struct radv_device *device, bool on_dem
    result = radv_meta_create_pipeline_layout(device, &state->clear_dcc_comp_to_single_ds_layout, 1, &pc_range,
                                              &state->clear_dcc_comp_to_single_p_layout);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
    if (on_demand)
       return VK_SUCCESS;
@@ -973,10 +973,9 @@ init_meta_clear_dcc_comp_to_single_state(struct radv_device *device, bool on_dem
    for (uint32_t i = 0; i < 2; i++) {
       result = create_dcc_comp_to_single_pipeline(device, !!i, &state->clear_dcc_comp_to_single_pipeline[i]);
       if (result != VK_SUCCESS)
-         goto fail;
+         return result;
    }
 
-fail:
    return result;
 }
 

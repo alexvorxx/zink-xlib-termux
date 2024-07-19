@@ -2079,7 +2079,6 @@ VkResult
 radv_device_init_dgc_prepare_state(struct radv_device *device)
 {
    VkResult result;
-   nir_shader *cs = build_dgc_prepare_shader(device);
 
    const VkDescriptorSetLayoutBinding binding = {
       .binding = 0,
@@ -2090,7 +2089,7 @@ radv_device_init_dgc_prepare_state(struct radv_device *device)
 
    result = radv_meta_create_descriptor_set_layout(device, 1, &binding, &device->meta_state.dgc_prepare.ds_layout);
    if (result != VK_SUCCESS)
-      goto cleanup;
+      return result;
 
    const VkPushConstantRange pc_range = {
       .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
@@ -2100,14 +2099,12 @@ radv_device_init_dgc_prepare_state(struct radv_device *device)
    result = radv_meta_create_pipeline_layout(device, &device->meta_state.dgc_prepare.ds_layout, 1, &pc_range,
                                              &device->meta_state.dgc_prepare.p_layout);
    if (result != VK_SUCCESS)
-      goto cleanup;
+      return result;
+
+   nir_shader *cs = build_dgc_prepare_shader(device);
 
    result = radv_meta_create_compute_pipeline(device, cs, device->meta_state.dgc_prepare.p_layout,
                                               &device->meta_state.dgc_prepare.pipeline);
-   if (result != VK_SUCCESS)
-      goto cleanup;
-
-cleanup:
    ralloc_free(cs);
    return result;
 }

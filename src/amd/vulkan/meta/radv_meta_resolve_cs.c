@@ -187,20 +187,15 @@ create_layout(struct radv_device *device)
 
    result = radv_meta_create_descriptor_set_layout(device, 2, bindings, &device->meta_state.resolve_compute.ds_layout);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
    const VkPushConstantRange pc_range = {
       .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
       .size = 16,
    };
 
-   result = radv_meta_create_pipeline_layout(device, &device->meta_state.resolve_compute.ds_layout, 1, &pc_range,
-                                             &device->meta_state.resolve_compute.p_layout);
-   if (result != VK_SUCCESS)
-      goto fail;
-   return VK_SUCCESS;
-fail:
-   return result;
+   return radv_meta_create_pipeline_layout(device, &device->meta_state.resolve_compute.ds_layout, 1, &pc_range,
+                                           &device->meta_state.resolve_compute.p_layout);
 }
 
 static VkResult

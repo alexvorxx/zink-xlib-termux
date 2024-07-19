@@ -540,7 +540,7 @@ radv_device_init_meta_itoi_state(struct radv_device *device, bool on_demand)
 
    result = radv_meta_create_descriptor_set_layout(device, 2, bindings, &device->meta_state.itoi.img_ds_layout);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
    const VkPushConstantRange pc_range = {
       .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
@@ -550,7 +550,7 @@ radv_device_init_meta_itoi_state(struct radv_device *device, bool on_demand)
    result = radv_meta_create_pipeline_layout(device, &device->meta_state.itoi.img_ds_layout, 1, &pc_range,
                                              &device->meta_state.itoi.img_p_layout);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
    if (on_demand)
       return VK_SUCCESS;
@@ -559,7 +559,7 @@ radv_device_init_meta_itoi_state(struct radv_device *device, bool on_demand)
       uint32_t samples = 1 << i;
       result = create_itoi_pipeline(device, false, false, samples, &device->meta_state.itoi.pipeline[i]);
       if (result != VK_SUCCESS)
-         goto fail;
+         return result;
    }
 
    for (uint32_t src_3d = 0; src_3d < 2; src_3d++) {
@@ -576,12 +576,10 @@ radv_device_init_meta_itoi_state(struct radv_device *device, bool on_demand)
 
          result = create_itoi_pipeline(device, src_3d, dst_3d, 1, pipeline);
          if (result != VK_SUCCESS)
-            goto fail;
+            return result;
       }
    }
 
-   return VK_SUCCESS;
-fail:
    return result;
 }
 

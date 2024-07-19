@@ -1610,6 +1610,9 @@ si_modifier_supports_resource(struct pipe_screen *screen,
    struct si_screen *sscreen = (struct si_screen *)screen;
    uint32_t max_width, max_height;
 
+   if (templ->bind & PIPE_BIND_LINEAR && modifier != DRM_FORMAT_MOD_LINEAR)
+      return false;
+
    ac_modifier_max_extent(&sscreen->info, modifier, &max_width, &max_height);
    return templ->width0 <= max_width && templ->height0 <= max_height;
 }

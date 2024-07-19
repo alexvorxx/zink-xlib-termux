@@ -4,7 +4,7 @@
 extern crate bitview;
 extern crate nak_ir_proc;
 
-use bitview::BitMutView;
+use bitview::{BitMutView, BitView};
 use nak_bindings::*;
 
 pub use crate::builder::{Builder, InstrBuilder, SSABuilder, SSAInstrBuilder};
@@ -6336,6 +6336,9 @@ pub struct VtgIoInfo {
     pub attr_out: [u32; 4],
     pub store_req_start: u8,
     pub store_req_end: u8,
+    pub clip_enable: u8,
+    pub cull_enable: u8,
+    pub xfb: Option<Box<nak_xfb_info>>,
 }
 
 impl VtgIoInfo {
@@ -6382,6 +6385,23 @@ impl VtgIoInfo {
 
     pub fn mark_attrs_written(&mut self, addrs: Range<u16>) {
         self.mark_attrs(addrs, true);
+    }
+
+    pub fn attr_written(&self, addr: u16) -> bool {
+        if addr < 0x080 {
+            self.sysvals_out.ab & (1 << (addr / 4)) != 0
+        } else if addr < 0x280 {
+            let attr_idx = (addr - 0x080) as usize / 4;
+            BitView::new(&self.attr_out).get_bit(attr_idx)
+        } else if addr < 0x2c0 {
+            panic!("FF color I/O not supported");
+        } else if addr < 0x300 {
+            self.sysvals_out.c & (1 << ((addr - 0x2c0) / 4)) != 0
+        } else if addr >= 0x3a0 && addr < 0x3c0 {
+            self.sysvals_out_d & (1 << ((addr - 0x3a0) / 4)) != 0
+        } else {
+            panic!("Unknown I/O address");
+        }
     }
 
     pub fn mark_store_req(&mut self, addrs: Range<u16>) {

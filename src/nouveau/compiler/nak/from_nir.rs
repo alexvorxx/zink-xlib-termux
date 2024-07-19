@@ -133,18 +133,35 @@ fn init_info_from_nir(nir: &nir_shader) -> ShaderInfo {
             MESA_SHADER_VERTEX
             | MESA_SHADER_GEOMETRY
             | MESA_SHADER_TESS_CTRL
-            | MESA_SHADER_TESS_EVAL => ShaderIoInfo::Vtg(VtgIoInfo {
-                sysvals_in: SysValInfo::default(),
-                sysvals_in_d: 0,
-                sysvals_out: SysValInfo::default(),
-                sysvals_out_d: 0,
-                attr_in: [0; 4],
-                attr_out: [0; 4],
+            | MESA_SHADER_TESS_EVAL => {
+                let num_clip = nir.info.clip_distance_array_size();
+                let num_cull = nir.info.cull_distance_array_size();
+                let clip_enable = (1_u32 << num_clip) - 1;
+                let cull_enable = ((1_u32 << num_cull) - 1) << num_clip;
 
-                // TODO: figure out how to fill this.
-                store_req_start: u8::MAX,
-                store_req_end: 0,
-            }),
+                ShaderIoInfo::Vtg(VtgIoInfo {
+                    sysvals_in: SysValInfo::default(),
+                    sysvals_in_d: 0,
+                    sysvals_out: SysValInfo::default(),
+                    sysvals_out_d: 0,
+                    attr_in: [0; 4],
+                    attr_out: [0; 4],
+
+                    // TODO: figure out how to fill this.
+                    store_req_start: u8::MAX,
+                    store_req_end: 0,
+
+                    clip_enable: clip_enable.try_into().unwrap(),
+                    cull_enable: cull_enable.try_into().unwrap(),
+                    xfb: if nir.xfb_info.is_null() {
+                        None
+                    } else {
+                        Some(Box::new(unsafe {
+                            nak_xfb_from_nir(nir.xfb_info)
+                        }))
+                    },
+                })
+            }
             _ => panic!("Unknown shader stage"),
         },
     }

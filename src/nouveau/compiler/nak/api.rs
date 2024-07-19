@@ -364,26 +364,18 @@ pub extern "C" fn nak_compile_shader(
                 _pad: Default::default(),
             },
         },
-        vtg: match &s.info.stage {
-            ShaderStageInfo::Geometry(_)
-            | ShaderStageInfo::Tessellation(_)
-            | ShaderStageInfo::Vertex => {
-                let writes_layer =
-                    nir.info.outputs_written & (1 << VARYING_SLOT_LAYER) != 0;
-                let writes_point_size =
-                    nir.info.outputs_written & (1 << VARYING_SLOT_PSIZ) != 0;
-                let num_clip = nir.info.clip_distance_array_size();
-                let num_cull = nir.info.cull_distance_array_size();
-                let clip_enable = (1_u32 << num_clip) - 1;
-                let cull_enable = ((1_u32 << num_cull) - 1) << num_clip;
-                nak_shader_info__bindgen_ty_2 {
-                    writes_layer,
-                    writes_point_size,
-                    clip_enable: clip_enable.try_into().unwrap(),
-                    cull_enable: cull_enable.try_into().unwrap(),
-                    xfb: unsafe { nak_xfb_from_nir(nir.xfb_info) },
-                }
-            }
+        vtg: match &s.info.io {
+            ShaderIoInfo::Vtg(io) => nak_shader_info__bindgen_ty_2 {
+                writes_layer: io.attr_written(NAK_ATTR_RT_ARRAY_INDEX),
+                writes_point_size: io.attr_written(NAK_ATTR_POINT_SIZE),
+                clip_enable: io.clip_enable.try_into().unwrap(),
+                cull_enable: io.cull_enable.try_into().unwrap(),
+                xfb: if let Some(xfb) = &io.xfb {
+                    **xfb
+                } else {
+                    unsafe { std::mem::zeroed() }
+                },
+            },
             _ => unsafe { std::mem::zeroed() },
         },
         hdr: sph::encode_header(sm.as_ref(), &s.info, fs_key),

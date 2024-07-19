@@ -417,12 +417,6 @@ create_depthstencil_pipeline(struct radv_device *device, VkImageAspectFlags aspe
    struct nir_shader *vs_nir, *fs_nir;
    VkResult result;
 
-   mtx_lock(&device->meta_state.mtx);
-   if (*pipeline) {
-      mtx_unlock(&device->meta_state.mtx);
-      return VK_SUCCESS;
-   }
-
    build_depthstencil_shader(device, &vs_nir, &fs_nir, unrestricted);
 
    const VkPipelineVertexInputStateCreateInfo vi_state = {
@@ -477,7 +471,6 @@ create_depthstencil_pipeline(struct radv_device *device, VkImageAspectFlags aspe
    result = create_pipeline(device, samples, vs_nir, fs_nir, &vi_state, &ds_state, &cb_state, &rendering_create_info,
                             device->meta_state.clear_depth_p_layout, &extra, &device->meta_state.alloc, pipeline);
 
-   mtx_unlock(&device->meta_state.mtx);
    return result;
 }
 
@@ -486,14 +479,17 @@ static bool radv_can_fast_clear_depth(struct radv_cmd_buffer *cmd_buffer, const 
                                       const VkClearRect *clear_rect, const VkClearDepthStencilValue clear_value,
                                       uint32_t view_mask);
 
-static VkPipeline
-pick_depthstencil_pipeline(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_state *meta_state, int samples_log2,
-                           VkImageAspectFlags aspects, bool fast)
+static VkResult
+get_depth_stencil_pipeline(struct radv_device *device, int samples_log2, VkImageAspectFlags aspects, bool fast,
+                           VkPipeline *pipeline_out)
 {
-   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   struct radv_meta_state *meta_state = &device->meta_state;
    bool unrestricted = device->vk.enabled_extensions.EXT_depth_range_unrestricted;
    int index = fast ? DEPTH_CLEAR_FAST : DEPTH_CLEAR_SLOW;
+   VkResult result = VK_SUCCESS;
    VkPipeline *pipeline;
+
+   mtx_lock(&meta_state->mtx);
 
    switch (aspects) {
    case VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT:
@@ -512,14 +508,17 @@ pick_depthstencil_pipeline(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_
       unreachable("expected depth or stencil aspect");
    }
 
-   if (*pipeline == VK_NULL_HANDLE) {
-      VkResult ret = create_depthstencil_pipeline(device, aspects, 1u << samples_log2, index, unrestricted, pipeline);
-      if (ret != VK_SUCCESS) {
-         vk_command_buffer_set_error(&cmd_buffer->vk, ret);
-         return VK_NULL_HANDLE;
-      }
+   if (!*pipeline) {
+      result = create_depthstencil_pipeline(device, aspects, 1u << samples_log2, index, unrestricted, pipeline);
+      if (result != VK_SUCCESS)
+         goto fail;
    }
-   return *pipeline;
+
+   *pipeline_out = *pipeline;
+
+fail:
+   mtx_unlock(&meta_state->mtx);
+   return result;
 }
 
 static void
@@ -528,10 +527,11 @@ emit_depthstencil_clear(struct radv_cmd_buffer *cmd_buffer, VkClearDepthStencilV
                         bool can_fast_clear)
 {
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
-   struct radv_meta_state *meta_state = &device->meta_state;
    const struct radv_rendering_state *render = &cmd_buffer->state.render;
    uint32_t samples, samples_log2;
    VkCommandBuffer cmd_buffer_h = radv_cmd_buffer_to_handle(cmd_buffer);
+   VkPipeline pipeline;
+   VkResult result;
 
    /* When a framebuffer is bound to the current command buffer, get the
     * number of samples from it. Otherwise, get the number of samples from
@@ -565,9 +565,11 @@ emit_depthstencil_clear(struct radv_cmd_buffer *cmd_buffer, VkClearDepthStencilV
       radv_CmdSetStencilReference(cmd_buffer_h, VK_STENCIL_FACE_FRONT_BIT, clear_value.stencil);
    }
 
-   VkPipeline pipeline = pick_depthstencil_pipeline(cmd_buffer, meta_state, samples_log2, aspects, can_fast_clear);
-   if (!pipeline)
+   result = get_depth_stencil_pipeline(device, samples_log2, aspects, can_fast_clear, &pipeline);
+   if (result != VK_SUCCESS) {
+      vk_command_buffer_set_error(&cmd_buffer->vk, result);
       return;
+   }
 
    radv_CmdBindPipeline(cmd_buffer_h, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 

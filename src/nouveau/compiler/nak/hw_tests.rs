@@ -567,6 +567,40 @@ fn test_op_iadd3x() {
 }
 
 #[test]
+fn test_op_shf() {
+    let sm = &RunSingleton::get().sm;
+
+    let types = [IntType::U32, IntType::I32, IntType::U64, IntType::I64];
+
+    for i in 0..32 {
+        let op = OpShf {
+            dst: Dst::None,
+            low: 0.into(),
+            high: 0.into(),
+            shift: 0.into(),
+            data_type: types[i & 0x3],
+            right: i & 0x4 != 0,
+            wrap: i & 0x8 != 0,
+            dst_high: i & 0x10 != 0,
+        };
+
+        if sm.sm() < 70 && !(op.dst_high || op.right) {
+            continue;
+        }
+
+        let shift_idx = op.src_idx(&op.shift);
+        let mut a = Acorn::new();
+        test_foldable_op_with(op, &mut |i| {
+            if i == shift_idx {
+                a.get_uint(6) as u32
+            } else {
+                a.get_u32()
+            }
+        });
+    }
+}
+
+#[test]
 fn test_op_prmt() {
     let op = OpPrmt {
         dst: Dst::None,

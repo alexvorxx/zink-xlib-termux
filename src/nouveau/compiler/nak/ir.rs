@@ -2071,7 +2071,7 @@ impl fmt::Display for ImageDim {
     }
 }
 
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum IntType {
     U8,
     I8,
@@ -3616,7 +3616,7 @@ impl fmt::Display for ShflOp {
 }
 
 #[repr(C)]
-#[derive(SrcsAsSlice, DstsAsSlice)]
+#[derive(Clone, SrcsAsSlice, DstsAsSlice)]
 pub struct OpShf {
     #[dst_type(GPR)]
     pub dst: Dst,
@@ -3634,6 +3634,55 @@ pub struct OpShf {
     pub wrap: bool,
     pub data_type: IntType,
     pub dst_high: bool,
+}
+
+impl Foldable for OpShf {
+    fn fold(&self, sm: &dyn ShaderModel, f: &mut OpFoldData<'_>) {
+        let low = f.get_u32_src(self, &self.low);
+        let high = f.get_u32_src(self, &self.high);
+        let shift = f.get_u32_src(self, &self.shift);
+
+        let bits: u32 = self.data_type.bits().try_into().unwrap();
+        let shift = if self.wrap {
+            shift & (bits - 1)
+        } else {
+            min(shift, bits)
+        };
+
+        let x = u64::from(low) | (u64::from(high) << 32);
+        let shifted = if sm.sm() < 70
+            && self.dst_high
+            && self.data_type != IntType::I64
+        {
+            if self.right {
+                x.checked_shr(shift).unwrap_or(0) as u64
+            } else {
+                x.checked_shl(shift).unwrap_or(0) as u64
+            }
+        } else if self.data_type.is_signed() {
+            if self.right {
+                (x as i64).checked_shr(shift).unwrap_or(0) as u64
+            } else {
+                (x as i64).checked_shl(shift).unwrap_or(0) as u64
+            }
+        } else {
+            if self.right {
+                x.checked_shr(shift).unwrap_or(0) as u64
+            } else {
+                x.checked_shl(shift).unwrap_or(0) as u64
+            }
+        };
+
+        let dst = if sm.sm() < 70 && !self.right {
+            (shifted >> 32) as u32
+        } else if self.dst_high {
+            (shifted >> 32) as u32
+        } else {
+            shifted as u32
+        };
+
+        f.set_u32_dst(self, &self.dst, dst);
+    }
 }
 
 impl DisplayOp for OpShf {

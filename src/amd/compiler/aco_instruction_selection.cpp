@@ -11866,6 +11866,12 @@ select_shader(isel_context& ctx, nir_shader* nir, const bool need_startpgm, cons
    if (need_startpgm) {
       /* Needs to be after init_context() for FS. */
       Instruction* startpgm = add_startpgm(&ctx);
+
+      if (!program->info.vs.has_prolog &&
+          (program->stage.has(SWStage::VS) || program->stage.has(SWStage::TES))) {
+         Builder(ctx.program, ctx.block).sopp(aco_opcode::s_setprio, 0x3u);
+      }
+
       append_logical_start(ctx.block);
 
       if (ctx.options->has_ls_vgpr_init_bug && ctx.stage == vertex_tess_control_hs &&
@@ -11873,11 +11879,6 @@ select_shader(isel_context& ctx, nir_shader* nir, const bool need_startpgm, cons
          fix_ls_vgpr_init_bug(&ctx);
 
       split_arguments(&ctx, startpgm);
-
-      if (!program->info.vs.has_prolog &&
-          (program->stage.has(SWStage::VS) || program->stage.has(SWStage::TES))) {
-         Builder(ctx.program, ctx.block).sopp(aco_opcode::s_setprio, 0x3u);
-      }
    }
 
    if (program->gfx_level == GFX10 && program->stage.hw == AC_HW_NEXT_GEN_GEOMETRY_SHADER &&

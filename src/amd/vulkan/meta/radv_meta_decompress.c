@@ -99,12 +99,6 @@ create_pipeline_gfx(struct radv_device *device, uint32_t samples, VkPipelineLayo
    nir_shader *vs_module = radv_meta_build_nir_vs_generate_vertices(device);
    nir_shader *fs_module = radv_meta_build_nir_fs_noop(device);
 
-   if (!vs_module || !fs_module) {
-      /* XXX: Need more accurate error */
-      result = VK_ERROR_OUT_OF_HOST_MEMORY;
-      goto cleanup;
-   }
-
    const VkPipelineSampleLocationsStateCreateInfoEXT sample_locs_create_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_SAMPLE_LOCATIONS_STATE_CREATE_INFO_EXT,
       .sampleLocationsEnable = false,
@@ -212,7 +206,6 @@ create_pipeline_gfx(struct radv_device *device, uint32_t samples, VkPipelineLayo
    result = radv_graphics_pipeline_create(device_h, device->meta_state.cache, &pipeline_create_info, &extra,
                                           &device->meta_state.alloc, pipeline);
 
-cleanup:
    ralloc_free(fs_module);
    ralloc_free(vs_module);
    return result;

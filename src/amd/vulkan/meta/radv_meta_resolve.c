@@ -36,11 +36,6 @@ create_pipeline(struct radv_device *device, VkFormat format, VkPipeline *pipelin
 
    nir_shader *vs_module = radv_meta_build_nir_vs_generate_vertices(device);
    nir_shader *fs_module = build_nir_fs(device);
-   if (!vs_module || !fs_module) {
-      /* XXX: Need more accurate error */
-      result = VK_ERROR_OUT_OF_HOST_MEMORY;
-      goto cleanup;
-   }
 
    if (!device->meta_state.resolve.p_layout) {
       result = radv_meta_create_pipeline_layout(device, NULL, 0, NULL, &device->meta_state.resolve.p_layout);

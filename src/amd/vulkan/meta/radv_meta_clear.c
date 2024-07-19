@@ -156,12 +156,6 @@ create_color_pipeline(struct radv_device *device, uint32_t samples, uint32_t fra
    struct nir_shader *fs_nir;
    VkResult result;
 
-   mtx_lock(&device->meta_state.mtx);
-   if (*pipeline) {
-      mtx_unlock(&device->meta_state.mtx);
-      return VK_SUCCESS;
-   }
-
    build_color_shaders(device, &vs_nir, &fs_nir, frag_output);
 
    const VkPipelineVertexInputStateCreateInfo vi_state = {
@@ -209,7 +203,31 @@ create_color_pipeline(struct radv_device *device, uint32_t samples, uint32_t fra
    result = create_pipeline(device, samples, vs_nir, fs_nir, &vi_state, &ds_state, &cb_state, &rendering_create_info,
                             device->meta_state.clear_color_p_layout, &extra, &device->meta_state.alloc, pipeline);
 
-   mtx_unlock(&device->meta_state.mtx);
+   return result;
+}
+
+static VkResult
+get_color_pipeline(struct radv_device *device, uint32_t samples, uint32_t frag_output, VkFormat format,
+                   VkPipeline *pipeline_out)
+{
+   struct radv_meta_state *state = &device->meta_state;
+   const uint32_t fs_key = radv_format_meta_fs_key(device, format);
+   const uint32_t samples_log2 = ffs(samples) - 1;
+   VkResult result = VK_SUCCESS;
+   VkPipeline *pipeline;
+
+   mtx_lock(&state->mtx);
+   pipeline = &state->color_clear[samples_log2][frag_output].color_pipelines[fs_key];
+   if (!*pipeline) {
+      result = create_color_pipeline(device, samples, frag_output, radv_fs_key_format_exemplars[fs_key], pipeline);
+      if (result != VK_SUCCESS)
+         goto fail;
+   }
+
+   *pipeline_out = *pipeline;
+
+fail:
+   mtx_unlock(&state->mtx);
    return result;
 }
 
@@ -280,12 +298,12 @@ emit_color_clear(struct radv_cmd_buffer *cmd_buffer, const VkClearAttachment *cl
 {
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    const struct radv_rendering_state *render = &cmd_buffer->state.render;
-   uint32_t samples, samples_log2;
+   uint32_t samples;
    VkFormat format;
-   unsigned fs_key;
    VkClearColorValue clear_value = clear_att->clearValue.color;
    VkCommandBuffer cmd_buffer_h = radv_cmd_buffer_to_handle(cmd_buffer);
    VkPipeline pipeline;
+   VkResult result;
 
    assert(clear_att->aspectMask == VK_IMAGE_ASPECT_COLOR_BIT);
    assert(clear_att->colorAttachment < render->color_att_count);
@@ -305,25 +323,12 @@ emit_color_clear(struct radv_cmd_buffer *cmd_buffer, const VkClearAttachment *cl
    assert(format != VK_FORMAT_UNDEFINED);
 
    assert(util_is_power_of_two_nonzero(samples));
-   samples_log2 = ffs(samples) - 1;
-   fs_key = radv_format_meta_fs_key(device, format);
-   assert(fs_key != -1);
 
-   if (device->meta_state.color_clear[samples_log2][clear_att->colorAttachment].color_pipelines[fs_key] ==
-       VK_NULL_HANDLE) {
-      VkResult ret = create_color_pipeline(
-         device, samples, clear_att->colorAttachment, radv_fs_key_format_exemplars[fs_key],
-         &device->meta_state.color_clear[samples_log2][clear_att->colorAttachment].color_pipelines[fs_key]);
-      if (ret != VK_SUCCESS) {
-         vk_command_buffer_set_error(&cmd_buffer->vk, ret);
-         return;
-      }
+   result = get_color_pipeline(device, samples, clear_att->colorAttachment, format, &pipeline);
+   if (result != VK_SUCCESS) {
+      vk_command_buffer_set_error(&cmd_buffer->vk, result);
+      return;
    }
-
-   pipeline = device->meta_state.color_clear[samples_log2][clear_att->colorAttachment].color_pipelines[fs_key];
-
-   assert(samples_log2 < ARRAY_SIZE(device->meta_state.color_clear));
-   assert(pipeline);
 
    vk_common_CmdPushConstants(radv_cmd_buffer_to_handle(cmd_buffer), device->meta_state.clear_color_p_layout,
                               VK_SHADER_STAGE_FRAGMENT_BIT, 0, 16, &clear_value);

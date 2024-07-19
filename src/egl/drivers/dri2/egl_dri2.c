@@ -666,7 +666,7 @@ dri2_load_driver_common(_EGLDisplay *disp,
    extensions = dri2_open_driver(disp);
    if (!extensions) {
       if (disp->Options.FallbackZink)
-         _eglLog(_LOADER_WARNING, "MESA-LOADER: failed to open %s: driver not built!)\n", dri2_dpy->driver_name);
+         _eglLog(_LOADER_WARNING, "MESA-LOADER: egl: failed to open %s: driver not built!\n", dri2_dpy->driver_name);
       return EGL_FALSE;
    }
 

@@ -8835,16 +8835,18 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       const unsigned bit_size = instr->src[0].ssa->bit_size;
       assert(bit_size != 1);
 
-      if (!nir_src_is_divergent(instr->src[0]) && cluster_size == ctx->program->wave_size) {
+      if (!nir_src_is_divergent(instr->src[0])) {
          /* We use divergence analysis to assign the regclass, so check if it's
           * working as expected */
          ASSERTED bool expected_divergent = instr->intrinsic == nir_intrinsic_exclusive_scan;
-         if (instr->intrinsic == nir_intrinsic_inclusive_scan)
-            expected_divergent = op == nir_op_iadd || op == nir_op_fadd || op == nir_op_ixor;
+         if (instr->intrinsic == nir_intrinsic_inclusive_scan ||
+             cluster_size != ctx->program->wave_size)
+            expected_divergent = op == nir_op_iadd || op == nir_op_fadd || op == nir_op_ixor ||
+                                 op == nir_op_imul || op == nir_op_fmul;
          assert(instr->def.divergent == expected_divergent);
 
          if (instr->intrinsic == nir_intrinsic_reduce) {
-            if (emit_uniform_reduce(ctx, instr))
+            if (!instr->def.divergent && emit_uniform_reduce(ctx, instr))
                break;
          } else if (emit_uniform_scan(ctx, instr)) {
             break;

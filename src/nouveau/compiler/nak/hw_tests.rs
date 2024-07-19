@@ -279,3 +279,289 @@ fn test_sanity() {
             .unwrap();
     }
 }
+
+fn f32_eq(a: f32, b: f32) -> bool {
+    if a.is_nan() && b.is_nan() {
+        true
+    } else if a.is_nan() || b.is_nan() {
+        // If one is NaN but not the other, fail
+        false
+    } else {
+        (a - b).abs() < 0.000001
+    }
+}
+
+fn f64_eq(a: f64, b: f64) -> bool {
+    if a.is_nan() && b.is_nan() {
+        true
+    } else if a.is_nan() || b.is_nan() {
+        // If one is NaN but not the other, fail
+        false
+    } else {
+        (a - b).abs() < 0.000001
+    }
+}
+
+pub fn test_foldable_op_with(
+    mut op: impl Foldable + Clone + Into<Op>,
+    mut rand_u32: impl FnMut(usize) -> u32,
+) {
+    let run = RunSingleton::get();
+    let mut b = TestShaderBuilder::new(run.sm.as_ref());
+
+    let mut comps = 0_u16;
+    let mut fold_src = Vec::new();
+    let src_types = op.src_types();
+    for (i, src) in op.srcs_as_mut_slice().iter_mut().enumerate() {
+        match src_types[i] {
+            SrcType::GPR
+            | SrcType::ALU
+            | SrcType::F16
+            | SrcType::F16v2
+            | SrcType::F32
+            | SrcType::I32
+            | SrcType::B32 => {
+                let data = b.ld_test_data(comps * 4, MemType::B32);
+                comps += 1;
+
+                *src = data.into();
+                fold_src.push(FoldData::U32(0));
+            }
+            SrcType::F64 => {
+                todo!("Double ops aren't tested yet");
+            }
+            SrcType::Pred => {
+                let data = b.ld_test_data(comps * 4, MemType::B32);
+                comps += 1;
+
+                let bit = b.lop2(LogicOp2::And, data.into(), 1.into());
+                let pred = b.isetp(
+                    IntCmpType::U32,
+                    IntCmpOp::Ne,
+                    bit.into(),
+                    0.into(),
+                );
+                *src = pred.into();
+                fold_src.push(FoldData::Pred(false));
+            }
+            typ => panic!("Can't auto-generate {typ:?} data"),
+        }
+    }
+    let src_comps = usize::from(comps);
+
+    let mut fold_dst = Vec::new();
+    let dst_types = op.dst_types();
+    for (i, dst) in op.dsts_as_mut_slice().iter_mut().enumerate() {
+        match dst_types[i] {
+            DstType::Pred => {
+                *dst = b.alloc_ssa(RegFile::Pred, 1).into();
+                fold_dst.push(FoldData::Pred(false));
+            }
+            DstType::GPR | DstType::F32 => {
+                *dst = b.alloc_ssa(RegFile::GPR, 1).into();
+                fold_dst.push(FoldData::U32(0));
+            }
+            DstType::F64 => {
+                *dst = b.alloc_ssa(RegFile::GPR, 2).into();
+                fold_dst.push(FoldData::Vec2([0, 0]));
+            }
+            typ => panic!("Can't auto-test {typ:?} data"),
+        }
+    }
+
+    b.push_op(op.clone());
+    let op = op; // Drop mutability
+
+    for dst in op.dsts_as_slice() {
+        let Dst::SSA(vec) = dst else {
+            panic!("Should be an ssa value");
+        };
+
+        for ssa in &vec[..] {
+            let u = match ssa.file() {
+                RegFile::Pred => b.sel((*ssa).into(), 1.into(), 0.into()),
+                RegFile::GPR => (*ssa).into(),
+                file => panic!("Can't auto-test {file:?} data"),
+            };
+            b.st_test_data(comps * 4, MemType::B32, u);
+            comps += 1;
+        }
+    }
+    let comps = usize::from(comps); // Drop mutability
+    let dst_comps = comps - src_comps;
+
+    let bin = b.compile();
+
+    // We're throwing random data at it here so the idea is that the number
+    // of test cases we need to get good coverage is relative to the square
+    // of the number of components.  For a big op like IAdd3X, this is going
+    // to give us 2500 iterations.
+    let invocations = src_comps * src_comps * 100;
+
+    let mut data = Vec::new();
+    for _ in 0..invocations {
+        for (i, src) in op.srcs_as_slice().iter().enumerate() {
+            let SrcRef::SSA(vec) = &src.src_ref else {
+                panic!("Should be an ssa value");
+            };
+
+            for _ in 0..vec.comps() {
+                data.push(rand_u32(i));
+            }
+        }
+        for _ in 0..dst_comps {
+            data.push(0_u32);
+        }
+    }
+    debug_assert!(data.len() == invocations * comps);
+
+    unsafe {
+        run.run
+            .run_raw(
+                &bin,
+                invocations.try_into().unwrap(),
+                (comps * 4).try_into().unwrap(),
+                data.as_mut_ptr() as *mut std::os::raw::c_void,
+                data.len() * 4,
+            )
+            .unwrap();
+    }
+
+    // Now, check the results
+    for invoc_id in 0..invocations {
+        let data = &data[(invoc_id * comps)..((invoc_id + 1) * comps)];
+
+        let mut c = 0_usize;
+        for src in &mut fold_src {
+            match src {
+                FoldData::Pred(b) => {
+                    let u = data[c];
+                    *b = (u & 1) != 0;
+                    c += 1;
+                }
+                FoldData::U32(u) => {
+                    *u = data[c];
+                    c += 1;
+                }
+                FoldData::Vec2(v) => {
+                    *v = [data[c + 0], data[c + 1]];
+                    c += 2;
+                }
+            }
+        }
+        debug_assert!(c == src_comps);
+
+        let mut fold = OpFoldData {
+            srcs: &fold_src,
+            dsts: &mut fold_dst,
+        };
+        op.fold(&*run.sm, &mut fold);
+
+        debug_assert!(fold_dst.len() == op.dsts_as_slice().len());
+        for (i, dst) in fold_dst.iter().enumerate() {
+            match dst {
+                FoldData::Pred(b) => {
+                    let d = data[c];
+                    c += 1;
+                    assert_eq!(*b, (d & 1) != 0);
+                }
+                FoldData::U32(u) => {
+                    let d = data[c];
+                    c += 1;
+
+                    match dst_types[i] {
+                        DstType::GPR => {
+                            assert_eq!(*u, d);
+                        }
+                        DstType::F32 => {
+                            assert!(f32_eq(
+                                f32::from_bits(*u),
+                                f32::from_bits(d)
+                            ));
+                        }
+                        typ => panic!("Can't auto-test {typ:?} data"),
+                    }
+                }
+                FoldData::Vec2(v) => {
+                    let d = [data[c + 0], data[c + 1]];
+                    c += 2;
+
+                    match dst_types[i] {
+                        DstType::F64 => {
+                            let v_f64 = f64::from_bits(
+                                u64::from(v[0]) | (u64::from(v[1]) << 32),
+                            );
+                            let d_f64 = f64::from_bits(
+                                u64::from(d[0]) | (u64::from(d[1]) << 32),
+                            );
+                            assert!(f64_eq(v_f64, d_f64));
+                        }
+                        typ => panic!("Can't auto-test {typ:?} data"),
+                    }
+                }
+            }
+        }
+        debug_assert!(c == comps);
+    }
+}
+
+pub fn test_foldable_op(op: impl Foldable + Clone + Into<Op>) {
+    let mut a = Acorn::new();
+    test_foldable_op_with(op, &mut |_| a.get_u32());
+}
+
+#[test]
+fn test_op_iabs() {
+    if RunSingleton::get().sm.sm() >= 70 {
+        let op = OpIAbs {
+            dst: Dst::None,
+            src: 0.into(),
+        };
+        test_foldable_op(op);
+    }
+}
+
+#[test]
+fn test_op_iadd3() {
+    if RunSingleton::get().sm.sm() >= 70 {
+        for i in 0..6 {
+            let mut op = OpIAdd3 {
+                dst: Dst::None,
+                overflow: [Dst::None, Dst::None],
+                srcs: [0.into(), 0.into(), 0.into()],
+            };
+            if i % 3 == 1 {
+                op.srcs[0].src_mod = SrcMod::INeg;
+            } else if i % 3 == 2 {
+                op.srcs[1].src_mod = SrcMod::INeg;
+            }
+            if i / 3 == 1 {
+                op.srcs[2].src_mod = SrcMod::INeg;
+            }
+            test_foldable_op(op);
+        }
+    }
+}
+
+#[test]
+fn test_op_iadd3x() {
+    if RunSingleton::get().sm.sm() >= 70 {
+        for i in 0..6 {
+            let mut op = OpIAdd3X {
+                dst: Dst::None,
+                overflow: [Dst::None, Dst::None],
+                srcs: [0.into(), 0.into(), 0.into()],
+                carry: [false.into(), false.into()],
+            };
+            if i % 3 == 1 {
+                op.srcs[0].src_mod = SrcMod::BNot;
+            } else if i % 3 == 2 {
+                op.srcs[1].src_mod = SrcMod::BNot;
+            }
+            if i / 3 == 1 {
+                op.srcs[2].src_mod = SrcMod::BNot;
+            }
+            test_foldable_op(op);
+        }
+    }
+}

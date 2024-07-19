@@ -431,6 +431,9 @@ vn_image_deferred_info_init(struct vn_image *img,
             info->from_external_format = true;
          }
       } break;
+      case VK_STRUCTURE_TYPE_IMAGE_SWAPCHAIN_CREATE_INFO_KHR:
+         img->wsi.is_wsi = true;
+         break;
       default:
          break;
       }
@@ -805,8 +808,12 @@ vn_image_bind_wsi_memory(struct vn_device *dev,
       }
       assert(mem && info->memory != VK_NULL_HANDLE);
 
-      if (img->wsi.is_wsi)
-         img->wsi.memory = mem;
+#if DETECT_OS_ANDROID
+      assert(img->wsi.memory);
+#else
+      assert(!img->wsi.memory);
+      img->wsi.memory = mem;
+#endif
    }
 
    vn_async_vkBindImageMemory2(dev->primary_ring, vn_device_to_handle(dev),
@@ -825,7 +832,8 @@ vn_BindImageMemory2(VkDevice device,
    struct vn_device *dev = vn_device_from_handle(device);
 
    for (uint32_t i = 0; i < bindInfoCount; i++) {
-      if (pBindInfos[i].memory == VK_NULL_HANDLE)
+      struct vn_image *img = vn_image_from_handle(pBindInfos[i].image);
+      if (img->wsi.is_wsi)
          return vn_image_bind_wsi_memory(dev, bindInfoCount, pBindInfos);
    }
 

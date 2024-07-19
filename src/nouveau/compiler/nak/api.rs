@@ -82,7 +82,7 @@ pub static DEBUG: OnceLock<Debug> = OnceLock::new();
 
 impl GetDebugFlags for OnceLock<Debug> {
     fn debug_flags(&self) -> u32 {
-        self.get().unwrap().flags
+        self.get_or_init(Debug::new).flags
     }
 }
 
@@ -172,8 +172,6 @@ pub extern "C" fn nak_compiler_create(
 ) -> *mut nak_compiler {
     assert!(!dev.is_null());
     let dev = unsafe { &*dev };
-
-    DEBUG.get_or_init(Debug::new);
 
     let nak = Box::new(nak_compiler {
         sm: dev.sm,

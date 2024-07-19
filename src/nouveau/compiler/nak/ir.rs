@@ -5,6 +5,7 @@ extern crate bitview;
 extern crate nak_ir_proc;
 
 use bitview::BitMutView;
+use nak_bindings::*;
 
 pub use crate::builder::{Builder, InstrBuilder, SSABuilder, SSAInstrBuilder};
 use crate::cfg::CFG;
@@ -6268,6 +6269,38 @@ pub struct TessellationInitShaderInfo {
     pub threads_per_patch: u8,
 }
 
+#[repr(u8)]
+#[derive(Clone, Copy, Debug)]
+pub enum TessellationDomain {
+    Isoline = NAK_TS_DOMAIN_ISOLINE,
+    Triangle = NAK_TS_DOMAIN_TRIANGLE,
+    Quad = NAK_TS_DOMAIN_QUAD,
+}
+
+#[repr(u8)]
+#[derive(Clone, Copy, Debug)]
+pub enum TessellationSpacing {
+    Integer = NAK_TS_SPACING_INTEGER,
+    FractionalOdd = NAK_TS_SPACING_FRACT_ODD,
+    FractionalEven = NAK_TS_SPACING_FRACT_EVEN,
+}
+
+#[repr(u8)]
+#[derive(Clone, Copy, Debug)]
+pub enum TessellationPrimitives {
+    Points = NAK_TS_PRIMS_POINTS,
+    Lines = NAK_TS_PRIMS_LINES,
+    TrianglesCW = NAK_TS_PRIMS_TRIANGLES_CW,
+    TrianglesCCW = NAK_TS_PRIMS_TRIANGLES_CCW,
+}
+
+#[derive(Debug)]
+pub struct TessellationShaderInfo {
+    pub domain: TessellationDomain,
+    pub spacing: TessellationSpacing,
+    pub primitives: TessellationPrimitives,
+}
+
 #[derive(Debug)]
 pub enum ShaderStageInfo {
     Compute(ComputeShaderInfo),
@@ -6275,7 +6308,7 @@ pub enum ShaderStageInfo {
     Fragment,
     Geometry(GeometryShaderInfo),
     TessellationInit(TessellationInitShaderInfo),
-    Tessellation,
+    Tessellation(TessellationShaderInfo),
 }
 
 #[derive(Debug, Default)]

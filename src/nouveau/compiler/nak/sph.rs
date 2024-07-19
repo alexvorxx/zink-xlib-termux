@@ -37,7 +37,7 @@ impl From<&ShaderStageInfo> for ShaderType {
             ShaderStageInfo::TessellationInit(_) => {
                 ShaderType::TessellationInit
             }
-            ShaderStageInfo::Tessellation => ShaderType::Tessellation,
+            ShaderStageInfo::Tessellation(_) => ShaderType::Tessellation,
             _ => panic!("Invalid ShaderStageInfo {:?}", value),
         }
     }

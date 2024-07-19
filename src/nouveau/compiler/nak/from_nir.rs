@@ -69,7 +69,40 @@ fn init_info_from_nir(nir: &nir_shader) -> ShaderInfo {
                     threads_per_patch: info_tess.tcs_vertices_out,
                 })
             }
-            MESA_SHADER_TESS_EVAL => ShaderStageInfo::Tessellation,
+            MESA_SHADER_TESS_EVAL => {
+                let info_tess = unsafe { &nir.info.__bindgen_anon_1.tess };
+                ShaderStageInfo::Tessellation(TessellationShaderInfo {
+                    domain: match info_tess._primitive_mode {
+                        TESS_PRIMITIVE_TRIANGLES => {
+                            TessellationDomain::Triangle
+                        }
+                        TESS_PRIMITIVE_QUADS => TessellationDomain::Quad,
+                        TESS_PRIMITIVE_ISOLINES => TessellationDomain::Isoline,
+                        _ => panic!("Invalid tess_primitive_mode"),
+                    },
+                    spacing: match info_tess.spacing() {
+                        TESS_SPACING_EQUAL => TessellationSpacing::Integer,
+                        TESS_SPACING_FRACTIONAL_ODD => {
+                            TessellationSpacing::FractionalOdd
+                        }
+                        TESS_SPACING_FRACTIONAL_EVEN => {
+                            TessellationSpacing::FractionalEven
+                        }
+                        _ => panic!("Invalid gl_tess_spacing"),
+                    },
+                    primitives: if info_tess.point_mode() {
+                        TessellationPrimitives::Points
+                    } else if info_tess._primitive_mode
+                        == TESS_PRIMITIVE_ISOLINES
+                    {
+                        TessellationPrimitives::Lines
+                    } else if info_tess.ccw() {
+                        TessellationPrimitives::TrianglesCCW
+                    } else {
+                        TessellationPrimitives::TrianglesCW
+                    },
+                })
+            }
             _ => panic!("Unknown shader stage"),
         },
         io: match nir.info.stage() {
@@ -2002,7 +2035,7 @@ impl<'a> ShaderFromNir<'a> {
                                     (range.end / 4).try_into().unwrap(),
                                 );
                             }
-                            ShaderStageInfo::Tessellation => (),
+                            ShaderStageInfo::Tessellation(_) => (),
                             _ => panic!("Patch I/O not supported"),
                         }
                     } else {
@@ -2531,7 +2564,7 @@ impl<'a> ShaderFromNir<'a> {
                 // weird.  It's treated as a per-vertex output which is indexed
                 // by LANEID.
                 match &self.info.stage {
-                    ShaderStageInfo::Tessellation => (),
+                    ShaderStageInfo::Tessellation(_) => (),
                     _ => panic!(
                         "load_tess_coord is only available in tessellation \
                          shaders"
@@ -3450,7 +3483,7 @@ impl<'a> ShaderFromNir<'a> {
 
         // Tessellation evaluation shaders MUST claim to read gl_TessCoord or
         // the hardware will throw an SPH error.
-        if matches!(self.info.stage, ShaderStageInfo::Tessellation) {
+        if matches!(self.info.stage, ShaderStageInfo::Tessellation(_)) {
             match &mut self.info.io {
                 ShaderIoInfo::Vtg(io) => {
                     let tc = NAK_ATTR_TESS_COORD;

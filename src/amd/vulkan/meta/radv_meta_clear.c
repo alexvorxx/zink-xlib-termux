@@ -932,6 +932,32 @@ create_dcc_comp_to_single_pipeline(struct radv_device *device, bool is_msaa, VkP
 {
    struct radv_meta_state *state = &device->meta_state;
    VkResult result;
+
+   if (!state->clear_dcc_comp_to_single_ds_layout) {
+      const VkDescriptorSetLayoutBinding binding = {
+         .binding = 0,
+         .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+         .descriptorCount = 1,
+         .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+      };
+
+      result = radv_meta_create_descriptor_set_layout(device, 1, &binding, &state->clear_dcc_comp_to_single_ds_layout);
+      if (result != VK_SUCCESS)
+         return result;
+   }
+
+   if (!state->clear_dcc_comp_to_single_p_layout) {
+      const VkPushConstantRange pc_range = {
+         .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+         .size = 24,
+      };
+
+      result = radv_meta_create_pipeline_layout(device, &state->clear_dcc_comp_to_single_ds_layout, 1, &pc_range,
+                                                &state->clear_dcc_comp_to_single_p_layout);
+      if (result != VK_SUCCESS)
+         return result;
+   }
+
    nir_shader *cs = build_clear_dcc_comp_to_single_shader(device, is_msaa);
 
    result = radv_meta_create_compute_pipeline(device, cs, state->clear_dcc_comp_to_single_p_layout, pipeline);
@@ -945,27 +971,6 @@ init_meta_clear_dcc_comp_to_single_state(struct radv_device *device, bool on_dem
 {
    struct radv_meta_state *state = &device->meta_state;
    VkResult result;
-
-   const VkDescriptorSetLayoutBinding binding = {
-      .binding = 0,
-      .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-      .descriptorCount = 1,
-      .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-   };
-
-   result = radv_meta_create_descriptor_set_layout(device, 1, &binding, &state->clear_dcc_comp_to_single_ds_layout);
-   if (result != VK_SUCCESS)
-      return result;
-
-   const VkPushConstantRange pc_range = {
-      .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-      .size = 24,
-   };
-
-   result = radv_meta_create_pipeline_layout(device, &state->clear_dcc_comp_to_single_ds_layout, 1, &pc_range,
-                                             &state->clear_dcc_comp_to_single_p_layout);
-   if (result != VK_SUCCESS)
-      return result;
 
    if (on_demand)
       return VK_SUCCESS;

@@ -89,7 +89,9 @@ spec@arb_sample_shading@samplemask 4@noms partition,Fail
 # 0ef03f824d1833a853d1a20b4be121089bb9246c
 spec@arb_shader_image_load_store@qualifiers,Fail
 spec@arb_shader_image_load_store@qualifiers@r8/permissive layout qualifiers/permissive access qualifiers/permissive binding test,Fail
+spec@arb_shader_image_load_store@qualifiers@r8/permissive layout qualifiers/strict access qualifiers/permissive binding test,Fail
 spec@arb_shader_image_load_store@qualifiers@r8/strict layout qualifiers/permissive access qualifiers/permissive binding test,Fail
+spec@arb_shader_image_load_store@qualifiers@r8/strict layout qualifiers/strict access qualifiers/permissive binding test,Fail
 
 # ir3_nir_lower_tess.c:251: lower_block_to_explicit_output: Assertion `util_is_power_of_two_nonzero(nir_intrinsic_write_mask(intr) + 1)' failed.
 spec@arb_tessellation_shader@execution@tcs-input-read-mat,Crash

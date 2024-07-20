@@ -34,19 +34,14 @@ create_pipeline(struct radv_device *device, VkFormat format, VkPipeline *pipelin
    VkResult result;
    VkDevice device_h = radv_device_to_handle(device);
 
-   nir_shader *vs_module = radv_meta_build_nir_vs_generate_vertices(device);
-   nir_shader *fs_module = build_nir_fs(device);
-   if (!vs_module || !fs_module) {
-      /* XXX: Need more accurate error */
-      result = VK_ERROR_OUT_OF_HOST_MEMORY;
-      goto cleanup;
-   }
-
    if (!device->meta_state.resolve.p_layout) {
       result = radv_meta_create_pipeline_layout(device, NULL, 0, NULL, &device->meta_state.resolve.p_layout);
       if (result != VK_SUCCESS)
-         goto cleanup;
+         return result;
    }
+
+   nir_shader *vs_module = radv_meta_build_nir_vs_generate_vertices(device);
+   nir_shader *fs_module = build_nir_fs(device);
 
    VkFormat color_formats[2] = {format, format};
    const VkPipelineRenderingCreateInfo rendering_create_info = {
@@ -147,12 +142,7 @@ create_pipeline(struct radv_device *device, VkFormat format, VkPipeline *pipelin
          .custom_blend_mode = V_028808_CB_RESOLVE,
       },
       &device->meta_state.alloc, pipeline);
-   if (result != VK_SUCCESS)
-      goto cleanup;
 
-   goto cleanup;
-
-cleanup:
    ralloc_free(vs_module);
    ralloc_free(fs_module);
    return result;

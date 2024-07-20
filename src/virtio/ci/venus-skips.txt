@@ -9,6 +9,7 @@ dEQP-VK.api.info.vulkan1p2.feature_bits_influence
 dEQP-VK.binding_model.mutable_descriptor.multiple_arrays_mixed.*.update_copy.*
 dEQP-VK.binding_model.mutable_descriptor.multiple_arrays_mixed.*.update_write.*
 dEQP-VK.binding_model.mutable_descriptor.multiple_arrays.unbounded.noaliasing.update_copy.mutable_source.normal_source.pool_expand_types.update_after_bind.index_constant.comp
+dEQP-VK.glsl.texture_functions.query.texturesize.isampler3d_fragment
 dEQP-VK.synchronization.timeline_semaphore.device_host.write_copy_buffer_read_ubo_compute.buffer_16384
 dEQP-VK.texture.explicit_lod.2d.sizes.128x128_linear_linear_mipmap_linear_clamp
 dEQP-VK.texture.explicit_lod.2d.sizes.128x128_linear_linear_mipmap_nearest_clamp

@@ -20,6 +20,9 @@
  * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
  * USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
+
+#undef HAVE_DL_ITERATE_PHDR 
+ 
 #include "util/u_memory.h"
 #include "util/format/u_format.h"
 #include "util/format/u_format_s3tc.h"

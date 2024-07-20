@@ -1003,15 +1003,11 @@ meta_blit2d_create_pipe_layout(struct radv_device *device, int idx, uint32_t log
 
    result = radv_meta_create_descriptor_set_layout(device, 1, &binding, &device->meta_state.blit2d[log2_samples].ds_layouts[idx]);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
-   result = radv_meta_create_pipeline_layout(device,
-      &device->meta_state.blit2d[log2_samples].ds_layouts[idx], num_push_constant_range, push_constant_ranges, &device->meta_state.blit2d[log2_samples].p_layouts[idx]);
-   if (result != VK_SUCCESS)
-      goto fail;
-   return VK_SUCCESS;
-fail:
-   return result;
+   return radv_meta_create_pipeline_layout(device, &device->meta_state.blit2d[log2_samples].ds_layouts[idx],
+                                           num_push_constant_range, push_constant_ranges,
+                                           &device->meta_state.blit2d[log2_samples].p_layouts[idx]);
 }
 
 VkResult

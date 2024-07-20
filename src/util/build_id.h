@@ -28,6 +28,8 @@
 extern "C" {
 #endif
 
+#undef HAVE_DL_ITERATE_PHDR
+
 #ifdef HAVE_DL_ITERATE_PHDR
 
 #include <stdint.h>

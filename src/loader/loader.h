@@ -94,9 +94,6 @@ typedef void loader_logger(int level, const char *fmt, ...);
 void
 loader_set_logger(loader_logger *logger);
 
-char *
-loader_get_extensions_name(const char *driver_name);
-
 struct dri_extension_match {
    /* __DRI_* extension name */
    const char *name;

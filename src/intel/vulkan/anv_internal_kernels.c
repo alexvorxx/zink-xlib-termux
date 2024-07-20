@@ -197,7 +197,9 @@ compile_shader(struct anv_device *device,
       if (prog_data.wm.dispatch_32) {
          assert(stats[stat_idx].spills == 0);
          assert(stats[stat_idx].fills == 0);
-         assert(stats[stat_idx].sends == sends_count_expectation * 2);
+         assert(stats[stat_idx].sends ==
+                sends_count_expectation *
+                (device->info->ver < 20 ? 2 : 1));
          stat_idx++;
       }
    } else {

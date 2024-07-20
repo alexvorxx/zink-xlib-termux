@@ -277,7 +277,7 @@ get_video_mem(struct zink_screen *screen)
  * path.
  *
  * The output that gets stored in the frontend's cache is the result of
- * zink_shader_finalize().  So, our sha1 cache key here needs to include
+ * zink_shader_finalize().  So, our blake3 cache key here needs to include
  * everything that would change the NIR we generate from a given set of GLSL
  * source, including our driver build, the Vulkan device and driver (which could
  * affect the pipe caps we show the frontend), and any debug flags that change
@@ -293,16 +293,18 @@ disk_cache_init(struct zink_screen *screen)
       return true;
 
 #ifdef ENABLE_SHADER_CACHE
-   struct mesa_sha1 ctx;
-   _mesa_sha1_init(&ctx);
+   struct mesa_blake3 ctx;
+   _mesa_blake3_init(&ctx);
 
 #ifdef HAVE_DL_ITERATE_PHDR
    /* Hash in the zink driver build. */
-   //const struct build_id_note *note =
-       //build_id_find_nhdr_for_addr(disk_cache_init);
-   //unsigned build_id_len = build_id_length(note);
-   //assert(note && build_id_len == 20); /* sha1 */
-   //_mesa_sha1_update(&ctx, build_id_data(note), build_id_len);
+
+   const struct build_id_note *note =
+       build_id_find_nhdr_for_addr(disk_cache_init);
+   unsigned build_id_len = build_id_length(note);
+   assert(note && build_id_len == 20); /* blake3 */
+   _mesa_blake3_update(&ctx, build_id_data(note), build_id_len);
+
 #endif
 
    /* Hash in the Vulkan pipeline cache UUID to identify the combination of
@@ -316,26 +318,29 @@ disk_cache_init(struct zink_screen *screen)
    *  latter is used to identify a compatible device and driver combination to
    *  use when serializing and de-serializing pipeline state."
    */
-   _mesa_sha1_update(&ctx, screen->info.props.pipelineCacheUUID, VK_UUID_SIZE);
+   _mesa_blake3_update(&ctx, screen->info.props.pipelineCacheUUID, VK_UUID_SIZE);
 
    /* Hash in our debug flags that affect NIR generation as of finalize_nir */
    unsigned shader_debug_flags = zink_debug & ZINK_DEBUG_COMPACT;
-   _mesa_sha1_update(&ctx, &shader_debug_flags, sizeof(shader_debug_flags));
+   _mesa_blake3_update(&ctx, &shader_debug_flags, sizeof(shader_debug_flags));
+
+   /* add in these shader keys */
+   _mesa_blake3_update(&ctx, &screen->driver_compiler_workarounds, sizeof(screen->driver_compiler_workarounds));
 
    /* Some of the driconf options change shaders.  Let's just hash the whole
     * thing to not forget any (especially as options get added).
     */
-   _mesa_sha1_update(&ctx, &screen->driconf, sizeof(screen->driconf));
+   _mesa_blake3_update(&ctx, &screen->driconf, sizeof(screen->driconf));
 
    /* EXT_shader_object causes different descriptor layouts for separate shaders */
-   _mesa_sha1_update(&ctx, &screen->info.have_EXT_shader_object, sizeof(screen->info.have_EXT_shader_object));
+   _mesa_blake3_update(&ctx, &screen->info.have_EXT_shader_object, sizeof(screen->info.have_EXT_shader_object));
 
-   /* Finish the sha1 and format it as text. */
-   unsigned char sha1[20];
-   _mesa_sha1_final(&ctx, sha1);
+   /* Finish the blake3 and format it as text. */
+   blake3_hash blake3;
+   _mesa_blake3_final(&ctx, blake3);
 
    char cache_id[20 * 2 + 1];
-   mesa_bytes_to_hex(cache_id, sha1, 20);
+   mesa_bytes_to_hex(cache_id, blake3, 20);
 
    screen->disk_cache = disk_cache_create("zink", cache_id, 0);
 
@@ -384,7 +389,7 @@ cache_put_job(void *data, void *gdata, int thread_index)
       pg->pipeline_cache_size = size;
 
       cache_key key;
-      disk_cache_compute_key(screen->disk_cache, pg->sha1, sizeof(pg->sha1), key);
+      disk_cache_compute_key(screen->disk_cache, pg->blake3, sizeof(pg->blake3), key);
       disk_cache_put_nocopy(screen->disk_cache, key, pipeline_data, size, NULL);
    } else {
       mesa_loge("ZINK: vkGetPipelineCacheData failed (%s)", vk_Result_to_str(result));
@@ -417,7 +422,7 @@ cache_get_job(void *data, void *gdata, int thread_index)
    pcci.pInitialData = NULL;
 
    cache_key key;
-   disk_cache_compute_key(screen->disk_cache, pg->sha1, sizeof(pg->sha1), key);
+   disk_cache_compute_key(screen->disk_cache, pg->blake3, sizeof(pg->blake3), key);
    pcci.pInitialData = disk_cache_get(screen->disk_cache, key, &pg->pipeline_cache_size);
    pcci.initialDataSize = pg->pipeline_cache_size;
 
@@ -683,7 +688,7 @@ zink_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
 
    case PIPE_CAP_ROBUST_BUFFER_ACCESS_BEHAVIOR:
       return screen->info.feats.features.robustBufferAccess &&
-             (screen->info.rb2_feats.robustImageAccess2 || screen->driver_workarounds.lower_robustImageAccess2);
+             (screen->info.rb2_feats.robustImageAccess2 || screen->driver_compiler_workarounds.lower_robustImageAccess2);
 
    case PIPE_CAP_MULTI_DRAW_INDIRECT:
       return screen->info.feats.features.multiDrawIndirect;
@@ -3108,10 +3113,10 @@ init_driver_workarounds(struct zink_screen *screen)
     */
    switch (zink_driverid(screen)) {
    case VK_DRIVER_ID_IMAGINATION_PROPRIETARY:
-      screen->driver_workarounds.needs_sanitised_layer = true;
+      screen->driver_compiler_workarounds.needs_sanitised_layer = true;
       break;
    default:
-      screen->driver_workarounds.needs_sanitised_layer = false;
+      screen->driver_compiler_workarounds.needs_sanitised_layer = false;
       break;
    }
    /* these drivers will produce undefined results when using swizzle 1 with combined z/s textures
@@ -3120,15 +3125,15 @@ init_driver_workarounds(struct zink_screen *screen)
    switch (zink_driverid(screen)) {
    case VK_DRIVER_ID_IMAGINATION_PROPRIETARY:
    case VK_DRIVER_ID_IMAGINATION_OPEN_SOURCE_MESA:
-      screen->driver_workarounds.needs_zs_shader_swizzle = true;
+      screen->driver_compiler_workarounds.needs_zs_shader_swizzle = true;
       break;
    default:
-      screen->driver_workarounds.needs_zs_shader_swizzle = false;
+      screen->driver_compiler_workarounds.needs_zs_shader_swizzle = false;
       break;
    }
 
    /* When robust contexts are advertised but robustImageAccess2 is not available */
-   screen->driver_workarounds.lower_robustImageAccess2 =
+   screen->driver_compiler_workarounds.lower_robustImageAccess2 =
       !screen->info.rb2_feats.robustImageAccess2 &&
       screen->info.feats.features.robustBufferAccess &&
       screen->info.rb_image_feats.robustImageAccess;
@@ -3165,6 +3170,7 @@ init_driver_workarounds(struct zink_screen *screen)
    switch (zink_driverid(screen)) {
    case VK_DRIVER_ID_MESA_TURNIP:
    case VK_DRIVER_ID_MESA_NVK:
+   case VK_DRIVER_ID_MESA_LLVMPIPE:
       screen->driver_workarounds.can_do_invalid_linear_modifier = true;
       break;
    default:
@@ -3201,6 +3207,16 @@ init_driver_workarounds(struct zink_screen *screen)
    case VK_DRIVER_ID_INTEL_PROPRIETARY_WINDOWS:
       /* this does wild things to block shapes */
       screen->driver_workarounds.can_2d_view_sparse = false;
+      break;
+   default:
+      break;
+   }
+
+   switch (zink_driverid(screen)) {
+   case VK_DRIVER_ID_MESA_RADV:
+   case VK_DRIVER_ID_MESA_NVK:
+   case VK_DRIVER_ID_NVIDIA_PROPRIETARY:
+      screen->driver_workarounds.general_depth_layout = true;
       break;
    default:
       break;
@@ -3249,9 +3265,9 @@ init_optimal_keys(struct zink_screen *screen)
                           !screen->driver_workarounds.no_linestipple &&
                           !screen->driver_workarounds.no_linesmooth &&
                           !screen->driver_workarounds.no_hw_gl_point &&
-                          !screen->driver_workarounds.lower_robustImageAccess2 &&
+                          !screen->driver_compiler_workarounds.lower_robustImageAccess2 &&
                           !screen->driconf.emulate_point_smooth &&
-                          !screen->driver_workarounds.needs_zs_shader_swizzle;
+                          !screen->driver_compiler_workarounds.needs_zs_shader_swizzle;
    if (!screen->optimal_keys && zink_debug & ZINK_DEBUG_OPTIMAL_KEYS && !(zink_debug & ZINK_DEBUG_QUIET)) {
       fprintf(stderr, "The following criteria are preventing optimal_keys enablement:\n");
       if (screen->need_decompose_attrs)
@@ -3260,7 +3276,7 @@ init_optimal_keys(struct zink_screen *screen)
          fprintf(stderr, "uniform inlining must be disabled (set ZINK_INLINE_UNIFORMS=0 in your env)\n");
       if (screen->driconf.emulate_point_smooth)
          fprintf(stderr, "smooth point emulation is enabled\n");
-      if (screen->driver_workarounds.needs_zs_shader_swizzle)
+      if (screen->driver_compiler_workarounds.needs_zs_shader_swizzle)
          fprintf(stderr, "Z/S shader swizzle workaround is enabled\n");
       CHECK_OR_PRINT(have_EXT_line_rasterization);
       CHECK_OR_PRINT(line_rast_feats.stippledBresenhamLines);
@@ -3639,7 +3655,7 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
    zink_screen_fence_init(&screen->base);
 
    if (zink_debug & ZINK_DEBUG_IOOPT)
-      screen->driver_workarounds.io_opt = true;
+      screen->driver_compiler_workarounds.io_opt = true;
    zink_screen_init_compiler(screen);
    if (!disk_cache_init(screen)) {
       if (!screen->driver_name_is_inferred)

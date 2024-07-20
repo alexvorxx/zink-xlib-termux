@@ -49,28 +49,30 @@ build_resolve_fragment_shader(struct radv_device *dev, bool is_integer, int samp
 static VkResult
 create_layout(struct radv_device *device)
 {
-   VkResult result;
+   VkResult result = VK_SUCCESS;
 
-   const VkDescriptorSetLayoutBinding binding = {.binding = 0,
-                                                 .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-                                                 .descriptorCount = 1,
-                                                 .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT};
+   if (!device->meta_state.resolve_fragment.ds_layout) {
+      const VkDescriptorSetLayoutBinding binding = {.binding = 0,
+                                                    .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                                                    .descriptorCount = 1,
+                                                    .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT};
 
-   result = radv_meta_create_descriptor_set_layout(device, 1, &binding, &device->meta_state.resolve_fragment.ds_layout);
-   if (result != VK_SUCCESS)
-      goto fail;
+      result =
+         radv_meta_create_descriptor_set_layout(device, 1, &binding, &device->meta_state.resolve_fragment.ds_layout);
+      if (result != VK_SUCCESS)
+         return result;
+   }
 
-   const VkPushConstantRange pc_range = {
-      .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-      .size = 8,
-   };
+   if (!device->meta_state.resolve_fragment.p_layout) {
+      const VkPushConstantRange pc_range = {
+         .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+         .size = 8,
+      };
 
-   result = radv_meta_create_pipeline_layout(device, &device->meta_state.resolve_fragment.ds_layout, 1, &pc_range,
-                                             &device->meta_state.resolve_fragment.p_layout);
-   if (result != VK_SUCCESS)
-      goto fail;
-   return VK_SUCCESS;
-fail:
+      result = radv_meta_create_pipeline_layout(device, &device->meta_state.resolve_fragment.ds_layout, 1, &pc_range,
+                                                &device->meta_state.resolve_fragment.p_layout);
+   }
+
    return result;
 }
 
@@ -85,8 +87,12 @@ create_resolve_pipeline(struct radv_device *device, int samples_log2, VkFormat f
 {
    unsigned fs_key = radv_format_meta_fs_key(device, format);
    VkPipeline *pipeline = &device->meta_state.resolve_fragment.rc[samples_log2].pipeline[fs_key];
-
    VkResult result;
+
+   result = create_layout(device);
+   if (result != VK_SUCCESS)
+      return result;
+
    bool is_integer = false;
    uint32_t samples = 1 << samples_log2;
    const VkPipelineVertexInputStateCreateInfo *vi_create_info;
@@ -274,6 +280,10 @@ create_depth_stencil_resolve_pipeline(struct radv_device *device, int samples_lo
 {
    VkPipeline *pipeline;
    VkResult result;
+
+   result = create_layout(device);
+   if (result != VK_SUCCESS)
+      return result;
 
    switch (resolve_mode) {
    case VK_RESOLVE_MODE_SAMPLE_ZERO_BIT:
@@ -491,10 +501,6 @@ radv_device_init_meta_resolve_fragment_state(struct radv_device *device, bool on
 {
    VkResult res;
 
-   res = create_layout(device);
-   if (res != VK_SUCCESS)
-      return res;
-
    if (on_demand)
       return VK_SUCCESS;
 
@@ -605,6 +611,12 @@ emit_resolve(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view *src_ivi
    VkPipeline pipeline;
    VkResult result;
 
+   result = get_color_resolve_pipeline(device, src_iview, dst_iview, &pipeline);
+   if (result != VK_SUCCESS) {
+      vk_command_buffer_set_error(&cmd_buffer->vk, result);
+      return;
+   }
+
    radv_meta_push_descriptor_set(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                  device->meta_state.resolve_fragment.p_layout, 0, 1,
                                  (VkWriteDescriptorSet[]){
@@ -634,12 +646,6 @@ emit_resolve(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view *src_ivi
    };
    vk_common_CmdPushConstants(radv_cmd_buffer_to_handle(cmd_buffer), device->meta_state.resolve_fragment.p_layout,
                               VK_SHADER_STAGE_FRAGMENT_BIT, 0, 8, push_constants);
-
-   result = get_color_resolve_pipeline(device, src_iview, dst_iview, &pipeline);
-   if (result != VK_SUCCESS) {
-      vk_command_buffer_set_error(&cmd_buffer->vk, result);
-      return;
-   }
 
    radv_CmdBindPipeline(cmd_buffer_h, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 

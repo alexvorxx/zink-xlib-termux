@@ -649,7 +649,7 @@ get_imageview_for_binding(struct zink_context *ctx, gl_shader_stage stage, enum 
       if (ctx->di.emulate_nonseamless[stage] & ctx->di.cubes[stage] & BITFIELD_BIT(idx))
          return sampler_view->cube_array;
       bool needs_zs_shader_swizzle = (ctx->di.zs_swizzle[stage].mask & BITFIELD_BIT(idx)) &&
-                                     zink_screen(ctx->base.screen)->driver_workarounds.needs_zs_shader_swizzle;
+                                     zink_screen(ctx->base.screen)->driver_compiler_workarounds.needs_zs_shader_swizzle;
       bool needs_shadow_shader_swizzle = (stage == MESA_SHADER_FRAGMENT) && ctx->gfx_stages[MESA_SHADER_FRAGMENT] &&
                                          (ctx->di.zs_swizzle[MESA_SHADER_FRAGMENT].mask & ctx->gfx_stages[MESA_SHADER_FRAGMENT]->fs.legacy_shadow_mask & BITFIELD_BIT(idx));
       if (sampler_view->zs_view && (needs_zs_shader_swizzle || needs_shadow_shader_swizzle))
@@ -1161,7 +1161,7 @@ zink_create_sampler_view(struct pipe_context *pctx, struct pipe_resource *pres,
           * value for stencil, which also uses that view).
           */
          if (ivci.subresourceRange.aspectMask == VK_IMAGE_ASPECT_DEPTH_BIT ||
-             zink_screen(ctx->base.screen)->driver_workarounds.needs_zs_shader_swizzle) {
+             zink_screen(ctx->base.screen)->driver_compiler_workarounds.needs_zs_shader_swizzle) {
             VkComponentSwizzle *swizzle = (VkComponentSwizzle*)&ivci.components;
             for (unsigned i = 0; i < 4; i++) {
                if (swizzle[i] == VK_COMPONENT_SWIZZLE_ONE ||
@@ -2997,7 +2997,7 @@ begin_rendering(struct zink_context *ctx, bool check_msaa_expand)
 ALWAYS_INLINE static void
 update_layered_rendering_state(struct zink_context *ctx)
 {
-   if (!zink_screen(ctx->base.screen)->driver_workarounds.needs_sanitised_layer)
+   if (!zink_screen(ctx->base.screen)->driver_compiler_workarounds.needs_sanitised_layer)
       return;
    unsigned framebffer_is_layered = zink_framebuffer_get_num_layers(&ctx->fb_state) > 1;
    VKCTX(CmdPushConstants)(
@@ -3198,6 +3198,7 @@ zink_prep_fb_attachment(struct zink_context *ctx, struct zink_surface *surf, uns
             layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
       }
    }
+   struct zink_screen *screen = zink_screen(ctx->base.screen);
    /*
       The image subresources for a storage image must be in the VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR or
       VK_IMAGE_LAYOUT_GENERAL layout in order to access its data in a shader.
@@ -3205,11 +3206,15 @@ zink_prep_fb_attachment(struct zink_context *ctx, struct zink_surface *surf, uns
     */
    if (res->image_bind_count[0])
       layout = VK_IMAGE_LAYOUT_GENERAL;
-   else if (!zink_screen(ctx->base.screen)->info.have_EXT_attachment_feedback_loop_layout &&
+   else if (!screen->info.have_EXT_attachment_feedback_loop_layout &&
             layout == VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT)
       layout = VK_IMAGE_LAYOUT_GENERAL;
+   /* some drivers don't care about zs layouts for attachments, so this saves some layout transition cycles */
+   else if (layout != VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT &&
+            i >= ctx->fb_state.nr_cbufs && screen->driver_workarounds.general_depth_layout)
+      layout = VK_IMAGE_LAYOUT_GENERAL;
    if (res->valid || res->layout != layout)
-      zink_screen(ctx->base.screen)->image_barrier(ctx, res, layout, access, pipeline);
+      screen->image_barrier(ctx, res, layout, access, pipeline);
    if (!(res->aspect & VK_IMAGE_ASPECT_COLOR_BIT))
       ctx->zsbuf_readonly = res->layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
    res->obj->unordered_read = res->obj->unordered_write = false;
@@ -5416,10 +5421,10 @@ zink_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
       ctx->gfx_pipeline_state.shader_keys.key[MESA_SHADER_FRAGMENT].size = sizeof(struct zink_fs_key);
 
       /* this condition must be updated if new fields are added to zink_cs_key */
-      if (screen->driver_workarounds.lower_robustImageAccess2)
+      if (screen->driver_compiler_workarounds.lower_robustImageAccess2)
     	  ctx->compute_pipeline_state.key.size = sizeof(struct zink_cs_key);
 
-      if (is_robust && screen->driver_workarounds.lower_robustImageAccess2) {
+      if (is_robust && screen->driver_compiler_workarounds.lower_robustImageAccess2) {
          ctx->compute_pipeline_state.key.key.cs.robust_access = true;
          for (gl_shader_stage pstage = MESA_SHADER_VERTEX; pstage < MESA_SHADER_FRAGMENT; pstage++)
             ctx->gfx_pipeline_state.shader_keys.key[pstage].key.vs_base.robust_access = true;

@@ -57,7 +57,6 @@ static VkResult
 create_dcc_compress_compute(struct radv_device *device)
 {
    VkResult result = VK_SUCCESS;
-   nir_shader *cs = build_dcc_decompress_compute_shader(device);
 
    const VkDescriptorSetLayoutBinding bindings[] = {
       {
@@ -77,21 +76,19 @@ create_dcc_compress_compute(struct radv_device *device)
    result = radv_meta_create_descriptor_set_layout(
       device, 2, bindings, &device->meta_state.fast_clear_flush.dcc_decompress_compute_ds_layout);
    if (result != VK_SUCCESS)
-      goto cleanup;
+      return result;
 
    result =
       radv_meta_create_pipeline_layout(device, &device->meta_state.fast_clear_flush.dcc_decompress_compute_ds_layout, 0,
                                        NULL, &device->meta_state.fast_clear_flush.dcc_decompress_compute_p_layout);
    if (result != VK_SUCCESS)
-      goto cleanup;
+      return result;
+
+   nir_shader *cs = build_dcc_decompress_compute_shader(device);
 
    result =
       radv_meta_create_compute_pipeline(device, cs, device->meta_state.fast_clear_flush.dcc_decompress_compute_p_layout,
                                         &device->meta_state.fast_clear_flush.dcc_decompress_compute_pipeline);
-   if (result != VK_SUCCESS)
-      goto cleanup;
-
-cleanup:
    ralloc_free(cs);
    return result;
 }
@@ -124,12 +121,6 @@ create_pipeline(struct radv_device *device, VkShaderModule vs_module_h, VkPipeli
    VkDevice device_h = radv_device_to_handle(device);
 
    nir_shader *fs_module = radv_meta_build_nir_fs_noop(device);
-
-   if (!fs_module) {
-      /* XXX: Need more accurate error */
-      result = VK_ERROR_OUT_OF_HOST_MEMORY;
-      goto cleanup;
-   }
 
    const VkPipelineShaderStageCreateInfo stages[2] = {
       {
@@ -371,11 +362,6 @@ radv_device_init_meta_fast_clear_flush_state_internal(struct radv_device *device
    }
 
    nir_shader *vs_module = radv_meta_build_nir_vs_generate_vertices(device);
-   if (!vs_module) {
-      /* XXX: Need more accurate error */
-      res = VK_ERROR_OUT_OF_HOST_MEMORY;
-      goto cleanup;
-   }
 
    res = radv_meta_create_pipeline_layout(device, NULL, 0, NULL, &device->meta_state.fast_clear_flush.p_layout);
    if (res != VK_SUCCESS)

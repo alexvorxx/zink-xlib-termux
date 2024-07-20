@@ -270,6 +270,12 @@ meta_emit_blit(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view *src_i
 
    assert(src_image->vk.samples == dst_image->vk.samples);
 
+   result = get_pipeline(device, src_iview, dst_iview, &pipeline);
+   if (result != VK_SUCCESS) {
+      vk_command_buffer_set_error(&cmd_buffer->vk, result);
+      return;
+   }
+
    float vertex_push_constants[5] = {
       src_offset_0[0] / (float)src_width,  src_offset_0[1] / (float)src_height, src_offset_1[0] / (float)src_width,
       src_offset_1[1] / (float)src_height, src_offset_0[2] / (float)src_depth,
@@ -277,12 +283,6 @@ meta_emit_blit(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view *src_i
 
    vk_common_CmdPushConstants(radv_cmd_buffer_to_handle(cmd_buffer), device->meta_state.blit.pipeline_layout,
                               VK_SHADER_STAGE_VERTEX_BIT, 0, 20, vertex_push_constants);
-
-   result = get_pipeline(device, src_iview, dst_iview, &pipeline);
-   if (result != VK_SUCCESS) {
-      vk_command_buffer_set_error(&cmd_buffer->vk, result);
-      return;
-   }
 
    radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
@@ -595,6 +595,28 @@ create_pipeline(struct radv_device *device, VkImageAspectFlagBits aspect, enum g
 {
    VkResult result = VK_SUCCESS;
 
+   if (!device->meta_state.blit.ds_layout) {
+      const VkDescriptorSetLayoutBinding binding = {
+         .binding = 0,
+         .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+         .descriptorCount = 1,
+         .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+      };
+
+      result = radv_meta_create_descriptor_set_layout(device, 1, &binding, &device->meta_state.blit.ds_layout);
+      if (result != VK_SUCCESS)
+         return result;
+   }
+
+   if (!device->meta_state.blit.pipeline_layout) {
+      const VkPushConstantRange push_constant_range = {VK_SHADER_STAGE_VERTEX_BIT, 0, 20};
+
+      result = radv_meta_create_pipeline_layout(device, &device->meta_state.blit.ds_layout, 1, &push_constant_range,
+                                                &device->meta_state.blit.pipeline_layout);
+      if (result != VK_SUCCESS)
+         return result;
+   }
+
    nir_shader *fs;
    nir_shader *vs = build_nir_vertex_shader(device);
 
@@ -818,24 +840,6 @@ VkResult
 radv_device_init_meta_blit_state(struct radv_device *device, bool on_demand)
 {
    VkResult result;
-
-   const VkDescriptorSetLayoutBinding binding = {
-      .binding = 0,
-      .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-      .descriptorCount = 1,
-      .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-   };
-
-   result = radv_meta_create_descriptor_set_layout(device, 1, &binding, &device->meta_state.blit.ds_layout);
-   if (result != VK_SUCCESS)
-      return result;
-
-   const VkPushConstantRange push_constant_range = {VK_SHADER_STAGE_VERTEX_BIT, 0, 20};
-
-   result = radv_meta_create_pipeline_layout(device, &device->meta_state.blit.ds_layout, 1, &push_constant_range,
-                                             &device->meta_state.blit.pipeline_layout);
-   if (result != VK_SUCCESS)
-      return result;
 
    if (on_demand)
       return VK_SUCCESS;

@@ -145,26 +145,18 @@ pub trait SSABuilder: Builder {
 
     fn shl64(&mut self, x: Src, shift: Src) -> SSARef {
         let x = x.as_ssa().unwrap();
-
-        // For 64-bit shifts, we have to use clamp mode so we need
-        // to mask the shift in order satisfy NIR semantics.
         debug_assert!(shift.src_mod.is_none());
-        let shift = if let SrcRef::Imm32(imm) = shift.src_ref {
-            (imm & 0x3f).into()
-        } else {
-            self.lop2(LogicOp2::And, shift, 0x3f.into()).into()
-        };
 
         let dst = self.alloc_ssa(RegFile::GPR, 2);
         self.push_op(OpShf {
             dst: dst[0].into(),
-            low: 0.into(),
-            high: x[0].into(),
+            low: x[0].into(),
+            high: 0.into(),
             shift,
             right: false,
-            wrap: false,
-            data_type: IntType::U32,
-            dst_high: true,
+            wrap: true,
+            data_type: IntType::U64,
+            dst_high: false,
         });
         self.push_op(OpShf {
             dst: dst[1].into(),
@@ -172,7 +164,7 @@ pub trait SSABuilder: Builder {
             high: x[1].into(),
             shift,
             right: false,
-            wrap: false,
+            wrap: true,
             data_type: IntType::U64,
             dst_high: true,
         });
@@ -206,15 +198,7 @@ pub trait SSABuilder: Builder {
 
     fn shr64(&mut self, x: Src, shift: Src, signed: bool) -> SSARef {
         let x = x.as_ssa().unwrap();
-
-        // For 64-bit shifts, we have to use clamp mode so we need
-        // to mask the shift in order satisfy NIR semantics.
         debug_assert!(shift.src_mod.is_none());
-        let shift = if let SrcRef::Imm32(imm) = shift.src_ref {
-            (imm & 0x3f).into()
-        } else {
-            self.lop2(LogicOp2::And, shift, 0x3f.into()).into()
-        };
 
         let dst = self.alloc_ssa(RegFile::GPR, 2);
         self.push_op(OpShf {
@@ -223,18 +207,18 @@ pub trait SSABuilder: Builder {
             high: x[1].into(),
             shift,
             right: true,
-            wrap: false,
+            wrap: true,
             data_type: if signed { IntType::I64 } else { IntType::U64 },
             dst_high: false,
         });
         self.push_op(OpShf {
             dst: dst[1].into(),
-            low: x[0].into(),
+            low: 0.into(),
             high: x[1].into(),
             shift,
             right: true,
-            wrap: false,
-            data_type: if signed { IntType::I32 } else { IntType::U32 },
+            wrap: true,
+            data_type: if signed { IntType::I64 } else { IntType::U64 },
             dst_high: true,
         });
         dst

@@ -4078,7 +4078,7 @@ impl fmt::Display for PrmtMode {
 }
 
 #[repr(C)]
-#[derive(SrcsAsSlice, DstsAsSlice)]
+#[derive(Clone, SrcsAsSlice, DstsAsSlice)]
 /// Permutes `srcs` into `dst` using `selection`.
 pub struct OpPrmt {
     #[dst_type(GPR)]
@@ -4125,6 +4125,29 @@ impl OpPrmt {
             imm |= u32::from(sb) << (b * 8);
         }
         Some(imm)
+    }
+}
+
+impl Foldable for OpPrmt {
+    fn fold(&self, _sm: &dyn ShaderModel, f: &mut OpFoldData<'_>) {
+        let srcs = [
+            f.get_u32_src(self, &self.srcs[0]),
+            f.get_u32_src(self, &self.srcs[1]),
+        ];
+        let sel = f.get_u32_src(self, &self.sel);
+
+        assert!(self.mode == PrmtMode::Index);
+        let sel = PrmtSel(sel as u16);
+
+        let mut dst = 0_u32;
+        for b in 0..4 {
+            let sel_byte = sel.get(b);
+            let src = srcs[sel_byte.src()];
+            let sb = sel_byte.fold_u32(src);
+            dst |= u32::from(sb) << (b * 8);
+        }
+
+        f.set_u32_dst(self, &self.dst, dst);
     }
 }
 

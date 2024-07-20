@@ -565,3 +565,14 @@ fn test_op_iadd3x() {
         }
     }
 }
+
+#[test]
+fn test_op_prmt() {
+    let op = OpPrmt {
+        dst: Dst::None,
+        srcs: [0.into(), 0.into()],
+        sel: 0.into(),
+        mode: PrmtMode::Index,
+    };
+    test_foldable_op(op);
+}

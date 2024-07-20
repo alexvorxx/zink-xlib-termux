@@ -610,3 +610,79 @@ fn test_op_prmt() {
     };
     test_foldable_op(op);
 }
+
+#[test]
+fn test_shl64() {
+    let run = RunSingleton::get();
+    let invocations = 100;
+
+    let mut b = TestShaderBuilder::new(run.sm.as_ref());
+
+    let srcs = SSARef::from([
+        b.ld_test_data(0, MemType::B32)[0],
+        b.ld_test_data(4, MemType::B32)[0],
+    ]);
+    let shift = b.ld_test_data(8, MemType::B32);
+    let dst = b.shl64(srcs.into(), shift.into());
+    b.st_test_data(12, MemType::B32, dst[0].into());
+    b.st_test_data(16, MemType::B32, dst[1].into());
+
+    let bin = b.compile();
+
+    let mut a = Acorn::new();
+    let mut data = Vec::new();
+    for _ in 0..invocations {
+        data.push([a.get_u32(), a.get_u32(), a.get_uint(7) as u32, 0, 0]);
+    }
+
+    run.run.run(&bin, &mut data).unwrap();
+
+    for d in &data {
+        let src = u64::from(d[0]) | (u64::from(d[1]) << 32);
+        let dst = src << (d[2] & 0x3f);
+        assert_eq!(d[3], dst as u32);
+        assert_eq!(d[4], (dst >> 32) as u32);
+    }
+}
+
+#[test]
+fn test_shr64() {
+    let run = RunSingleton::get();
+    let invocations = 100;
+
+    let cases = [true, false];
+
+    for signed in cases {
+        let mut b = TestShaderBuilder::new(run.sm.as_ref());
+
+        let srcs = SSARef::from([
+            b.ld_test_data(0, MemType::B32)[0],
+            b.ld_test_data(4, MemType::B32)[0],
+        ]);
+        let shift = b.ld_test_data(8, MemType::B32);
+        let dst = b.shr64(srcs.into(), shift.into(), signed);
+        b.st_test_data(12, MemType::B32, dst[0].into());
+        b.st_test_data(16, MemType::B32, dst[1].into());
+
+        let bin = b.compile();
+
+        let mut a = Acorn::new();
+        let mut data = Vec::new();
+        for _ in 0..invocations {
+            data.push([a.get_u32(), a.get_u32(), a.get_uint(7) as u32, 0, 0]);
+        }
+
+        run.run.run(&bin, &mut data).unwrap();
+
+        for d in &data {
+            let src = u64::from(d[0]) | (u64::from(d[1]) << 32);
+            let dst = if signed {
+                ((src as i64) >> (d[2] & 0x3f)) as u64
+            } else {
+                src >> (d[2] & 0x3f)
+            };
+            assert_eq!(d[3], dst as u32);
+            assert_eq!(d[4], (dst >> 32) as u32);
+        }
+    }
+}

@@ -1558,7 +1558,13 @@ impl SM50Op for OpShf {
         e.set_reg_src(39..47, self.high);
 
         e.set_bit(47, false); // .CC
-        e.set_bit(48, self.dst_high);
+
+        // If we're shifting left, the HW will throw an illegal instrucction
+        // encoding error if we set .high and will give us the high part anyway
+        // if we don't.  This makes everything a bit more consistent.
+        assert!(self.right || self.dst_high);
+        e.set_bit(48, self.dst_high && self.right); // .high
+
         e.set_bit(49, false); // .X
         e.set_bit(50, self.wrap);
     }

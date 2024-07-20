@@ -148,16 +148,37 @@ pub trait SSABuilder: Builder {
         debug_assert!(shift.src_mod.is_none());
 
         let dst = self.alloc_ssa(RegFile::GPR, 2);
-        self.push_op(OpShf {
-            dst: dst[0].into(),
-            low: x[0].into(),
-            high: 0.into(),
-            shift,
-            right: false,
-            wrap: true,
-            data_type: IntType::U64,
-            dst_high: false,
-        });
+        if self.sm() >= 70 {
+            self.push_op(OpShf {
+                dst: dst[0].into(),
+                low: x[0].into(),
+                high: 0.into(),
+                shift,
+                right: false,
+                wrap: true,
+                data_type: IntType::U64,
+                dst_high: false,
+            });
+        } else {
+            // On Maxwell and earlier, shf.l doesn't work without .high so we
+            // have to use a regular 32-bit shift here.  32-bit shift doesn't
+            // have the NIR wrap semantics so we need to wrap manually.
+            let shift = if let SrcRef::Imm32(imm) = shift.src_ref {
+                (imm & 0x3f).into()
+            } else {
+                self.lop2(LogicOp2::And, shift, 0x3f.into()).into()
+            };
+            self.push_op(OpShf {
+                dst: dst[0].into(),
+                low: 0.into(),
+                high: x[0].into(),
+                shift,
+                right: false,
+                wrap: false,
+                data_type: IntType::U32,
+                dst_high: true,
+            });
+        }
         self.push_op(OpShf {
             dst: dst[1].into(),
             low: x[0].into(),

@@ -1356,76 +1356,26 @@ impl<'a> ShaderFromNir<'a> {
             }
             nir_op_ior => b.lop2(LogicOp2::Or, srcs[0], srcs[1]),
             nir_op_ishl => {
-                let x = *srcs[0].as_ssa().unwrap();
-                let shift = srcs[1];
                 if alu.def.bit_size() == 64 {
-                    // For 64-bit shifts, we have to use clamp mode so we need
-                    // to mask the shift in order satisfy NIR semantics.
                     let shift = if let Some(s) = nir_srcs[1].comp_as_uint(0) {
-                        ((s & 0x3f) as u32).into()
+                        (s as u32).into()
                     } else {
-                        b.lop2(LogicOp2::And, shift, 0x3f.into()).into()
+                        srcs[1]
                     };
-                    let dst = b.alloc_ssa(RegFile::GPR, 2);
-                    b.push_op(OpShf {
-                        dst: dst[0].into(),
-                        low: 0.into(),
-                        high: x[0].into(),
-                        shift,
-                        right: false,
-                        wrap: false,
-                        data_type: IntType::U32,
-                        dst_high: true,
-                    });
-                    b.push_op(OpShf {
-                        dst: dst[1].into(),
-                        low: x[0].into(),
-                        high: x[1].into(),
-                        shift,
-                        right: false,
-                        wrap: false,
-                        data_type: IntType::U64,
-                        dst_high: true,
-                    });
-                    dst
+                    b.shl64(srcs[0], shift)
                 } else {
                     assert!(alu.def.bit_size() == 32);
                     b.shl(srcs[0], srcs[1])
                 }
             }
             nir_op_ishr => {
-                let x = *srcs[0].as_ssa().unwrap();
-                let shift = srcs[1];
                 if alu.def.bit_size() == 64 {
-                    // For 64-bit shifts, we have to use clamp mode so we need
-                    // to mask the shift in order satisfy NIR semantics.
                     let shift = if let Some(s) = nir_srcs[1].comp_as_uint(0) {
-                        ((s & 0x3f) as u32).into()
+                        (s as u32).into()
                     } else {
-                        b.lop2(LogicOp2::And, shift, 0x3f.into()).into()
+                        srcs[1]
                     };
-                    let dst = b.alloc_ssa(RegFile::GPR, 2);
-                    b.push_op(OpShf {
-                        dst: dst[0].into(),
-                        low: x[0].into(),
-                        high: x[1].into(),
-                        shift,
-                        right: true,
-                        wrap: false,
-                        data_type: IntType::I64,
-                        dst_high: false,
-                    });
-                    b.push_op(OpShf {
-                        dst: dst[1].into(),
-                        low: x[0].into(),
-                        high: x[1].into(),
-                        shift,
-                        right: true,
-                        wrap: false,
-                        data_type: IntType::I32,
-                        dst_high: true,
-                    });
-                    dst
+                    b.shr64(srcs[0], shift, true)
                 } else {
                     assert!(alu.def.bit_size() == 32);
                     b.shr(srcs[0], srcs[1], true)
@@ -1616,38 +1566,13 @@ impl<'a> ShaderFromNir<'a> {
                 dst
             }
             nir_op_ushr => {
-                let x = *srcs[0].as_ssa().unwrap();
-                let shift = srcs[1];
                 if alu.def.bit_size() == 64 {
-                    // For 64-bit shifts, we have to use clamp mode so we need
-                    // to mask the shift in order satisfy NIR semantics.
                     let shift = if let Some(s) = nir_srcs[1].comp_as_uint(0) {
-                        ((s & 0x3f) as u32).into()
+                        (s as u32).into()
                     } else {
-                        b.lop2(LogicOp2::And, shift, 0x3f.into()).into()
+                        srcs[1]
                     };
-                    let dst = b.alloc_ssa(RegFile::GPR, 2);
-                    b.push_op(OpShf {
-                        dst: dst[0].into(),
-                        low: x[0].into(),
-                        high: x[1].into(),
-                        shift,
-                        right: true,
-                        wrap: false,
-                        data_type: IntType::U64,
-                        dst_high: false,
-                    });
-                    b.push_op(OpShf {
-                        dst: dst[1].into(),
-                        low: x[0].into(),
-                        high: x[1].into(),
-                        shift,
-                        right: true,
-                        wrap: false,
-                        data_type: IntType::U32,
-                        dst_high: true,
-                    });
-                    dst
+                    b.shr64(srcs[0], shift, false)
                 } else {
                     assert!(alu.def.bit_size() == 32);
                     b.shr(srcs[0], srcs[1], false)

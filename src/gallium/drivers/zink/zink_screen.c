@@ -3538,6 +3538,12 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
       goto fail;
    }*/
 
+   if (zink_driverid(screen) == VK_DRIVER_ID_IMAGINATION_PROPRIETARY && !screen->info.feats.features.geometryShader) {
+      if (!screen->driver_name_is_inferred)
+         mesa_loge("zink: Imagination proprietary driver w/o geometryShader is unsupported");
+      goto fail;
+   }
+
    if (zink_debug & ZINK_DEBUG_MEM) {
       simple_mtx_init(&screen->debug_mem_lock, mtx_plain);
       screen->debug_mem_sizes = _mesa_hash_table_create(screen, _mesa_hash_string, _mesa_key_string_equal);

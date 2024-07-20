@@ -953,6 +953,15 @@ if has_mako.returncode() != 0
   error('Python (3.x) mako module >= 0.8.0 required to build mesa.')
 endif
 
+has_yaml = run_command(
+  prog_python, '-c',
+  '''
+import yaml
+  ''', check: false)
+if has_yaml.returncode() != 0
+  error('Python (3.x) yaml module (PyYAML) required to build mesa.')
+endif
+
 if cc.get_id() == 'gcc' and cc.version().version_compare('< 4.4.6')
   error('When using GCC, version 4.4.6 or later is required.')
 endif

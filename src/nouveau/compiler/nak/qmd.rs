@@ -324,7 +324,7 @@ fn fill_qmd<Q: QMD>(info: &nak_shader_info, qmd_info: &nak_qmd_info) -> Q {
 
     let mut qmd = Q::new();
 
-    qmd.set_barrier_count(info.num_barriers);
+    qmd.set_barrier_count(info.num_control_barriers);
     qmd.set_global_size(
         qmd_info.global_size[0],
         qmd_info.global_size[1],

@@ -27,7 +27,7 @@
  * v3d_simulator.c code to use.
  */
 
-#ifdef USE_V3D_SIMULATOR
+#if USE_V3D_SIMULATOR
 
 #include "v3d_simulator_wrapper.h"
 #include "v3d_hw_auto.h"

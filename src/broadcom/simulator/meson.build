@@ -11,11 +11,8 @@ files_per_version = files(
     'v3dx_simulator.c',
 )
 
-v3d_simulator_arg = []
 dep_v3d_hw = dependency('v3d_hw', required: false)
-if dep_v3d_hw.found()
-  v3d_simulator_arg += '-DUSE_V3D_SIMULATOR'
-endif
+v3d_simulator_arg = '-DUSE_V3D_SIMULATOR=@0@'.format(dep_v3d_hw.found().to_int())
 
 per_version_libs = []
 foreach ver : v3d_versions

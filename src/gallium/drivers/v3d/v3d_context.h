@@ -52,12 +52,6 @@ void v3d_job_add_bo(struct v3d_job *job, struct v3d_bo *bo);
 #include "v3d_resource.h"
 #include "v3d_cl.h"
 
-#ifdef USE_V3D_SIMULATOR
-#define using_v3d_simulator true
-#else
-#define using_v3d_simulator false
-#endif
-
 #define V3D_DIRTY_BLEND               (1ull <<  0)
 #define V3D_DIRTY_RASTERIZER          (1ull <<  1)
 #define V3D_DIRTY_ZSA                 (1ull <<  2)
@@ -741,7 +735,7 @@ void v3d_query_init(struct pipe_context *pctx);
 static inline int
 v3d_ioctl(int fd, unsigned long request, void *arg)
 {
-        if (using_v3d_simulator)
+        if (USE_V3D_SIMULATOR)
                 return v3d_simulator_ioctl(fd, request, arg);
         else
                 return drmIoctl(fd, request, arg);

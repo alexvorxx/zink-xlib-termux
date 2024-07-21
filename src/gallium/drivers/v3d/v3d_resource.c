@@ -812,7 +812,7 @@ v3d_resource_create_with_modifiers(struct pipe_screen *pscreen,
         /* Scanout BOs for simulator need to be linear for interaction with
          * i965.
          */
-        if (using_v3d_simulator &&
+        if (USE_V3D_SIMULATOR &&
             tmpl->bind & (PIPE_BIND_SHARED | PIPE_BIND_SCANOUT))
                 should_tile = false;
 

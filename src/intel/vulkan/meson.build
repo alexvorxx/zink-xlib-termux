@@ -180,6 +180,7 @@ libanv_files = files(
   'anv_queue.c',
   'anv_rmv.c',
   'anv_rmv.h',
+  'anv_sampler.c',
   'anv_sparse.c',
   'anv_util.c',
   'anv_utrace.c',

@@ -56,7 +56,6 @@ v3d_versions = ['42', '71']
 
 v3dv_flags = []
 
-dep_v3d_hw = dependency('v3d_hw', required : false)
 if dep_v3d_hw.found()
   v3dv_flags += '-DUSE_V3D_SIMULATOR'
 endif

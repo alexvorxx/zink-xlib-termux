@@ -37,7 +37,6 @@ files_per_version = files(
 
 v3d_args = ['-DV3D_BUILD_NEON']
 
-dep_v3d_hw = dependency('v3d_hw', required: false)
 if dep_v3d_hw.found()
   v3d_args += '-DUSE_V3D_SIMULATOR'
 endif

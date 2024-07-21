@@ -171,6 +171,7 @@ libanv_files = files(
   'anv_nir_lower_resource_intel.c',
   'anv_nir_push_descriptor_analysis.c',
   'anv_perf.c',
+  'anv_physical_device.c',
   'anv_pipeline.c',
   'anv_pipeline_cache.c',
   'anv_private.h',

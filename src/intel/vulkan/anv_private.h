@@ -1226,6 +1226,12 @@ struct anv_physical_device {
     uint32_t                                    empty_vs_input[2];
 };
 
+VkResult anv_physical_device_try_create(struct vk_instance *vk_instance,
+                                        struct _drmDevice *drm_device,
+                                        struct vk_physical_device **out);
+
+void anv_physical_device_destroy(struct vk_physical_device *vk_device);
+
 static inline uint32_t
 anv_physical_device_bindless_heap_size(const struct anv_physical_device *device,
                                        bool descriptor_buffer)

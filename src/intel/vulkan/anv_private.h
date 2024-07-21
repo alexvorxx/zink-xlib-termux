@@ -2100,6 +2100,19 @@ anv_bindless_state_for_binding_table(struct anv_device *device,
    return state;
 }
 
+static inline struct anv_state
+anv_device_maybe_alloc_surface_state(struct anv_device *device,
+                                     struct anv_state_stream *surface_state_stream)
+{
+   if (device->physical->indirect_descriptors) {
+      if (surface_state_stream)
+         return anv_state_stream_alloc(surface_state_stream, 64, 64);
+      return anv_state_pool_alloc(&device->bindless_surface_state_pool, 64, 64);
+   } else {
+      return ANV_STATE_NULL;
+   }
+}
+
 static inline uint32_t
 anv_mocs(const struct anv_device *device,
          const struct anv_bo *bo,

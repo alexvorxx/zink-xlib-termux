@@ -162,7 +162,9 @@ struct v3dv_physical_device {
 
    struct v3d_device_info devinfo;
 
+#if USE_V3D_SIMULATOR
    struct v3d_simulator_file *sim_file;
+#endif
 
    const struct v3d_compiler *compiler;
    uint32_t next_program_id;

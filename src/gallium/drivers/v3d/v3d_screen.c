@@ -84,8 +84,9 @@ v3d_screen_destroy(struct pipe_screen *pscreen)
         if (screen->ro)
                 screen->ro->destroy(screen->ro);
 
-        if (USE_V3D_SIMULATOR)
-                v3d_simulator_destroy(screen->sim_file);
+#if USE_V3D_SIMULATOR
+        v3d_simulator_destroy(screen->sim_file);
+#endif
 
         v3d_compiler_free(screen->compiler);
 

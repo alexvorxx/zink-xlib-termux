@@ -157,6 +157,7 @@ libanv_files = files(
   'anv_formats.c',
   'anv_genX.h',
   'anv_image.c',
+  'anv_image_view.c',
   'anv_internal_kernels.c',
   'anv_internal_kernels.h',
   'anv_instance.c',

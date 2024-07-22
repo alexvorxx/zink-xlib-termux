@@ -2601,7 +2601,10 @@ genX(batch_set_preemption)(struct anv_batch *batch,
                            uint32_t current_pipeline,
                            bool value)
 {
-#if GFX_VERx10 >= 120
+#if INTEL_WA_16013994831_GFX_VER
+   if (!intel_needs_workaround(devinfo, 16013994831))
+      return;
+
    anv_batch_write_reg(batch, GENX(CS_CHICKEN1), cc1) {
       cc1.DisablePreemptionandHighPriorityPausingdueto3DPRIMITIVECommand = !value;
       cc1.DisablePreemptionandHighPriorityPausingdueto3DPRIMITIVECommandMask = true;

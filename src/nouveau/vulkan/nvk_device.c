@@ -175,10 +175,12 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
       goto fail_zero_page;
 
    /* Reserve the descriptor at offset 0 to be the null descriptor */
-   uint32_t null_image[8] = { 0, };
+   uint32_t null_tic[8] = { 0, };
+   nil_fill_null_tic(&pdev->info, dev->zero_page->va->addr, &null_tic);
+
    ASSERTED uint32_t null_image_index;
    result = nvk_descriptor_table_add(dev, &dev->images,
-                                     null_image, sizeof(null_image),
+                                     null_tic, sizeof(null_tic),
                                      &null_image_index);
    assert(result == VK_SUCCESS);
    assert(null_image_index == 0);

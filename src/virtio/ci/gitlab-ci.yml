@@ -1,7 +1,7 @@
 include:
   - local: 'src/virtio/ci/gitlab-ci-inc.yml'
 
-.venus-lavapipe:
+venus-lavapipe:
   extends:
     - .deqp-test
     - .venus-lavapipe-test
@@ -19,7 +19,7 @@ include:
 
 venus-lavapipe-full:
   extends:
-    - .venus-lavapipe
+    - venus-lavapipe
     - .venus-manual-rules
   timeout: 3h
   variables:

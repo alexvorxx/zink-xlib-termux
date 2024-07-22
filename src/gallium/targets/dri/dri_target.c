@@ -200,7 +200,7 @@ dri_loader_get_extensions(const char *driver_name)
       return __driDriverGetExtensions_radeonsi();
 #endif
 
-#if defined(HAVE_VMWGFX)
+#if defined(HAVE_SVGA)
    if (!strcmp(driver_name, "vmwgfx"))
       return __driDriverGetExtensions_vmwgfx();
 #endif

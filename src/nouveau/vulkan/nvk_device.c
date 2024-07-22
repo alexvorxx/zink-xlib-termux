@@ -159,11 +159,20 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
    if (result != VK_SUCCESS)
       goto fail_nvkmd;
 
+   result = nvkmd_dev_alloc_mapped_mem(dev->nvkmd, &pdev->vk.base,
+                                       0x1000, 0, NVKMD_MEM_LOCAL,
+                                       NVKMD_MEM_MAP_WR, &dev->zero_page);
+   if (result != VK_SUCCESS)
+      goto fail_upload;
+
+   memset(dev->zero_page->map, 0, 0x1000);
+   nvkmd_mem_unmap(dev->zero_page);
+
    result = nvk_descriptor_table_init(dev, &dev->images,
                                       8 * 4 /* tic entry size */,
                                       1024, 1024 * 1024);
    if (result != VK_SUCCESS)
-      goto fail_upload;
+      goto fail_zero_page;
 
    /* Reserve the descriptor at offset 0 to be the null descriptor */
    uint32_t null_image[8] = { 0, };
@@ -204,15 +213,6 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
 
    nvk_slm_area_init(&dev->slm);
 
-   result = nvkmd_dev_alloc_mapped_mem(dev->nvkmd, &pdev->vk.base,
-                                       0x1000, 0, NVKMD_MEM_LOCAL,
-                                       NVKMD_MEM_MAP_WR, &dev->zero_page);
-   if (result != VK_SUCCESS)
-      goto fail_slm;
-
-   memset(dev->zero_page->map, 0, 0x1000);
-   nvkmd_mem_unmap(dev->zero_page);
-
    if (pdev->info.cls_eng3d >= FERMI_A &&
        pdev->info.cls_eng3d < MAXWELL_A) {
       /* max size is 256k */
@@ -220,7 +220,7 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
                                    1 << 17, 1 << 20, NVKMD_MEM_LOCAL,
                                    &dev->vab_memory);
       if (result != VK_SUCCESS)
-         goto fail_zero_page;
+         goto fail_slm;
    }
 
    result = nvk_queue_init(dev, &dev->queue,
@@ -252,8 +252,6 @@ fail_queue:
 fail_vab_memory:
    if (dev->vab_memory)
       nvkmd_mem_unref(dev->vab_memory);
-fail_zero_page:
-   nvkmd_mem_unref(dev->zero_page);
 fail_slm:
    nvk_slm_area_finish(&dev->slm);
    nvk_heap_finish(dev, &dev->event_heap);
@@ -263,6 +261,8 @@ fail_samplers:
    nvk_descriptor_table_finish(dev, &dev->samplers);
 fail_images:
    nvk_descriptor_table_finish(dev, &dev->images);
+fail_zero_page:
+   nvkmd_mem_unref(dev->zero_page);
 fail_upload:
    nvk_upload_queue_finish(dev, &dev->upload);
 fail_nvkmd:
@@ -288,7 +288,6 @@ nvk_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
    nvk_queue_finish(dev, &dev->queue);
    if (dev->vab_memory)
       nvkmd_mem_unref(dev->vab_memory);
-   nvkmd_mem_unref(dev->zero_page);
    vk_device_finish(&dev->vk);
 
    /* Idle the upload queue before we tear down heaps */
@@ -299,6 +298,7 @@ nvk_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
    nvk_heap_finish(dev, &dev->shader_heap);
    nvk_descriptor_table_finish(dev, &dev->samplers);
    nvk_descriptor_table_finish(dev, &dev->images);
+   nvkmd_mem_unref(dev->zero_page);
    nvk_upload_queue_finish(dev, &dev->upload);
    nvkmd_dev_destroy(dev->nvkmd);
    vk_free(&dev->vk.alloc, dev);

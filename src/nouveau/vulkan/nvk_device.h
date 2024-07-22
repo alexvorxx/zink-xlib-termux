@@ -39,12 +39,12 @@ struct nvk_device {
 
    struct nvk_upload_queue upload;
 
+   struct nvkmd_mem *zero_page;
    struct nvk_descriptor_table images;
    struct nvk_descriptor_table samplers;
    struct nvk_heap shader_heap;
    struct nvk_heap event_heap;
    struct nvk_slm_area slm;
-   struct nvkmd_mem *zero_page;
    struct nvkmd_mem *vab_memory;
 
    struct nvk_queue queue;

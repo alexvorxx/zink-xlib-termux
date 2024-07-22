@@ -488,10 +488,12 @@ public:
                kernel.localSize[0] = ins->words[ins->operands[2].offset];
                kernel.localSize[1] = ins->words[ins->operands[3].offset];
                kernel.localSize[2] = ins->words[ins->operands[4].offset];
+               break;
             case SpvExecutionModeLocalSizeHint:
                kernel.localSizeHint[0] = ins->words[ins->operands[2].offset];
                kernel.localSizeHint[1] = ins->words[ins->operands[3].offset];
                kernel.localSizeHint[2] = ins->words[ins->operands[4].offset];
+               break;
             default:
                return;
             }

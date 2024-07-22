@@ -335,8 +335,6 @@ kgsl_bo_export_dmabuf(struct tu_device *dev, struct tu_bo *bo)
 static VkResult
 kgsl_bo_map(struct tu_device *dev, struct tu_bo *bo, void *placed_addr)
 {
-   uint64_t offset = bo->gem_handle << 12;
-
    void *map = MAP_FAILED;
    if (bo->shared_fd == -1) {
       uint64_t offset = bo->gem_handle << 12;

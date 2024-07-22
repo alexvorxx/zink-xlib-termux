@@ -2102,11 +2102,11 @@ with_dri3_modifiers = false
 with_dri3_explicit_sync = false
 with_xcb_keysyms = false
 if with_platform_x11
+  dep_xcb = dependency('xcb')
+  dep_xcb_xrandr = dependency('xcb-randr')
   if with_glx == 'xlib'
     dep_x11 = dependency('x11')
     dep_xext = dependency('xext')
-    dep_xcb = dependency('xcb')
-    dep_xcb_xrandr = dependency('xcb-randr')
   elif with_glx == 'dri'
     dep_x11 = dependency('x11')
     dep_xext = dependency('xext')

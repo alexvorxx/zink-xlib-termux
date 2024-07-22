@@ -802,7 +802,7 @@ crocus_resource_from_handle(struct pipe_screen *pscreen,
       unreachable("invalid winsys handle type");
    }
    if (!res->bo)
-      return NULL;
+      goto fail;
 
    res->offset = whandle->offset;
    res->external_format = whandle->format;

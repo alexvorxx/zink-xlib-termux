@@ -1414,25 +1414,22 @@ VkResult anv_AllocateMemory(
     * alignment reported through vkGetImageMemoryRequirements() meet the
     * AUX-TT requirement.
     *
-    * TODO: when we enable EXT_descriptor_buffer, we'll be able to drop the
-    * AUX-TT alignment for that type of allocation.
+    * Allocations with the special dynamic_visible mem type are for things like
+    * descriptor buffers, so AUX-TT alignment is not needed here.
     */
-   if (device->info->has_aux_map)
+   if (device->info->has_aux_map && !mem_type->dynamic_visible)
       alloc_flags |= ANV_BO_ALLOC_AUX_TT_ALIGNED;
 
    /* If the allocation is not dedicated nor a host pointer, allocate
     * additional CCS space.
     *
-    * TODO: If we ever ship VK_EXT_descriptor_buffer (ahahah... :() we could
-    * drop this flag in the descriptor buffer case as we don't need any
-    * compression there.
-    *
-    * TODO: We could also create new memory types for allocations that don't
-    * need any compression.
+    * Allocations with the special dynamic_visible mem type are for things like
+    * descriptor buffers, which don't need any compression.
     */
    if (device->physical->alloc_aux_tt_mem &&
        dedicated_info == NULL &&
-       mem->vk.host_ptr == NULL)
+       mem->vk.host_ptr == NULL &&
+       !mem_type->dynamic_visible)
       alloc_flags |= ANV_BO_ALLOC_AUX_CCS;
 
    /* TODO: Android, ChromeOS and other applications may need another way to

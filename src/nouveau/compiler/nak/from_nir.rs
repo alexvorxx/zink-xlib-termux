@@ -3148,7 +3148,8 @@ impl<'a> ShaderFromNir<'a> {
         let sm = self.sm;
         let mut b = SSAInstrBuilder::new(sm, ssa_alloc);
 
-        if nb.index == 0 && self.nir.info.shared_size > 0 {
+        if self.sm.sm() >= 70 && nb.index == 0 && self.nir.info.shared_size > 0
+        {
             // The blob seems to always do a BSYNC before accessing shared
             // memory.  Perhaps this is to ensure that our allocation is
             // actually available and not in use by another thread?

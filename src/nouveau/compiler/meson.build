@@ -37,6 +37,9 @@ nak_rust_args = [
   '-Aclippy::upper_case_acronyms',
   '-Aclippy::vec_box',
   '-Aclippy::write_with_newline',
+  # warns about public function might dereference a raw pointer, but nothing is
+  # actually public here
+  '-Aclippy::not_unsafe_ptr_arg_deref',
   '-Anon_snake_case',
 ]
 

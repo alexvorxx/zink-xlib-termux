@@ -3673,9 +3673,7 @@ impl Foldable for OpShf {
             }
         };
 
-        let dst = if sm.sm() < 70 && !self.right {
-            (shifted >> 32) as u32
-        } else if self.dst_high {
+        let dst = if (sm.sm() < 70 && !self.right) || self.dst_high {
             (shifted >> 32) as u32
         } else {
             shifted as u32

@@ -98,7 +98,7 @@ check_files_opened_successfully(FILE *file, FILE *db_idx)
 
 static bool
 create_foz_db_filenames(const char *cache_path,
-                        char *name,
+                        const char *name,
                         char **filename,
                         char **idx_filename)
 {

@@ -685,7 +685,6 @@ int main(int argc, char **argv)
          goto fail;
       }
 
-      struct clc_parsed_spirv parsed_spirv_data;
       if (!clc_parse_spirv(&spirv_obj, &logger, &parsed_spirv_data))
          goto fail;
 

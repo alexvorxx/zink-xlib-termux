@@ -2585,11 +2585,15 @@ impl SM70Op for OpSuAtom {
     }
 
     fn encode(&self, e: &mut SM70Encoder<'_>) {
-        if let AtomOp::CmpExch(cmp_src) = self.atom_op {
+        if self.dst.is_none() {
+            e.set_opcode(0x3a0);
+            e.set_atom_op(87..90, self.atom_op);
+        } else if let AtomOp::CmpExch(cmp_src) = self.atom_op {
             e.set_opcode(0x396);
             assert!(cmp_src == AtomCmpSrc::Packed);
         } else {
             e.set_opcode(0x394);
+            e.set_atom_op(87..91, self.atom_op);
         };
 
         e.set_dst(self.dst);
@@ -2604,7 +2608,6 @@ impl SM70Op for OpSuAtom {
 
         e.set_bit(72, false); // .BA
         e.set_atom_type(73..76, self.atom_type);
-        e.set_atom_op(87..91, self.atom_op);
     }
 }
 
@@ -2756,11 +2759,10 @@ impl SM70Op for OpSt {
 
 impl SM70Encoder<'_> {
     fn set_atom_op(&mut self, range: Range<usize>, atom_op: AtomOp) {
-        assert!(range.len() == 4);
         self.set_field(
             range,
             match atom_op {
-                AtomOp::Add | AtomOp::CmpExch(_) => 0_u8,
+                AtomOp::Add => 0_u8,
                 AtomOp::Min => 1_u8,
                 AtomOp::Max => 2_u8,
                 AtomOp::Inc => 3_u8,
@@ -2769,6 +2771,7 @@ impl SM70Encoder<'_> {
                 AtomOp::Or => 6_u8,
                 AtomOp::Xor => 7_u8,
                 AtomOp::Exch => 8_u8,
+                AtomOp::CmpExch(_) => panic!("CmpExch is a separate opcode"),
             },
         );
     }
@@ -2798,7 +2801,12 @@ impl SM70Op for OpAtom {
     fn encode(&self, e: &mut SM70Encoder<'_>) {
         match self.mem_space {
             MemSpace::Global(_) => {
-                if let AtomOp::CmpExch(cmp_src) = self.atom_op {
+                if self.dst.is_none() {
+                    e.set_opcode(0x98e);
+
+                    e.set_reg_src(32..40, self.data);
+                    e.set_atom_op(87..90, self.atom_op);
+                } else if let AtomOp::CmpExch(cmp_src) = self.atom_op {
                     e.set_opcode(0x3a9);
 
                     assert!(cmp_src == AtomCmpSrc::Separate);

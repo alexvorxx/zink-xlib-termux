@@ -1013,7 +1013,6 @@ impl Buffer {
         .ok_or(CL_OUT_OF_RESOURCES)
     }
 
-    // TODO: only sync on unmap when the memory is not mapped for writing
     pub fn unmap(&self, q: &Queue, ctx: &PipeContext, ptr: MutMemoryPtr) -> CLResult<()> {
         let mapping = match self.maps.lock().unwrap().entry(ptr.as_ptr() as usize) {
             Entry::Vacant(_) => return Err(CL_INVALID_VALUE),
@@ -1392,7 +1391,6 @@ impl Image {
         Ok(())
     }
 
-    // TODO: only sync on map when the memory is not mapped with discard
     pub fn sync_map(&self, q: &Queue, ctx: &PipeContext, ptr: MutMemoryPtr) -> CLResult<()> {
         // no need to update
         if self.is_pure_user_memory(q.device)? {
@@ -1429,7 +1427,6 @@ impl Image {
         ctx.texture_map(r, bx, rw).ok_or(CL_OUT_OF_RESOURCES)
     }
 
-    // TODO: only sync on unmap when the memory is not mapped for writing
     pub fn unmap(&self, q: &Queue, ctx: &PipeContext, ptr: MutMemoryPtr) -> CLResult<()> {
         let mapping = match self.maps.lock().unwrap().entry(ptr.as_ptr() as usize) {
             Entry::Vacant(_) => return Err(CL_INVALID_VALUE),

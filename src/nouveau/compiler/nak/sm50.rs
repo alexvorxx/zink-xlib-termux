@@ -2266,7 +2266,6 @@ impl SM50Op for OpSuSt {
 
 impl SM50Encoder<'_> {
     fn set_atom_op(&mut self, range: Range<usize>, atom_op: AtomOp) {
-        assert!(range.len() == 4);
         self.set_field(
             range,
             match atom_op {
@@ -2279,7 +2278,7 @@ impl SM50Encoder<'_> {
                 AtomOp::Or => 6_u8,
                 AtomOp::Xor => 7_u8,
                 AtomOp::Exch => 8_u8,
-                AtomOp::CmpExch(_) => panic!("CmpExch not yet supported"),
+                AtomOp::CmpExch(_) => panic!("CmpExch is a separate opcode"),
             },
         );
     }
@@ -2296,6 +2295,7 @@ impl SM50Op for OpSuAtom {
             assert!(cmp_src == AtomCmpSrc::Packed);
         } else {
             e.set_opcode(0xea60);
+            e.set_atom_op(29..33, self.atom_op);
         }
 
         let atom_type: u8 = match self.atom_type {
@@ -2309,7 +2309,6 @@ impl SM50Op for OpSuAtom {
 
         e.set_image_dim(33..36, self.image_dim);
         e.set_field(36..39, atom_type);
-        e.set_atom_op(29..33, self.atom_op);
 
         // The hardware requires that we set .D on atomics.  This is safe to do
         // in in the emit code because it only affects format conversion, not
@@ -2443,8 +2442,26 @@ impl SM50Op for OpAtom {
     fn encode(&self, e: &mut SM50Encoder<'_>) {
         match self.mem_space {
             MemSpace::Global(addr_type) => {
-                if let AtomOp::CmpExch(cmp_src) = self.atom_op {
+                if self.dst.is_none() {
+                    e.set_opcode(0xebf8);
+
+                    e.set_reg_src(0..8, self.data);
+
+                    let data_type = match self.atom_type {
+                        AtomType::U32 => 0_u8,
+                        AtomType::I32 => 1_u8,
+                        AtomType::U64 => 2_u8,
+                        AtomType::F32 => 3_u8,
+                        // NOTE: U128 => 4_u8,
+                        AtomType::I64 => 5_u8,
+                        _ => panic!("Unsupported data type"),
+                    };
+                    e.set_field(20..23, data_type);
+                    e.set_atom_op(23..26, self.atom_op);
+                } else if let AtomOp::CmpExch(cmp_src) = self.atom_op {
                     e.set_opcode(0xee00);
+
+                    e.set_dst(self.dst);
 
                     // TODO: These are all supported by the disassembler but
                     // only the packed layout appears to be supported by real
@@ -2473,6 +2490,7 @@ impl SM50Op for OpAtom {
                 } else {
                     e.set_opcode(0xed00);
 
+                    e.set_dst(self.dst);
                     e.set_reg_src(20..28, self.data);
 
                     let data_type = match self.atom_type {
@@ -2490,7 +2508,6 @@ impl SM50Op for OpAtom {
 
                 e.set_mem_order(&self.mem_order);
 
-                e.set_dst(self.dst);
                 e.set_reg_src(8..16, self.addr);
                 e.set_field(28..48, self.addr_offset);
                 e.set_field(

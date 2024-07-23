@@ -2410,6 +2410,22 @@ pub enum AtomOp {
     CmpExch(AtomCmpSrc),
 }
 
+impl AtomOp {
+    pub fn is_reduction(&self) -> bool {
+        match self {
+            AtomOp::Add
+            | AtomOp::Min
+            | AtomOp::Max
+            | AtomOp::Inc
+            | AtomOp::Dec
+            | AtomOp::And
+            | AtomOp::Or
+            | AtomOp::Xor => true,
+            AtomOp::Exch | AtomOp::CmpExch(_) => false,
+        }
+    }
+}
+
 impl fmt::Display for AtomOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

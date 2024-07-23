@@ -2160,8 +2160,15 @@ impl<'a> ShaderFromNir<'a> {
                     self.get_src(&srcs[3])
                 };
 
+                let is_reduction =
+                    atom_op.is_reduction() && intrin.def.components_read() == 0;
+
                 b.push_op(OpSuAtom {
-                    dst: dst.into(),
+                    dst: if self.sm.sm() >= 70 && is_reduction {
+                        Dst::None
+                    } else {
+                        dst.into()
+                    },
                     fault: Dst::None,
                     handle: handle,
                     coord: coord,
@@ -2329,8 +2336,11 @@ impl<'a> ShaderFromNir<'a> {
                 assert!(intrin.def.num_components() == 1);
                 let dst = b.alloc_ssa(RegFile::GPR, bit_size.div_ceil(32));
 
+                let is_reduction =
+                    atom_op.is_reduction() && intrin.def.components_read() == 0;
+
                 b.push_op(OpAtom {
-                    dst: dst.into(),
+                    dst: if is_reduction { Dst::None } else { dst.into() },
                     addr: addr,
                     cmpr: 0.into(),
                     data: data,

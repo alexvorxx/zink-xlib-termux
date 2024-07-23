@@ -294,7 +294,9 @@ spec@ext_transform_feedback@tessellation line_loop smooth,Fail
 spec@ext_transform_feedback@tessellation triangle_fan flat_first,Fail
 spec@ext_transform_feedback@tessellation triangle_strip flat_first,Fail
 spec@glsl-1.10@execution@glsl-fs-inline-explosion,Crash
-spec@glsl-1.10@execution@glsl-vs-inline-explosion,Crash
+spec@glsl-1.10@execution@glsl-vs-inline-explosion,Fail
+spec@glsl-1.10@execution@loops@glsl-fs-unroll-explosion,Crash
+spec@glsl-1.10@execution@loops@glsl-vs-unroll-explosion,Crash
 spec@glsl-1.20@compiler@invalid-vec4-array-to-vec3-array-conversion.vert,Fail
 spec@glsl-1.20@execution@clipping@vs-clip-vertex-primitives,Fail
 spec@glsl-1.20@execution@fs-underflow-mul-compare-zero,Fail

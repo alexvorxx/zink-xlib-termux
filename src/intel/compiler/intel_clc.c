@@ -413,6 +413,7 @@ output_isa(const struct intel_clc_params *params, struct clc_binary *binary)
 {
    struct brw_kernel kernel = {};
    char *error_str;
+   int ret = 0;
 
    struct brw_isa_info _isa, *isa = &_isa;
    brw_init_isa_info(isa, &params->devinfo);
@@ -427,7 +428,8 @@ output_isa(const struct intel_clc_params *params, struct clc_binary *binary)
                               binary->data, binary->size,
                               params->entry_point, &error_str)) {
       fprintf(stderr, "Compile failed: %s\n", error_str);
-      return -1;
+      ret = -1;
+      goto exit;
    }
 
    if (params->print_info) {
@@ -465,7 +467,9 @@ output_isa(const struct intel_clc_params *params, struct clc_binary *binary)
       print_kernel(stdout, prefix, &kernel, isa);
    }
 
-   return 0;
+exit:
+   disk_cache_destroy(disk_cache);
+   return ret;
 }
 
 static void

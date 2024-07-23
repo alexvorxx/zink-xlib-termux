@@ -314,7 +314,7 @@ dri_loader_get_extensions(const char *driver_name)
       return __driDriverGetExtensions_sti();
    if (!strcmp(driver_name, "stm"))
       return __driDriverGetExtensions_stm();
-   if (!strcmp(driver_name, "sun4i_drm"))
+   if (!strcmp(driver_name, "sun4i-drm"))
       return __driDriverGetExtensions_sun4i_drm();
    if (!strcmp(driver_name, "udl"))
       return __driDriverGetExtensions_udl();

@@ -9,6 +9,7 @@ use crate::core::queue::*;
 use crate::core::util::*;
 use crate::impl_cl_type_trait;
 use crate::impl_cl_type_trait_base;
+use crate::perf_warning;
 
 use mesa_rust::pipe::context::*;
 use mesa_rust::pipe::resource::*;
@@ -789,6 +790,8 @@ impl Buffer {
             CLVec::calc_offset_size(dst_origin, region, [1, dst_row_pitch, dst_slice_pitch]);
         let tx_dst = dst.tx(q, ctx, offset, size, RWFlags::WR)?;
 
+        perf_warning!("clEnqueueCopyBufferRect stalls the GPU");
+
         // TODO check to use hw accelerated paths (e.g. resource_copy_region or blits)
         sw_copy(
             tx_src.ptr(),
@@ -877,6 +880,8 @@ impl Buffer {
         debug_assert!(src_pitch[0] != 0 && src_pitch[1] != 0 && src_pitch[2] != 0);
         debug_assert!(dst_pitch[0] != 0 && dst_pitch[1] != 0 && dst_pitch[2] != 0);
 
+        perf_warning!("clEnqueueCopyBufferToImage stalls the GPU");
+
         sw_copy(
             tx_src.ptr(),
             tx_dst.ptr(),
@@ -938,6 +943,8 @@ impl Buffer {
         let ptr = ptr.as_ptr();
         let tx = self.tx(q, ctx, offset, size, RWFlags::RD)?;
 
+        perf_warning!("clEnqueueReadBuffer and clEnqueueMapBuffer stall the GPU");
+
         unsafe {
             ptr::copy(tx.ptr(), ptr, size);
         }
@@ -962,6 +969,8 @@ impl Buffer {
         let (offset, size) =
             CLVec::calc_offset_size(src_origin, region, [1, src_row_pitch, src_slice_pitch]);
         let tx = self.tx(q, ctx, offset, size, RWFlags::RD)?;
+
+        perf_warning!("clEnqueueReadBufferRect stalls the GPU");
 
         sw_copy(
             tx.ptr(),
@@ -1042,6 +1051,9 @@ impl Buffer {
         let ptr = ptr.as_ptr();
         let offset = self.apply_offset(offset)?;
         let r = self.get_res_of_dev(q.device)?;
+
+        perf_warning!("clEnqueueWriteBuffer and clEnqueueUnmapMemObject might stall the GPU");
+
         ctx.buffer_subdata(
             r,
             offset.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
@@ -1068,6 +1080,8 @@ impl Buffer {
         let (offset, size) =
             CLVec::calc_offset_size(dst_origin, region, [1, dst_row_pitch, dst_slice_pitch]);
         let tx = self.tx(q, ctx, offset, size, RWFlags::WR)?;
+
+        perf_warning!("clEnqueueWriteBufferRect stalls the GPU");
 
         sw_copy(
             src,
@@ -1129,6 +1143,8 @@ impl Image {
         // Those pitch values cannot have 0 value in its coordinates
         debug_assert!(src_pitch[0] != 0 && src_pitch[1] != 0 && src_pitch[2] != 0);
         debug_assert!(dst_pitch[0] != 0 && dst_pitch[1] != 0 && dst_pitch[2] != 0);
+
+        perf_warning!("clEnqueueCopyImageToBuffer stalls the GPU");
 
         sw_copy(
             tx_src.ptr(),
@@ -1212,6 +1228,10 @@ impl Image {
             // Those pitch values cannot have 0 value in its coordinates
             debug_assert!(src_pitch[0] != 0 && src_pitch[1] != 0 && src_pitch[2] != 0);
             debug_assert!(dst_pitch[0] != 0 && dst_pitch[1] != 0 && dst_pitch[2] != 0);
+
+            perf_warning!(
+                "clEnqueueCopyImage stalls the GPU when src or dst are created from a buffer"
+            );
 
             sw_copy(
                 tx_src.ptr(),
@@ -1375,6 +1395,8 @@ impl Image {
             src_slice_pitch = tx.slice_pitch();
         };
 
+        perf_warning!("clEnqueueReadImage and clEnqueueMapImage stall the GPU");
+
         sw_copy(
             tx.ptr(),
             dst,
@@ -1469,6 +1491,9 @@ impl Image {
         let src = src.as_ptr();
         let dst_row_pitch = self.image_desc.image_row_pitch;
         let dst_slice_pitch = self.image_desc.image_slice_pitch;
+
+        // texture_subdata most likely maps the resource anyway
+        perf_warning!("clEnqueueWriteImage and clEnqueueUnmapMemObject stall the GPU");
 
         if let Some(Mem::Buffer(buffer)) = &self.parent {
             let pixel_size = self.image_format.pixel_size().unwrap();

@@ -411,6 +411,7 @@ generate_compute(struct llvmpipe_context *lp,
 
    if (variant->gallivm->cache->data_size) {
       gallivm_stub_func(gallivm, function);
+      gallivm_stub_func(gallivm, coro);
       return;
    }
 

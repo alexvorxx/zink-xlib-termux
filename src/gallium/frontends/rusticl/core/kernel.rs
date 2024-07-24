@@ -491,6 +491,13 @@ fn lower_and_optimize_nir(
             .nir_shader_compiler_options(pipe_shader_type::PIPE_SHADER_COMPUTE)
     };
 
+    // this is a hack until we support fp16 properly and check for denorms inside vstore/vload_half
+    nir.preserve_fp16_denorms();
+
+    // Set to rtne for now until drivers are able to report their preferred rounding mode, that also
+    // matches what we report via the API.
+    nir.set_fp_rounding_mode_rtne();
+
     nir_pass!(nir, nir_scale_fdiv);
     nir.set_workgroup_size_variable_if_zero();
     nir.structurize();
@@ -853,15 +860,6 @@ pub(super) fn convert_spirv_to_nir(
         res
     } else {
         let mut nir = build.to_nir(name, dev);
-
-        /* this is a hack until we support fp16 properly and check for denorms inside
-         * vstore/vload_half
-         */
-        nir.preserve_fp16_denorms();
-
-        // Set to rtne for now until drivers are able to report their prefered rounding mode, that
-        // also matches what we report via the API.
-        nir.set_fp_rounding_mode_rtne();
 
         let (args, internal_args) = lower_and_optimize_nir(dev, &mut nir, args, &dev.lib_clc);
 

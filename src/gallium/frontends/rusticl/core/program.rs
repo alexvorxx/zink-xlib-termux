@@ -119,14 +119,14 @@ impl ProgramBuild {
 
             // TODO: we could run this in parallel?
             for dev in self.devs_with_build() {
-                let (kernel_info, nir) = convert_spirv_to_nir(self, kernel_name, &args, dev);
-                kernel_info_set.insert(kernel_info);
+                let build_result = convert_spirv_to_nir(self, kernel_name, &args, dev);
+                kernel_info_set.insert(build_result.kernel_info);
 
                 self.builds
                     .get_mut(dev)
                     .unwrap()
                     .kernels
-                    .insert(kernel_name.clone(), Arc::new(NirKernelBuild::new(dev, nir)));
+                    .insert(kernel_name.clone(), Arc::new(build_result.nir_kernel_build));
             }
 
             // we want the same (internal) args for every compiled kernel, for now

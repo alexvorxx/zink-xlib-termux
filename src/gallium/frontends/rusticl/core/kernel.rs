@@ -339,7 +339,7 @@ unsafe impl Send for NirKernelBuild {}
 unsafe impl Sync for NirKernelBuild {}
 
 impl NirKernelBuild {
-    pub fn new(dev: &'static Device, mut nir: NirShader) -> Self {
+    fn new(dev: &'static Device, mut nir: NirShader) -> Self {
         let cso = CSOWrapper::new(dev, &nir);
         let info = cso.get_cso_info();
         let cb = Self::create_nir_constant_buffer(dev, &nir);
@@ -830,80 +830,103 @@ fn lower_and_optimize_nir(
     (args, internal_args)
 }
 
-fn deserialize_nir(
-    bin: &mut &[u8],
-    d: &Device,
-) -> Option<(NirShader, Vec<KernelArg>, Vec<InternalKernelArg>)> {
-    let mut reader = blob_reader::default();
-    unsafe {
-        blob_reader_init(&mut reader, bin.as_ptr().cast(), bin.len());
+pub struct SPIRVToNirResult {
+    pub kernel_info: KernelInfo,
+    pub nir_kernel_build: NirKernelBuild,
+}
+
+impl SPIRVToNirResult {
+    fn new(
+        dev: &'static Device,
+        kernel_info: &clc_kernel_info,
+        args: Vec<KernelArg>,
+        internal_args: Vec<InternalKernelArg>,
+        nir: NirShader,
+    ) -> Self {
+        let wgs = nir.workgroup_size();
+        let kernel_info = KernelInfo {
+            args: args,
+            internal_args: internal_args,
+            attributes_string: kernel_info.attribute_str(),
+            work_group_size: [wgs[0] as usize, wgs[1] as usize, wgs[2] as usize],
+            subgroup_size: nir.subgroup_size() as usize,
+            num_subgroups: nir.num_subgroups() as usize,
+        };
+
+        Self {
+            kernel_info: kernel_info,
+            nir_kernel_build: NirKernelBuild::new(dev, nir),
+        }
     }
 
-    let nir = NirShader::deserialize(
-        &mut reader,
-        d.screen()
-            .nir_shader_compiler_options(pipe_shader_type::PIPE_SHADER_COMPUTE),
-    )?;
+    fn deserialize(bin: &[u8], d: &'static Device, kernel_info: &clc_kernel_info) -> Option<Self> {
+        let mut reader = blob_reader::default();
+        unsafe {
+            blob_reader_init(&mut reader, bin.as_ptr().cast(), bin.len());
+        }
 
-    let args = KernelArg::deserialize(&mut reader)?;
-    let internal_args = InternalKernelArg::deserialize(&mut reader)?;
+        let nir = NirShader::deserialize(
+            &mut reader,
+            d.screen()
+                .nir_shader_compiler_options(pipe_shader_type::PIPE_SHADER_COMPUTE),
+        )?;
+        let args = KernelArg::deserialize(&mut reader)?;
+        let internal_args = InternalKernelArg::deserialize(&mut reader)?;
 
-    Some((nir, args, internal_args))
+        Some(SPIRVToNirResult::new(
+            d,
+            kernel_info,
+            args,
+            internal_args,
+            nir,
+        ))
+    }
+
+    // we can't use Self here as the nir shader might be compiled to a cso already and we can't
+    // cache that.
+    fn serialize(
+        blob: &mut blob,
+        nir: &NirShader,
+        args: &[KernelArg],
+        internal_args: &[InternalKernelArg],
+    ) {
+        nir.serialize(blob);
+        KernelArg::serialize(args, blob);
+        InternalKernelArg::serialize(internal_args, blob);
+    }
 }
 
 pub(super) fn convert_spirv_to_nir(
     build: &ProgramBuild,
     name: &str,
     args: &[spirv::SPIRVKernelArg],
-    dev: &Device,
-) -> (KernelInfo, NirShader) {
+    dev: &'static Device,
+) -> SPIRVToNirResult {
     let cache = dev.screen().shader_cache();
     let key = build.hash_key(dev, name);
+    let spirv_info = build.spirv_info(name, dev).unwrap();
 
-    let res = if let Some(cache) = &cache {
-        cache.get(&mut key.unwrap()).and_then(|entry| {
-            let mut bin: &[u8] = &entry;
-            deserialize_nir(&mut bin, dev)
-        })
-    } else {
-        None
-    };
+    cache
+        .as_ref()
+        .and_then(|cache| cache.get(&mut key?))
+        .and_then(|entry| SPIRVToNirResult::deserialize(&entry, dev, spirv_info))
+        .unwrap_or_else(|| {
+            let mut nir = build.to_nir(name, dev);
+            let (args, internal_args) = lower_and_optimize_nir(dev, &mut nir, args, &dev.lib_clc);
 
-    let (nir, args, internal_args) = if let Some(res) = res {
-        res
-    } else {
-        let mut nir = build.to_nir(name, dev);
-
-        let (args, internal_args) = lower_and_optimize_nir(dev, &mut nir, args, &dev.lib_clc);
-
-        if let Some(cache) = cache {
-            let mut blob = blob::default();
-            unsafe {
-                blob_init(&mut blob);
-                nir.serialize(&mut blob);
-                KernelArg::serialize(&args, &mut blob);
-                InternalKernelArg::serialize(&internal_args, &mut blob);
-                let bin = slice::from_raw_parts(blob.data, blob.size);
-                cache.put(bin, &mut key.unwrap());
-                blob_finish(&mut blob);
+            if let Some(cache) = cache {
+                let mut blob = blob::default();
+                unsafe {
+                    blob_init(&mut blob);
+                    SPIRVToNirResult::serialize(&mut blob, &nir, &args, &internal_args);
+                    let bin = slice::from_raw_parts(blob.data, blob.size);
+                    cache.put(bin, &mut key.unwrap());
+                    blob_finish(&mut blob);
+                }
             }
-        }
 
-        (nir, args, internal_args)
-    };
-
-    let attributes_string = build.spirv_info(name, dev).unwrap().attribute_str();
-    let wgs = nir.workgroup_size();
-    let kernel_info = KernelInfo {
-        args: args,
-        internal_args: internal_args,
-        attributes_string: attributes_string,
-        work_group_size: [wgs[0] as usize, wgs[1] as usize, wgs[2] as usize],
-        subgroup_size: nir.subgroup_size() as usize,
-        num_subgroups: nir.num_subgroups() as usize,
-    };
-
-    (kernel_info, nir)
+            SPIRVToNirResult::new(dev, spirv_info, args, internal_args, nir)
+        })
 }
 
 fn extract<'a, const S: usize>(buf: &'a mut &[u8]) -> &'a [u8; S] {

@@ -53,7 +53,7 @@ pub enum KernelArgType {
 }
 
 #[derive(Hash, PartialEq, Eq, Clone)]
-pub enum InternalKernelArgType {
+enum InternalKernelArgType {
     ConstantBuffer,
     GlobalWorkOffsets,
     PrintfBuffer,
@@ -71,17 +71,17 @@ pub struct KernelArg {
     pub kind: KernelArgType,
     pub size: usize,
     /// The offset into the input buffer
-    pub offset: usize,
+    offset: usize,
     /// The actual binding slot
-    pub binding: u32,
+    binding: u32,
     pub dead: bool,
 }
 
 #[derive(Hash, PartialEq, Eq, Clone)]
-pub struct InternalKernelArg {
-    pub kind: InternalKernelArgType,
-    pub size: usize,
-    pub offset: usize,
+struct InternalKernelArg {
+    kind: InternalKernelArgType,
+    size: usize,
+    offset: usize,
 }
 
 impl KernelArg {
@@ -263,20 +263,20 @@ impl InternalKernelArg {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct KernelInfo {
     pub args: Vec<KernelArg>,
-    pub internal_args: Vec<InternalKernelArg>,
+    internal_args: Vec<InternalKernelArg>,
     pub attributes_string: String,
-    pub work_group_size: [usize; 3],
-    pub subgroup_size: usize,
-    pub num_subgroups: usize,
+    work_group_size: [usize; 3],
+    subgroup_size: usize,
+    num_subgroups: usize,
 }
 
-pub struct CSOWrapper {
-    pub cso_ptr: *mut c_void,
+struct CSOWrapper {
+    cso_ptr: *mut c_void,
     dev: &'static Device,
 }
 
 impl CSOWrapper {
-    pub fn new(dev: &'static Device, nir: &NirShader) -> Self {
+    fn new(dev: &'static Device, nir: &NirShader) -> Self {
         let cso_ptr = dev
             .helper_ctx()
             .create_compute_state(nir, nir.shared_size());
@@ -287,7 +287,7 @@ impl CSOWrapper {
         }
     }
 
-    pub fn get_cso_info(&self) -> pipe_compute_state_object_info {
+    fn get_cso_info(&self) -> pipe_compute_state_object_info {
         self.dev.helper_ctx().compute_state_info(self.cso_ptr)
     }
 }
@@ -298,17 +298,17 @@ impl Drop for CSOWrapper {
     }
 }
 
-pub enum KernelDevStateVariant {
+enum KernelDevStateVariant {
     Cso(CSOWrapper),
     Nir(NirShader),
 }
 
 pub struct NirKernelBuild {
-    pub nir_or_cso: KernelDevStateVariant,
-    pub constant_buffer: Option<Arc<PipeResource>>,
-    pub info: pipe_compute_state_object_info,
-    pub shared_size: u64,
-    pub printf_info: Option<NirPrintfInfo>,
+    nir_or_cso: KernelDevStateVariant,
+    constant_buffer: Option<Arc<PipeResource>>,
+    info: pipe_compute_state_object_info,
+    shared_size: u64,
+    printf_info: Option<NirPrintfInfo>,
 }
 
 // SAFETY: `CSOWrapper` is only safe to use if the device supports `PIPE_CAP_SHAREABLE_SHADERS` and

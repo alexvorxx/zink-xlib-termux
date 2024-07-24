@@ -6,7 +6,7 @@ mkdir -p "$ARTIFACTSDIR"
 export DRM_SHIM_DEBUG=true
 
 LIBDIR=$(pwd)/install/lib
-export LD_LIBRARY_PATH=$LIBDIR:$LIBDIR/dri
+export LD_LIBRARY_PATH=$LIBDIR
 
 cd /usr/local/shader-db
 

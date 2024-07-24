@@ -16,7 +16,7 @@ fi
 INSTALL=$(realpath -s "$PWD"/install)
 
 # Set up the driver environment.
-export LD_LIBRARY_PATH="$INSTALL"/lib/:"$INSTALL"/lib/dri:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH="$INSTALL"/lib/:$LD_LIBRARY_PATH
 export EGL_PLATFORM=surfaceless
 ARCH=$(uname -m)
 export VK_DRIVER_FILES="$PWD"/install/share/vulkan/icd.d/"$VK_DRIVER"_icd."$ARCH".json

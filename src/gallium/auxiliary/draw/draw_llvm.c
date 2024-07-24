@@ -2968,6 +2968,7 @@ draw_tcs_llvm_generate(struct draw_llvm *llvm,
 
    if (gallivm->cache && gallivm->cache->data_size) {
       gallivm_stub_func(gallivm, variant_func);
+      gallivm_stub_func(gallivm, variant_coro);
       return;
    }
 

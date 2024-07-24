@@ -441,46 +441,51 @@ impl Drop for SPIRVBin {
 }
 
 impl SPIRVKernelArg {
-    pub fn serialize(&self) -> Vec<u8> {
-        let mut res = Vec::new();
-
+    pub fn serialize(&self, blob: &mut blob) {
         let name_arr = self.name.as_bytes();
         let type_name_arr = self.type_name.as_bytes();
 
-        res.extend_from_slice(&name_arr.len().to_ne_bytes());
-        res.extend_from_slice(name_arr);
-        res.extend_from_slice(&type_name_arr.len().to_ne_bytes());
-        res.extend_from_slice(type_name_arr);
-        res.extend_from_slice(&u32::to_ne_bytes(self.access_qualifier.0));
-        res.extend_from_slice(&u32::to_ne_bytes(self.type_qualifier.0));
-        res.push(self.address_qualifier as u8);
+        unsafe {
+            blob_write_uint32(blob, self.access_qualifier.0);
+            blob_write_uint32(blob, self.type_qualifier.0);
 
-        res
+            blob_write_uint16(blob, name_arr.len() as u16);
+            blob_write_uint16(blob, type_name_arr.len() as u16);
+
+            blob_write_bytes(blob, name_arr.as_ptr().cast(), name_arr.len());
+            blob_write_bytes(blob, type_name_arr.as_ptr().cast(), type_name_arr.len());
+
+            blob_write_uint8(blob, self.address_qualifier as u8);
+        }
     }
 
-    pub fn deserialize(bin: &mut &[u8]) -> Option<Self> {
-        let name_len = read_ne_usize(bin);
-        let name = read_string(bin, name_len)?;
-        let type_len = read_ne_usize(bin);
-        let type_name = read_string(bin, type_len)?;
-        let access_qualifier = read_ne_u32(bin);
-        let type_qualifier = read_ne_u32(bin);
+    pub fn deserialize(blob: &mut blob_reader) -> Option<Self> {
+        unsafe {
+            let access_qualifier = blob_read_uint32(blob);
+            let type_qualifier = blob_read_uint32(blob);
 
-        let address_qualifier = match read_ne_u8(bin) {
-            0 => clc_kernel_arg_address_qualifier::CLC_KERNEL_ARG_ADDRESS_PRIVATE,
-            1 => clc_kernel_arg_address_qualifier::CLC_KERNEL_ARG_ADDRESS_CONSTANT,
-            2 => clc_kernel_arg_address_qualifier::CLC_KERNEL_ARG_ADDRESS_LOCAL,
-            3 => clc_kernel_arg_address_qualifier::CLC_KERNEL_ARG_ADDRESS_GLOBAL,
-            _ => return None,
-        };
+            let name_len = blob_read_uint16(blob) as usize;
+            let type_len = blob_read_uint16(blob) as usize;
 
-        Some(Self {
-            name: name,
-            type_name: type_name,
-            access_qualifier: clc_kernel_arg_access_qualifier(access_qualifier),
-            address_qualifier: address_qualifier,
-            type_qualifier: clc_kernel_arg_type_qualifier(type_qualifier),
-        })
+            let name = slice::from_raw_parts(blob_read_bytes(blob, name_len).cast(), name_len);
+            let type_name = slice::from_raw_parts(blob_read_bytes(blob, type_len).cast(), type_len);
+
+            let address_qualifier = match blob_read_uint8(blob) {
+                0 => clc_kernel_arg_address_qualifier::CLC_KERNEL_ARG_ADDRESS_PRIVATE,
+                1 => clc_kernel_arg_address_qualifier::CLC_KERNEL_ARG_ADDRESS_CONSTANT,
+                2 => clc_kernel_arg_address_qualifier::CLC_KERNEL_ARG_ADDRESS_LOCAL,
+                3 => clc_kernel_arg_address_qualifier::CLC_KERNEL_ARG_ADDRESS_GLOBAL,
+                _ => return None,
+            };
+
+            Some(Self {
+                name: String::from_utf8_unchecked(name.to_owned()),
+                type_name: String::from_utf8_unchecked(type_name.to_owned()),
+                access_qualifier: clc_kernel_arg_access_qualifier(access_qualifier),
+                address_qualifier: address_qualifier,
+                type_qualifier: clc_kernel_arg_type_qualifier(type_qualifier),
+            })
+        }
     }
 }
 

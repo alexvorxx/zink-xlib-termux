@@ -41,6 +41,7 @@ pub enum KernelArgValue {
     Sampler(Arc<Sampler>),
 }
 
+#[repr(u8)]
 #[derive(Hash, PartialEq, Eq, Clone, Copy)]
 pub enum KernelArgType {
     Constant = 0, // for anything passed by value
@@ -161,103 +162,123 @@ impl KernelArg {
         }
     }
 
-    fn serialize(&self) -> Vec<u8> {
-        let mut bin = Vec::new();
+    fn serialize(args: &[Self], blob: &mut blob) {
+        unsafe {
+            blob_write_uint16(blob, args.len() as u16);
 
-        bin.append(&mut self.spirv.serialize());
-        bin.extend_from_slice(&self.size.to_ne_bytes());
-        bin.extend_from_slice(&self.offset.to_ne_bytes());
-        bin.extend_from_slice(&self.binding.to_ne_bytes());
-        bin.extend_from_slice(&(self.dead as u8).to_ne_bytes());
-        bin.extend_from_slice(&(self.kind as u8).to_ne_bytes());
-
-        bin
+            for arg in args {
+                arg.spirv.serialize(blob);
+                blob_write_uint16(blob, arg.size as u16);
+                blob_write_uint16(blob, arg.offset as u16);
+                blob_write_uint16(blob, arg.binding as u16);
+                blob_write_uint8(blob, arg.dead.into());
+                blob_write_uint8(blob, arg.kind as u8);
+            }
+        }
     }
 
-    fn deserialize(bin: &mut &[u8]) -> Option<Self> {
-        let spirv = spirv::SPIRVKernelArg::deserialize(bin)?;
-        let size = read_ne_usize(bin);
-        let offset = read_ne_usize(bin);
-        let binding = read_ne_u32(bin);
-        let dead = read_ne_u8(bin) == 1;
+    fn deserialize(blob: &mut blob_reader) -> Option<Vec<Self>> {
+        unsafe {
+            let len = blob_read_uint16(blob) as usize;
+            let mut res = Vec::with_capacity(len);
 
-        let kind = match read_ne_u8(bin) {
-            0 => KernelArgType::Constant,
-            1 => KernelArgType::Image,
-            2 => KernelArgType::RWImage,
-            3 => KernelArgType::Sampler,
-            4 => KernelArgType::Texture,
-            5 => KernelArgType::MemGlobal,
-            6 => KernelArgType::MemConstant,
-            7 => KernelArgType::MemLocal,
-            _ => return None,
-        };
+            for _ in 0..len {
+                let spirv = spirv::SPIRVKernelArg::deserialize(blob)?;
+                let size = blob_read_uint16(blob) as usize;
+                let offset = blob_read_uint16(blob) as usize;
+                let binding = blob_read_uint16(blob) as u32;
+                let dead = blob_read_uint8(blob) != 0;
 
-        Some(Self {
-            spirv: spirv,
-            kind: kind,
-            size: size,
-            offset: offset,
-            binding: binding,
-            dead: dead,
-        })
+                let kind = match blob_read_uint8(blob) {
+                    0 => KernelArgType::Constant,
+                    1 => KernelArgType::Image,
+                    2 => KernelArgType::RWImage,
+                    3 => KernelArgType::Sampler,
+                    4 => KernelArgType::Texture,
+                    5 => KernelArgType::MemGlobal,
+                    6 => KernelArgType::MemConstant,
+                    7 => KernelArgType::MemLocal,
+                    _ => return None,
+                };
+
+                res.push(Self {
+                    spirv: spirv,
+                    kind: kind,
+                    size: size,
+                    offset: offset,
+                    binding: binding,
+                    dead: dead,
+                });
+            }
+
+            Some(res)
+        }
     }
 }
 
 impl InternalKernelArg {
-    fn serialize(&self) -> Vec<u8> {
-        let mut bin = Vec::new();
-
-        bin.extend_from_slice(&self.size.to_ne_bytes());
-        bin.extend_from_slice(&self.offset.to_ne_bytes());
-
-        match self.kind {
-            InternalKernelArgType::ConstantBuffer => bin.push(0),
-            InternalKernelArgType::GlobalWorkOffsets => bin.push(1),
-            InternalKernelArgType::PrintfBuffer => bin.push(2),
-            InternalKernelArgType::InlineSampler((addr_mode, filter_mode, norm)) => {
-                bin.push(3);
-                bin.extend_from_slice(&addr_mode.to_ne_bytes());
-                bin.extend_from_slice(&filter_mode.to_ne_bytes());
-                bin.push(norm as u8);
+    fn serialize(args: &[Self], blob: &mut blob) {
+        unsafe {
+            blob_write_uint16(blob, args.len() as u16);
+            for arg in args {
+                blob_write_uint16(blob, arg.size as u16);
+                blob_write_uint16(blob, arg.offset as u16);
+                match arg.kind {
+                    InternalKernelArgType::ConstantBuffer => blob_write_uint8(blob, 0),
+                    InternalKernelArgType::GlobalWorkOffsets => blob_write_uint8(blob, 1),
+                    InternalKernelArgType::PrintfBuffer => blob_write_uint8(blob, 2),
+                    InternalKernelArgType::InlineSampler((addr_mode, filter_mode, norm)) => {
+                        blob_write_uint8(blob, 3);
+                        blob_write_uint8(blob, norm.into());
+                        blob_write_uint32(blob, addr_mode);
+                        blob_write_uint32(blob, filter_mode)
+                    }
+                    InternalKernelArgType::FormatArray => blob_write_uint8(blob, 4),
+                    InternalKernelArgType::OrderArray => blob_write_uint8(blob, 5),
+                    InternalKernelArgType::WorkDim => blob_write_uint8(blob, 6),
+                    InternalKernelArgType::WorkGroupOffsets => blob_write_uint8(blob, 7),
+                    InternalKernelArgType::NumWorkgroups => blob_write_uint8(blob, 8),
+                };
             }
-            InternalKernelArgType::FormatArray => bin.push(4),
-            InternalKernelArgType::OrderArray => bin.push(5),
-            InternalKernelArgType::WorkDim => bin.push(6),
-            InternalKernelArgType::WorkGroupOffsets => bin.push(7),
-            InternalKernelArgType::NumWorkgroups => bin.push(8),
         }
-
-        bin
     }
 
-    fn deserialize(bin: &mut &[u8]) -> Option<Self> {
-        let size = read_ne_usize(bin);
-        let offset = read_ne_usize(bin);
+    fn deserialize(blob: &mut blob_reader) -> Option<Vec<Self>> {
+        unsafe {
+            let len = blob_read_uint16(blob) as usize;
+            let mut res = Vec::with_capacity(len);
 
-        let kind = match read_ne_u8(bin) {
-            0 => InternalKernelArgType::ConstantBuffer,
-            1 => InternalKernelArgType::GlobalWorkOffsets,
-            2 => InternalKernelArgType::PrintfBuffer,
-            3 => {
-                let addr_mode = read_ne_u32(bin);
-                let filter_mode = read_ne_u32(bin);
-                let norm = read_ne_u8(bin) == 1;
-                InternalKernelArgType::InlineSampler((addr_mode, filter_mode, norm))
+            for _ in 0..len {
+                let size = blob_read_uint16(blob) as usize;
+                let offset = blob_read_uint16(blob) as usize;
+
+                let kind = match blob_read_uint8(blob) {
+                    0 => InternalKernelArgType::ConstantBuffer,
+                    1 => InternalKernelArgType::GlobalWorkOffsets,
+                    2 => InternalKernelArgType::PrintfBuffer,
+                    3 => {
+                        let norm = blob_read_uint8(blob) != 0;
+                        let addr_mode = blob_read_uint32(blob);
+                        let filter_mode = blob_read_uint32(blob);
+                        InternalKernelArgType::InlineSampler((addr_mode, filter_mode, norm))
+                    }
+                    4 => InternalKernelArgType::FormatArray,
+                    5 => InternalKernelArgType::OrderArray,
+                    6 => InternalKernelArgType::WorkDim,
+                    7 => InternalKernelArgType::WorkGroupOffsets,
+                    8 => InternalKernelArgType::NumWorkgroups,
+                    _ => return None,
+                };
+
+                res.push(Self {
+                    kind: kind,
+                    size: size,
+                    offset: offset,
+                });
             }
-            4 => InternalKernelArgType::FormatArray,
-            5 => InternalKernelArgType::OrderArray,
-            6 => InternalKernelArgType::WorkDim,
-            7 => InternalKernelArgType::WorkGroupOffsets,
-            8 => InternalKernelArgType::NumWorkgroups,
-            _ => return None,
-        };
 
-        Some(Self {
-            kind: kind,
-            size: size,
-            offset: offset,
-        })
+            Some(res)
+        }
     }
 }
 
@@ -813,28 +834,19 @@ fn deserialize_nir(
     bin: &mut &[u8],
     d: &Device,
 ) -> Option<(NirShader, Vec<KernelArg>, Vec<InternalKernelArg>)> {
-    let nir_len = read_ne_usize(bin);
+    let mut reader = blob_reader::default();
+    unsafe {
+        blob_reader_init(&mut reader, bin.as_ptr().cast(), bin.len());
+    }
 
     let nir = NirShader::deserialize(
-        bin,
-        nir_len,
+        &mut reader,
         d.screen()
             .nir_shader_compiler_options(pipe_shader_type::PIPE_SHADER_COMPUTE),
     )?;
 
-    let arg_len = read_ne_usize(bin);
-    let mut args = Vec::with_capacity(arg_len);
-    for _ in 0..arg_len {
-        args.push(KernelArg::deserialize(bin)?);
-    }
-
-    let arg_len = read_ne_usize(bin);
-    let mut internal_args = Vec::with_capacity(arg_len);
-    for _ in 0..arg_len {
-        internal_args.push(InternalKernelArg::deserialize(bin)?);
-    }
-
-    assert!(bin.is_empty());
+    let args = KernelArg::deserialize(&mut reader)?;
+    let internal_args = InternalKernelArg::deserialize(&mut reader)?;
 
     Some((nir, args, internal_args))
 }
@@ -865,23 +877,16 @@ pub(super) fn convert_spirv_to_nir(
         let (args, internal_args) = lower_and_optimize_nir(dev, &mut nir, args, &dev.lib_clc);
 
         if let Some(cache) = cache {
-            let mut bin = Vec::new();
-            let mut nir = nir.serialize();
-
-            bin.extend_from_slice(&nir.len().to_ne_bytes());
-            bin.append(&mut nir);
-
-            bin.extend_from_slice(&args.len().to_ne_bytes());
-            for arg in &args {
-                bin.append(&mut arg.serialize());
+            let mut blob = blob::default();
+            unsafe {
+                blob_init(&mut blob);
+                nir.serialize(&mut blob);
+                KernelArg::serialize(&args, &mut blob);
+                InternalKernelArg::serialize(&internal_args, &mut blob);
+                let bin = slice::from_raw_parts(blob.data, blob.size);
+                cache.put(bin, &mut key.unwrap());
+                blob_finish(&mut blob);
             }
-
-            bin.extend_from_slice(&internal_args.len().to_ne_bytes());
-            for arg in &internal_args {
-                bin.append(&mut arg.serialize());
-            }
-
-            cache.put(&bin, &mut key.unwrap());
         }
 
         (nir, args, internal_args)

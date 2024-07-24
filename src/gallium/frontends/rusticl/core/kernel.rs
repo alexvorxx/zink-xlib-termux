@@ -285,7 +285,6 @@ impl InternalKernelArg {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct KernelInfo {
     pub args: Vec<KernelArg>,
-    internal_args: Vec<InternalKernelArg>,
     pub attributes_string: String,
     work_group_size: [usize; 3],
     subgroup_size: usize,
@@ -331,6 +330,7 @@ pub struct NirKernelBuild {
     info: pipe_compute_state_object_info,
     shared_size: u64,
     printf_info: Option<NirPrintfInfo>,
+    internal_args: Vec<InternalKernelArg>,
 }
 
 // SAFETY: `CSOWrapper` is only safe to use if the device supports `PIPE_CAP_SHAREABLE_SHADERS` and
@@ -339,7 +339,11 @@ unsafe impl Send for NirKernelBuild {}
 unsafe impl Sync for NirKernelBuild {}
 
 impl NirKernelBuild {
-    fn new(dev: &'static Device, mut nir: NirShader) -> Self {
+    fn new(
+        dev: &'static Device,
+        mut nir: NirShader,
+        internal_args: Vec<InternalKernelArg>,
+    ) -> Self {
         let cso = CSOWrapper::new(dev, &nir);
         let info = cso.get_cso_info();
         let cb = Self::create_nir_constant_buffer(dev, &nir);
@@ -358,6 +362,7 @@ impl NirKernelBuild {
             info: info,
             shared_size: shared_size,
             printf_info: printf_info,
+            internal_args: internal_args,
         }
     }
 
@@ -846,7 +851,6 @@ impl SPIRVToNirResult {
         let wgs = nir.workgroup_size();
         let kernel_info = KernelInfo {
             args: args,
-            internal_args: internal_args,
             attributes_string: kernel_info.attribute_str(),
             work_group_size: [wgs[0] as usize, wgs[1] as usize, wgs[2] as usize],
             subgroup_size: nir.subgroup_size() as usize,
@@ -855,7 +859,7 @@ impl SPIRVToNirResult {
 
         Self {
             kernel_info: kernel_info,
-            nir_kernel_build: NirKernelBuild::new(dev, nir),
+            nir_kernel_build: NirKernelBuild::new(dev, nir, internal_args),
         }
     }
 
@@ -1190,7 +1194,7 @@ impl Kernel {
                 printf_buf = Some(buf);
             }
 
-            for arg in &kernel_info.internal_args {
+            for arg in &nir_kernel_build.internal_args {
                 if arg.offset > input.len() {
                     input.resize(arg.offset, 0);
                 }

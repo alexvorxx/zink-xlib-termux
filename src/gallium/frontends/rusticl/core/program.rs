@@ -98,21 +98,8 @@ pub struct ProgramBuild {
 }
 
 impl ProgramBuild {
-    pub fn attribute_str(&self, kernel: &str, d: &Device) -> String {
-        let info = self.dev_build(d);
-
-        let attributes_strings = [
-            info.spirv.as_ref().unwrap().vec_type_hint(kernel),
-            info.spirv.as_ref().unwrap().local_size(kernel),
-            info.spirv.as_ref().unwrap().local_size_hint(kernel),
-        ];
-
-        let attributes_strings: Vec<_> = attributes_strings
-            .iter()
-            .flatten()
-            .map(String::as_str)
-            .collect();
-        attributes_strings.join(",")
+    pub fn spirv_info(&self, kernel: &str, d: &Device) -> Option<&clc_kernel_info> {
+        self.dev_build(d).spirv.as_ref()?.kernel_info(kernel)
     }
 
     fn args(&self, dev: &Device, kernel: &str) -> Vec<spirv::SPIRVKernelArg> {

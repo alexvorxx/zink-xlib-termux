@@ -17,6 +17,7 @@ use mesa_rust_gen::*;
 use mesa_rust_util::math::*;
 use mesa_rust_util::serialize::*;
 use rusticl_opencl_gen::*;
+use spirv::SpirvKernelInfo;
 
 use std::cmp;
 use std::collections::HashMap;
@@ -886,7 +887,7 @@ pub(super) fn convert_spirv_to_nir(
         (nir, args, internal_args)
     };
 
-    let attributes_string = build.attribute_str(name, dev);
+    let attributes_string = build.spirv_info(name, dev).unwrap().attribute_str();
     let wgs = nir.workgroup_size();
     let kernel_info = KernelInfo {
         args: args,

@@ -229,7 +229,7 @@ impl SPIRVBin {
         }
     }
 
-    fn kernel_info(&self, name: &str) -> Option<&clc_kernel_info> {
+    pub fn kernel_info(&self, name: &str) -> Option<&clc_kernel_info> {
         self.kernel_infos()
             .iter()
             .find(|i| c_string_to_string(i.name) == name)
@@ -241,46 +241,6 @@ impl SPIRVBin {
             .map(|i| i.name)
             .map(c_string_to_string)
             .collect()
-    }
-
-    pub fn vec_type_hint(&self, name: &str) -> Option<String> {
-        self.kernel_info(name)
-            .filter(|info| [1, 2, 3, 4, 8, 16].contains(&info.vec_hint_size))
-            .map(|info| {
-                let cltype = match info.vec_hint_type {
-                    clc_vec_hint_type::CLC_VEC_HINT_TYPE_CHAR => "uchar",
-                    clc_vec_hint_type::CLC_VEC_HINT_TYPE_SHORT => "ushort",
-                    clc_vec_hint_type::CLC_VEC_HINT_TYPE_INT => "uint",
-                    clc_vec_hint_type::CLC_VEC_HINT_TYPE_LONG => "ulong",
-                    clc_vec_hint_type::CLC_VEC_HINT_TYPE_HALF => "half",
-                    clc_vec_hint_type::CLC_VEC_HINT_TYPE_FLOAT => "float",
-                    clc_vec_hint_type::CLC_VEC_HINT_TYPE_DOUBLE => "double",
-                };
-
-                format!("vec_type_hint({}{})", cltype, info.vec_hint_size)
-            })
-    }
-
-    pub fn local_size(&self, name: &str) -> Option<String> {
-        self.kernel_info(name)
-            .filter(|info| info.local_size != [0; 3])
-            .map(|info| {
-                format!(
-                    "reqd_work_group_size({},{},{})",
-                    info.local_size[0], info.local_size[1], info.local_size[2]
-                )
-            })
-    }
-
-    pub fn local_size_hint(&self, name: &str) -> Option<String> {
-        self.kernel_info(name)
-            .filter(|info| info.local_size_hint != [0; 3])
-            .map(|info| {
-                format!(
-                    "work_group_size_hint({},{},{})",
-                    info.local_size_hint[0], info.local_size_hint[1], info.local_size_hint[2]
-                )
-            })
     }
 
     pub fn args(&self, name: &str) -> Vec<SPIRVKernelArg> {
@@ -543,5 +503,61 @@ impl CLCSpecConstantType for clc_spec_constant_type {
             | Self::CLC_SPEC_CONSTANT_BOOL => 1,
             Self::CLC_SPEC_CONSTANT_UNKNOWN => 0,
         }
+    }
+}
+
+pub trait SpirvKernelInfo {
+    fn vec_type_hint(&self) -> Option<String>;
+    fn local_size(&self) -> Option<String>;
+    fn local_size_hint(&self) -> Option<String>;
+
+    fn attribute_str(&self) -> String {
+        let attributes_strings = [
+            self.vec_type_hint(),
+            self.local_size(),
+            self.local_size_hint(),
+        ];
+
+        let attributes_strings: Vec<_> = attributes_strings.into_iter().flatten().collect();
+        attributes_strings.join(",")
+    }
+}
+
+impl SpirvKernelInfo for clc_kernel_info {
+    fn vec_type_hint(&self) -> Option<String> {
+        if ![1, 2, 3, 4, 8, 16].contains(&self.vec_hint_size) {
+            return None;
+        }
+        let cltype = match self.vec_hint_type {
+            clc_vec_hint_type::CLC_VEC_HINT_TYPE_CHAR => "uchar",
+            clc_vec_hint_type::CLC_VEC_HINT_TYPE_SHORT => "ushort",
+            clc_vec_hint_type::CLC_VEC_HINT_TYPE_INT => "uint",
+            clc_vec_hint_type::CLC_VEC_HINT_TYPE_LONG => "ulong",
+            clc_vec_hint_type::CLC_VEC_HINT_TYPE_HALF => "half",
+            clc_vec_hint_type::CLC_VEC_HINT_TYPE_FLOAT => "float",
+            clc_vec_hint_type::CLC_VEC_HINT_TYPE_DOUBLE => "double",
+        };
+
+        Some(format!("vec_type_hint({}{})", cltype, self.vec_hint_size))
+    }
+
+    fn local_size(&self) -> Option<String> {
+        if self.local_size == [0; 3] {
+            return None;
+        }
+        Some(format!(
+            "reqd_work_group_size({},{},{})",
+            self.local_size[0], self.local_size[1], self.local_size[2]
+        ))
+    }
+
+    fn local_size_hint(&self) -> Option<String> {
+        if self.local_size_hint == [0; 3] {
+            return None;
+        }
+        Some(format!(
+            "work_group_size_hint({},{},{})",
+            self.local_size_hint[0], self.local_size_hint[1], self.local_size_hint[2]
+        ))
     }
 }

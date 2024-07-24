@@ -1,7 +1,7 @@
 include:
   - local: 'src/gallium/drivers/svga/ci/gitlab-ci-inc.yml'
 
-vmware-qemu-traces:x86_64:
+.vmware-qemu-traces:x86_64:
   stage: software-renderer
   extends:
     - .lava-piglit-traces:x86_64

@@ -303,6 +303,64 @@ pub enum KernelDevStateVariant {
     Nir(NirShader),
 }
 
+pub struct NirKernelBuild {
+    pub nir_or_cso: KernelDevStateVariant,
+    pub constant_buffer: Option<Arc<PipeResource>>,
+    pub info: pipe_compute_state_object_info,
+    pub shared_size: u64,
+    pub printf_info: Option<NirPrintfInfo>,
+}
+
+// SAFETY: `CSOWrapper` is only safe to use if the device supports `PIPE_CAP_SHAREABLE_SHADERS` and
+//         we make sure to set `nir_or_cso` to `KernelDevStateVariant::Cso` only if that's the case.
+unsafe impl Send for NirKernelBuild {}
+unsafe impl Sync for NirKernelBuild {}
+
+impl NirKernelBuild {
+    pub fn new(dev: &'static Device, mut nir: NirShader) -> Self {
+        let cso = CSOWrapper::new(dev, &nir);
+        let info = cso.get_cso_info();
+        let cb = Self::create_nir_constant_buffer(dev, &nir);
+        let shared_size = nir.shared_size() as u64;
+        let printf_info = nir.take_printf_info();
+
+        let nir_or_cso = if !dev.shareable_shaders() {
+            KernelDevStateVariant::Nir(nir)
+        } else {
+            KernelDevStateVariant::Cso(cso)
+        };
+
+        NirKernelBuild {
+            nir_or_cso: nir_or_cso,
+            constant_buffer: cb,
+            info: info,
+            shared_size: shared_size,
+            printf_info: printf_info,
+        }
+    }
+
+    fn create_nir_constant_buffer(dev: &Device, nir: &NirShader) -> Option<Arc<PipeResource>> {
+        let buf = nir.get_constant_buffer();
+        let len = buf.len() as u32;
+
+        if len > 0 {
+            // TODO bind as constant buffer
+            let res = dev
+                .screen()
+                .resource_create_buffer(len, ResourceType::Normal, PIPE_BIND_GLOBAL)
+                .unwrap();
+
+            dev.helper_ctx()
+                .exec(|ctx| ctx.buffer_subdata(&res, 0, buf.as_ptr().cast(), len))
+                .wait();
+
+            Some(Arc::new(res))
+        } else {
+            None
+        }
+    }
+}
+
 pub struct Kernel {
     pub base: CLObjectBase<CL_INVALID_KERNEL>,
     pub prog: Arc<Program>,

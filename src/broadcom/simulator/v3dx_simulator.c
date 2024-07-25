@@ -31,7 +31,7 @@
  * we support.
  */
 
-#ifdef USE_V3D_SIMULATOR
+#if USE_V3D_SIMULATOR
 
 #include <assert.h>
 #include <stdbool.h>

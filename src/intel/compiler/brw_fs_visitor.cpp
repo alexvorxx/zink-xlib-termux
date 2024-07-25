@@ -21,7 +21,7 @@
  * IN THE SOFTWARE.
  */
 
-/** @file brw_fs_visitor.cpp
+/** @file
  *
  * This file supports generating the FS LIR from the GLSL IR.  The LIR
  * makes it easier to do backend-specific optimizations than doing so

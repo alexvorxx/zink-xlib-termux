@@ -6,7 +6,7 @@ set -xe
 
 export HOME=/cuttlefish
 export PATH=$PATH:/cuttlefish/bin
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:${CI_PROJECT_DIR}/install/lib/:${CI_PROJECT_DIR}/install/lib/dri:/cuttlefish/lib64
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:${CI_PROJECT_DIR}/install/lib/:/cuttlefish/lib64
 export EGL_PLATFORM=surfaceless
 
 syslogd

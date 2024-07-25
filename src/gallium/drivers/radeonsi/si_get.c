@@ -876,6 +876,17 @@ static int si_get_video_param(struct pipe_screen *screen, enum pipe_video_profil
          else
             return 0;
 
+      case PIPE_VIDEO_CAP_ENC_RATE_CONTROL_QVBR:
+         if (sscreen->info.vcn_ip_version >= VCN_3_0_0 &&
+             sscreen->info.vcn_ip_version < VCN_4_0_0)
+            return sscreen->info.vcn_enc_minor_version >= 30;
+
+         if (sscreen->info.vcn_ip_version >= VCN_4_0_0 &&
+             sscreen->info.vcn_ip_version < VCN_5_0_0)
+            return sscreen->info.vcn_enc_minor_version >= 15;
+
+         return 0;
+
       default:
          return 0;
       }
@@ -1629,6 +1640,7 @@ void si_init_screen_get_functions(struct si_screen *sscreen)
       (sscreen->info.family >= CHIP_GFX940 && !sscreen->info.has_graphics) ||
       /* fma32 is too slow for gpu < gfx9, so apply the option only for gpu >= gfx9 */
       (sscreen->info.gfx_level >= GFX9 && sscreen->options.force_use_fma32);
+   bool has_mediump = sscreen->info.gfx_level >= GFX8 && sscreen->options.fp16;
 
    nir_shader_compiler_options *options = sscreen->nir_options;
    ac_set_nir_options(&sscreen->info, !sscreen->use_aco, options);
@@ -1655,12 +1667,10 @@ void si_init_screen_get_functions(struct si_screen *sscreen)
     * when execution mode is rtz instead of rtne.
     */
    options->force_f2f16_rtz = true;
-   options->io_options = nir_io_has_flexible_input_interpolation_except_flat |
-                         nir_io_prefer_scalar_fs_inputs |
-                         nir_io_glsl_lower_derefs |
-                         (sscreen->options.optimize_io ? nir_io_glsl_opt_varyings : 0);
-   options->lower_mediump_io = sscreen->info.gfx_level >= GFX8 && sscreen->options.fp16 ?
-                                  si_lower_mediump_io : NULL;
+   options->io_options |= (!has_mediump ? nir_io_mediump_is_32bit : 0) |
+                          nir_io_glsl_lower_derefs |
+                          (sscreen->options.optimize_io ? nir_io_glsl_opt_varyings : 0);
+   options->lower_mediump_io = has_mediump ? si_lower_mediump_io : NULL;
    /* HW supports indirect indexing for: | Enabled in driver
     * -------------------------------------------------------
     * TCS inputs                         | Yes

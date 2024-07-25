@@ -84,8 +84,9 @@ v3d_screen_destroy(struct pipe_screen *pscreen)
         if (screen->ro)
                 screen->ro->destroy(screen->ro);
 
-        if (using_v3d_simulator)
-                v3d_simulator_destroy(screen->sim_file);
+#if USE_V3D_SIMULATOR
+        v3d_simulator_destroy(screen->sim_file);
+#endif
 
         v3d_compiler_free(screen->compiler);
 
@@ -922,7 +923,7 @@ v3d_screen_create(int fd, const struct pipe_screen_config *config,
         (void)mtx_init(&screen->bo_handles_mutex, mtx_plain);
         screen->bo_handles = util_hash_table_create_ptr_keys();
 
-#if defined(USE_V3D_SIMULATOR)
+#if USE_V3D_SIMULATOR
         screen->sim_file = v3d_simulator_init(screen->fd);
 #endif
 

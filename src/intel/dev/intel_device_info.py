@@ -467,6 +467,8 @@ Struct("intel_device_info",
                implementation details, the range of scratch ids may be larger than the
                number of subslices.""")),
 
+        Member("uint32_t", "max_scratch_size_per_thread", compiler_field=True),
+
         Member("intel_device_info_urb_desc", "urb"),
         Member("unsigned", "max_constant_urb_size_kb"),
         Member("unsigned", "mesh_max_constant_urb_size_kb"),

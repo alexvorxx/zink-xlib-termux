@@ -48,15 +48,13 @@ panvk_per_arch(cmd_desc_state_cleanup)(
 
 void
 panvk_per_arch(cmd_desc_state_bind_sets)(
-   struct panvk_descriptor_state *desc_state, VkPipelineLayout layout,
-   uint32_t first_set, uint32_t desc_set_count,
-   const VkDescriptorSet *desc_sets, uint32_t dyn_offset_count,
-   const uint32_t *dyn_offsets)
+   struct panvk_descriptor_state *desc_state,
+   const VkBindDescriptorSetsInfoKHR *info)
 {
    unsigned dynoffset_idx = 0;
-   for (unsigned i = 0; i < desc_set_count; ++i) {
-      unsigned set_idx = i + first_set;
-      VK_FROM_HANDLE(panvk_descriptor_set, set, desc_sets[i]);
+   for (unsigned i = 0; i < info->descriptorSetCount; ++i) {
+      unsigned set_idx = i + info->firstSet;
+      VK_FROM_HANDLE(panvk_descriptor_set, set, info->pDescriptorSets[i]);
 
       /* Invalidate the push set. */
       if (desc_state->sets[set_idx] &&
@@ -78,12 +76,12 @@ panvk_per_arch(cmd_desc_state_bind_sets)(
          unsigned dyn_buf_idx = set->layout->bindings[b].desc_idx;
          for (unsigned e = 0; e < set->layout->bindings[b].desc_count; e++) {
             desc_state->dyn_buf_offsets[set_idx][dyn_buf_idx++] =
-               dyn_offsets[dynoffset_idx++];
+               info->pDynamicOffsets[dynoffset_idx++];
          }
       }
    }
 
-   assert(dynoffset_idx == dyn_offset_count);
+   assert(dynoffset_idx == info->dynamicOffsetCount);
 }
 
 struct panvk_descriptor_set *
@@ -205,7 +203,10 @@ panvk_per_arch(cmd_prepare_shader_desc_tables)(
       if (i == PANVK_BIFROST_DESC_TABLE_UBO)
          panvk_cmd_fill_dyn_ubos(desc_state, shader, ptr.cpu, desc_count);
 
-      if (i == PANVK_BIFROST_DESC_TABLE_IMG) {
+      /* The image table being actually the attribute table, this is handled
+       * separately for vertex shaders. */
+      if (i == PANVK_BIFROST_DESC_TABLE_IMG &&
+          shader->info.stage != MESA_SHADER_VERTEX) {
          assert(!shader_desc_state->img_attrib_table);
 
          ptr = pan_pool_alloc_desc_array(desc_pool, desc_count, ATTRIBUTE);

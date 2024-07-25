@@ -8,8 +8,6 @@ use crate::impl_cl_type_trait;
 use mesa_rust::compiler::clc::spirv::SPIRVBin;
 use mesa_rust::compiler::clc::*;
 use mesa_rust::compiler::nir::*;
-use mesa_rust::pipe::resource::*;
-use mesa_rust::pipe::screen::ResourceType;
 use mesa_rust::util::disk_cache::*;
 use mesa_rust_gen::*;
 use rusticl_llvm_gen::*;
@@ -92,19 +90,6 @@ pub struct Program {
 
 impl_cl_type_trait!(cl_program, Program, CL_INVALID_PROGRAM);
 
-pub struct NirKernelBuild {
-    pub nir_or_cso: KernelDevStateVariant,
-    pub constant_buffer: Option<Arc<PipeResource>>,
-    pub info: pipe_compute_state_object_info,
-    pub shared_size: u64,
-    pub printf_info: Option<NirPrintfInfo>,
-}
-
-// SAFETY: `CSOWrapper` is only safe to use if the device supports `PIPE_CAP_SHAREABLE_SHADERS` and
-//         we make sure to set `nir_or_cso` to `KernelDevStateVariant::Cso` only if that's the case.
-unsafe impl Send for NirKernelBuild {}
-unsafe impl Sync for NirKernelBuild {}
-
 pub struct ProgramBuild {
     pub builds: HashMap<&'static Device, ProgramDevBuild>,
     pub kernel_info: HashMap<String, Arc<KernelInfo>>,
@@ -112,67 +97,9 @@ pub struct ProgramBuild {
     kernels: Vec<String>,
 }
 
-impl NirKernelBuild {
-    pub fn new(dev: &'static Device, mut nir: NirShader) -> Self {
-        let cso = CSOWrapper::new(dev, &nir);
-        let info = cso.get_cso_info();
-        let cb = Self::create_nir_constant_buffer(dev, &nir);
-        let shared_size = nir.shared_size() as u64;
-        let printf_info = nir.take_printf_info();
-
-        let nir_or_cso = if !dev.shareable_shaders() {
-            KernelDevStateVariant::Nir(nir)
-        } else {
-            KernelDevStateVariant::Cso(cso)
-        };
-
-        NirKernelBuild {
-            nir_or_cso: nir_or_cso,
-            constant_buffer: cb,
-            info: info,
-            shared_size: shared_size,
-            printf_info: printf_info,
-        }
-    }
-
-    fn create_nir_constant_buffer(dev: &Device, nir: &NirShader) -> Option<Arc<PipeResource>> {
-        let buf = nir.get_constant_buffer();
-        let len = buf.len() as u32;
-
-        if len > 0 {
-            // TODO bind as constant buffer
-            let res = dev
-                .screen()
-                .resource_create_buffer(len, ResourceType::Normal, PIPE_BIND_GLOBAL)
-                .unwrap();
-
-            dev.helper_ctx()
-                .exec(|ctx| ctx.buffer_subdata(&res, 0, buf.as_ptr().cast(), len))
-                .wait();
-
-            Some(Arc::new(res))
-        } else {
-            None
-        }
-    }
-}
-
 impl ProgramBuild {
-    pub fn attribute_str(&self, kernel: &str, d: &Device) -> String {
-        let info = self.dev_build(d);
-
-        let attributes_strings = [
-            info.spirv.as_ref().unwrap().vec_type_hint(kernel),
-            info.spirv.as_ref().unwrap().local_size(kernel),
-            info.spirv.as_ref().unwrap().local_size_hint(kernel),
-        ];
-
-        let attributes_strings: Vec<_> = attributes_strings
-            .iter()
-            .flatten()
-            .map(String::as_str)
-            .collect();
-        attributes_strings.join(",")
+    pub fn spirv_info(&self, kernel: &str, d: &Device) -> Option<&clc_kernel_info> {
+        self.dev_build(d).spirv.as_ref()?.kernel_info(kernel)
     }
 
     fn args(&self, dev: &Device, kernel: &str) -> Vec<spirv::SPIRVKernelArg> {
@@ -192,14 +119,14 @@ impl ProgramBuild {
 
             // TODO: we could run this in parallel?
             for dev in self.devs_with_build() {
-                let (kernel_info, nir) = convert_spirv_to_nir(self, kernel_name, &args, dev);
-                kernel_info_set.insert(kernel_info);
+                let build_result = convert_spirv_to_nir(self, kernel_name, &args, dev);
+                kernel_info_set.insert(build_result.kernel_info);
 
                 self.builds
                     .get_mut(dev)
                     .unwrap()
                     .kernels
-                    .insert(kernel_name.clone(), Arc::new(NirKernelBuild::new(dev, nir)));
+                    .insert(kernel_name.clone(), Arc::new(build_result.nir_kernel_build));
             }
 
             // we want the same (internal) args for every compiled kernel, for now

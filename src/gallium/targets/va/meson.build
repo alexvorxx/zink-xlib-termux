@@ -97,11 +97,13 @@ else
     endif
   endforeach
 
-  meson.add_install_script(
-    install_megadrivers_py.full_path(),
-    libva_gallium.full_path(),
-    va_drivers_path,
-    va_drivers,
-    install_tag : 'runtime',
-  )
+  if va_drivers.length() > 0
+    meson.add_install_script(
+      install_megadrivers_py.full_path(),
+      libva_gallium.full_path(),
+      va_drivers_path,
+      va_drivers,
+      install_tag : 'runtime',
+    )
+  endif
 endif

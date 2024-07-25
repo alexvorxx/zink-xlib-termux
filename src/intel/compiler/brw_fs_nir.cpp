@@ -4209,7 +4209,8 @@ fs_nir_emit_fs_intrinsic(nir_to_brw_state &ntb,
       break;
    }
 
-   case nir_intrinsic_load_input: {
+   case nir_intrinsic_load_input:
+   case nir_intrinsic_load_per_primitive_input: {
       /* In Fragment Shaders load_input is used either for flat inputs or
        * per-primitive inputs.
        */

@@ -5971,13 +5971,6 @@ iris_restore_render_saved_bos(struct iris_context *ice,
                             IRIS_DOMAIN_VF_READ);
       }
    }
-
-#if GFX_VERx10 == 125
-   iris_use_pinned_bo(batch, iris_resource_bo(ice->state.pixel_hashing_tables),
-                      false, IRIS_DOMAIN_NONE);
-#else
-   assert(!ice->state.pixel_hashing_tables);
-#endif
 }
 
 static void

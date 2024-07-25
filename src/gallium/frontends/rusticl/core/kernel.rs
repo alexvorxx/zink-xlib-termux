@@ -17,6 +17,7 @@ use mesa_rust_gen::*;
 use mesa_rust_util::math::*;
 use mesa_rust_util::serialize::*;
 use rusticl_opencl_gen::*;
+use spirv::SpirvKernelInfo;
 
 use std::cmp;
 use std::collections::HashMap;
@@ -40,6 +41,7 @@ pub enum KernelArgValue {
     Sampler(Arc<Sampler>),
 }
 
+#[repr(u8)]
 #[derive(Hash, PartialEq, Eq, Clone, Copy)]
 pub enum KernelArgType {
     Constant = 0, // for anything passed by value
@@ -53,7 +55,7 @@ pub enum KernelArgType {
 }
 
 #[derive(Hash, PartialEq, Eq, Clone)]
-pub enum InternalKernelArgType {
+enum InternalKernelArgType {
     ConstantBuffer,
     GlobalWorkOffsets,
     PrintfBuffer,
@@ -71,17 +73,17 @@ pub struct KernelArg {
     pub kind: KernelArgType,
     pub size: usize,
     /// The offset into the input buffer
-    pub offset: usize,
+    offset: usize,
     /// The actual binding slot
-    pub binding: u32,
+    binding: u32,
     pub dead: bool,
 }
 
 #[derive(Hash, PartialEq, Eq, Clone)]
-pub struct InternalKernelArg {
-    pub kind: InternalKernelArgType,
-    pub size: usize,
-    pub offset: usize,
+struct InternalKernelArg {
+    kind: InternalKernelArgType,
+    size: usize,
+    offset: usize,
 }
 
 impl KernelArg {
@@ -160,123 +162,142 @@ impl KernelArg {
         }
     }
 
-    fn serialize(&self) -> Vec<u8> {
-        let mut bin = Vec::new();
+    fn serialize(args: &[Self], blob: &mut blob) {
+        unsafe {
+            blob_write_uint16(blob, args.len() as u16);
 
-        bin.append(&mut self.spirv.serialize());
-        bin.extend_from_slice(&self.size.to_ne_bytes());
-        bin.extend_from_slice(&self.offset.to_ne_bytes());
-        bin.extend_from_slice(&self.binding.to_ne_bytes());
-        bin.extend_from_slice(&(self.dead as u8).to_ne_bytes());
-        bin.extend_from_slice(&(self.kind as u8).to_ne_bytes());
-
-        bin
+            for arg in args {
+                arg.spirv.serialize(blob);
+                blob_write_uint16(blob, arg.size as u16);
+                blob_write_uint16(blob, arg.offset as u16);
+                blob_write_uint16(blob, arg.binding as u16);
+                blob_write_uint8(blob, arg.dead.into());
+                blob_write_uint8(blob, arg.kind as u8);
+            }
+        }
     }
 
-    fn deserialize(bin: &mut &[u8]) -> Option<Self> {
-        let spirv = spirv::SPIRVKernelArg::deserialize(bin)?;
-        let size = read_ne_usize(bin);
-        let offset = read_ne_usize(bin);
-        let binding = read_ne_u32(bin);
-        let dead = read_ne_u8(bin) == 1;
+    fn deserialize(blob: &mut blob_reader) -> Option<Vec<Self>> {
+        unsafe {
+            let len = blob_read_uint16(blob) as usize;
+            let mut res = Vec::with_capacity(len);
 
-        let kind = match read_ne_u8(bin) {
-            0 => KernelArgType::Constant,
-            1 => KernelArgType::Image,
-            2 => KernelArgType::RWImage,
-            3 => KernelArgType::Sampler,
-            4 => KernelArgType::Texture,
-            5 => KernelArgType::MemGlobal,
-            6 => KernelArgType::MemConstant,
-            7 => KernelArgType::MemLocal,
-            _ => return None,
-        };
+            for _ in 0..len {
+                let spirv = spirv::SPIRVKernelArg::deserialize(blob)?;
+                let size = blob_read_uint16(blob) as usize;
+                let offset = blob_read_uint16(blob) as usize;
+                let binding = blob_read_uint16(blob) as u32;
+                let dead = blob_read_uint8(blob) != 0;
 
-        Some(Self {
-            spirv: spirv,
-            kind: kind,
-            size: size,
-            offset: offset,
-            binding: binding,
-            dead: dead,
-        })
+                let kind = match blob_read_uint8(blob) {
+                    0 => KernelArgType::Constant,
+                    1 => KernelArgType::Image,
+                    2 => KernelArgType::RWImage,
+                    3 => KernelArgType::Sampler,
+                    4 => KernelArgType::Texture,
+                    5 => KernelArgType::MemGlobal,
+                    6 => KernelArgType::MemConstant,
+                    7 => KernelArgType::MemLocal,
+                    _ => return None,
+                };
+
+                res.push(Self {
+                    spirv: spirv,
+                    kind: kind,
+                    size: size,
+                    offset: offset,
+                    binding: binding,
+                    dead: dead,
+                });
+            }
+
+            Some(res)
+        }
     }
 }
 
 impl InternalKernelArg {
-    fn serialize(&self) -> Vec<u8> {
-        let mut bin = Vec::new();
-
-        bin.extend_from_slice(&self.size.to_ne_bytes());
-        bin.extend_from_slice(&self.offset.to_ne_bytes());
-
-        match self.kind {
-            InternalKernelArgType::ConstantBuffer => bin.push(0),
-            InternalKernelArgType::GlobalWorkOffsets => bin.push(1),
-            InternalKernelArgType::PrintfBuffer => bin.push(2),
-            InternalKernelArgType::InlineSampler((addr_mode, filter_mode, norm)) => {
-                bin.push(3);
-                bin.extend_from_slice(&addr_mode.to_ne_bytes());
-                bin.extend_from_slice(&filter_mode.to_ne_bytes());
-                bin.push(norm as u8);
+    fn serialize(args: &[Self], blob: &mut blob) {
+        unsafe {
+            blob_write_uint16(blob, args.len() as u16);
+            for arg in args {
+                blob_write_uint16(blob, arg.size as u16);
+                blob_write_uint16(blob, arg.offset as u16);
+                match arg.kind {
+                    InternalKernelArgType::ConstantBuffer => blob_write_uint8(blob, 0),
+                    InternalKernelArgType::GlobalWorkOffsets => blob_write_uint8(blob, 1),
+                    InternalKernelArgType::PrintfBuffer => blob_write_uint8(blob, 2),
+                    InternalKernelArgType::InlineSampler((addr_mode, filter_mode, norm)) => {
+                        blob_write_uint8(blob, 3);
+                        blob_write_uint8(blob, norm.into());
+                        blob_write_uint32(blob, addr_mode);
+                        blob_write_uint32(blob, filter_mode)
+                    }
+                    InternalKernelArgType::FormatArray => blob_write_uint8(blob, 4),
+                    InternalKernelArgType::OrderArray => blob_write_uint8(blob, 5),
+                    InternalKernelArgType::WorkDim => blob_write_uint8(blob, 6),
+                    InternalKernelArgType::WorkGroupOffsets => blob_write_uint8(blob, 7),
+                    InternalKernelArgType::NumWorkgroups => blob_write_uint8(blob, 8),
+                };
             }
-            InternalKernelArgType::FormatArray => bin.push(4),
-            InternalKernelArgType::OrderArray => bin.push(5),
-            InternalKernelArgType::WorkDim => bin.push(6),
-            InternalKernelArgType::WorkGroupOffsets => bin.push(7),
-            InternalKernelArgType::NumWorkgroups => bin.push(8),
         }
-
-        bin
     }
 
-    fn deserialize(bin: &mut &[u8]) -> Option<Self> {
-        let size = read_ne_usize(bin);
-        let offset = read_ne_usize(bin);
+    fn deserialize(blob: &mut blob_reader) -> Option<Vec<Self>> {
+        unsafe {
+            let len = blob_read_uint16(blob) as usize;
+            let mut res = Vec::with_capacity(len);
 
-        let kind = match read_ne_u8(bin) {
-            0 => InternalKernelArgType::ConstantBuffer,
-            1 => InternalKernelArgType::GlobalWorkOffsets,
-            2 => InternalKernelArgType::PrintfBuffer,
-            3 => {
-                let addr_mode = read_ne_u32(bin);
-                let filter_mode = read_ne_u32(bin);
-                let norm = read_ne_u8(bin) == 1;
-                InternalKernelArgType::InlineSampler((addr_mode, filter_mode, norm))
+            for _ in 0..len {
+                let size = blob_read_uint16(blob) as usize;
+                let offset = blob_read_uint16(blob) as usize;
+
+                let kind = match blob_read_uint8(blob) {
+                    0 => InternalKernelArgType::ConstantBuffer,
+                    1 => InternalKernelArgType::GlobalWorkOffsets,
+                    2 => InternalKernelArgType::PrintfBuffer,
+                    3 => {
+                        let norm = blob_read_uint8(blob) != 0;
+                        let addr_mode = blob_read_uint32(blob);
+                        let filter_mode = blob_read_uint32(blob);
+                        InternalKernelArgType::InlineSampler((addr_mode, filter_mode, norm))
+                    }
+                    4 => InternalKernelArgType::FormatArray,
+                    5 => InternalKernelArgType::OrderArray,
+                    6 => InternalKernelArgType::WorkDim,
+                    7 => InternalKernelArgType::WorkGroupOffsets,
+                    8 => InternalKernelArgType::NumWorkgroups,
+                    _ => return None,
+                };
+
+                res.push(Self {
+                    kind: kind,
+                    size: size,
+                    offset: offset,
+                });
             }
-            4 => InternalKernelArgType::FormatArray,
-            5 => InternalKernelArgType::OrderArray,
-            6 => InternalKernelArgType::WorkDim,
-            7 => InternalKernelArgType::WorkGroupOffsets,
-            8 => InternalKernelArgType::NumWorkgroups,
-            _ => return None,
-        };
 
-        Some(Self {
-            kind: kind,
-            size: size,
-            offset: offset,
-        })
+            Some(res)
+        }
     }
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct KernelInfo {
     pub args: Vec<KernelArg>,
-    pub internal_args: Vec<InternalKernelArg>,
     pub attributes_string: String,
-    pub work_group_size: [usize; 3],
-    pub subgroup_size: usize,
-    pub num_subgroups: usize,
+    work_group_size: [usize; 3],
+    subgroup_size: usize,
+    num_subgroups: usize,
 }
 
-pub struct CSOWrapper {
-    pub cso_ptr: *mut c_void,
+struct CSOWrapper {
+    cso_ptr: *mut c_void,
     dev: &'static Device,
 }
 
 impl CSOWrapper {
-    pub fn new(dev: &'static Device, nir: &NirShader) -> Self {
+    fn new(dev: &'static Device, nir: &NirShader) -> Self {
         let cso_ptr = dev
             .helper_ctx()
             .create_compute_state(nir, nir.shared_size());
@@ -287,7 +308,7 @@ impl CSOWrapper {
         }
     }
 
-    pub fn get_cso_info(&self) -> pipe_compute_state_object_info {
+    fn get_cso_info(&self) -> pipe_compute_state_object_info {
         self.dev.helper_ctx().compute_state_info(self.cso_ptr)
     }
 }
@@ -298,9 +319,73 @@ impl Drop for CSOWrapper {
     }
 }
 
-pub enum KernelDevStateVariant {
+enum KernelDevStateVariant {
     Cso(CSOWrapper),
     Nir(NirShader),
+}
+
+pub struct NirKernelBuild {
+    nir_or_cso: KernelDevStateVariant,
+    constant_buffer: Option<Arc<PipeResource>>,
+    info: pipe_compute_state_object_info,
+    shared_size: u64,
+    printf_info: Option<NirPrintfInfo>,
+    internal_args: Vec<InternalKernelArg>,
+}
+
+// SAFETY: `CSOWrapper` is only safe to use if the device supports `PIPE_CAP_SHAREABLE_SHADERS` and
+//         we make sure to set `nir_or_cso` to `KernelDevStateVariant::Cso` only if that's the case.
+unsafe impl Send for NirKernelBuild {}
+unsafe impl Sync for NirKernelBuild {}
+
+impl NirKernelBuild {
+    fn new(
+        dev: &'static Device,
+        mut nir: NirShader,
+        internal_args: Vec<InternalKernelArg>,
+    ) -> Self {
+        let cso = CSOWrapper::new(dev, &nir);
+        let info = cso.get_cso_info();
+        let cb = Self::create_nir_constant_buffer(dev, &nir);
+        let shared_size = nir.shared_size() as u64;
+        let printf_info = nir.take_printf_info();
+
+        let nir_or_cso = if !dev.shareable_shaders() {
+            KernelDevStateVariant::Nir(nir)
+        } else {
+            KernelDevStateVariant::Cso(cso)
+        };
+
+        NirKernelBuild {
+            nir_or_cso: nir_or_cso,
+            constant_buffer: cb,
+            info: info,
+            shared_size: shared_size,
+            printf_info: printf_info,
+            internal_args: internal_args,
+        }
+    }
+
+    fn create_nir_constant_buffer(dev: &Device, nir: &NirShader) -> Option<Arc<PipeResource>> {
+        let buf = nir.get_constant_buffer();
+        let len = buf.len() as u32;
+
+        if len > 0 {
+            // TODO bind as constant buffer
+            let res = dev
+                .screen()
+                .resource_create_buffer(len, ResourceType::Normal, PIPE_BIND_GLOBAL)
+                .unwrap();
+
+            dev.helper_ctx()
+                .exec(|ctx| ctx.buffer_subdata(&res, 0, buf.as_ptr().cast(), len))
+                .wait();
+
+            Some(Arc::new(res))
+        } else {
+            None
+        }
+    }
 }
 
 pub struct Kernel {
@@ -432,6 +517,13 @@ fn lower_and_optimize_nir(
             .screen
             .nir_shader_compiler_options(pipe_shader_type::PIPE_SHADER_COMPUTE)
     };
+
+    // this is a hack until we support fp16 properly and check for denorms inside vstore/vload_half
+    nir.preserve_fp16_denorms();
+
+    // Set to rtne for now until drivers are able to report their preferred rounding mode, that also
+    // matches what we report via the API.
+    nir.set_fp_rounding_mode_rtne();
 
     nir_pass!(nir, nir_scale_fdiv);
     nir.set_workgroup_size_variable_if_zero();
@@ -743,105 +835,102 @@ fn lower_and_optimize_nir(
     (args, internal_args)
 }
 
-fn deserialize_nir(
-    bin: &mut &[u8],
-    d: &Device,
-) -> Option<(NirShader, Vec<KernelArg>, Vec<InternalKernelArg>)> {
-    let nir_len = read_ne_usize(bin);
+pub struct SPIRVToNirResult {
+    pub kernel_info: KernelInfo,
+    pub nir_kernel_build: NirKernelBuild,
+}
 
-    let nir = NirShader::deserialize(
-        bin,
-        nir_len,
-        d.screen()
-            .nir_shader_compiler_options(pipe_shader_type::PIPE_SHADER_COMPUTE),
-    )?;
+impl SPIRVToNirResult {
+    fn new(
+        dev: &'static Device,
+        kernel_info: &clc_kernel_info,
+        args: Vec<KernelArg>,
+        internal_args: Vec<InternalKernelArg>,
+        nir: NirShader,
+    ) -> Self {
+        let wgs = nir.workgroup_size();
+        let kernel_info = KernelInfo {
+            args: args,
+            attributes_string: kernel_info.attribute_str(),
+            work_group_size: [wgs[0] as usize, wgs[1] as usize, wgs[2] as usize],
+            subgroup_size: nir.subgroup_size() as usize,
+            num_subgroups: nir.num_subgroups() as usize,
+        };
 
-    let arg_len = read_ne_usize(bin);
-    let mut args = Vec::with_capacity(arg_len);
-    for _ in 0..arg_len {
-        args.push(KernelArg::deserialize(bin)?);
+        Self {
+            kernel_info: kernel_info,
+            nir_kernel_build: NirKernelBuild::new(dev, nir, internal_args),
+        }
     }
 
-    let arg_len = read_ne_usize(bin);
-    let mut internal_args = Vec::with_capacity(arg_len);
-    for _ in 0..arg_len {
-        internal_args.push(InternalKernelArg::deserialize(bin)?);
+    fn deserialize(bin: &[u8], d: &'static Device, kernel_info: &clc_kernel_info) -> Option<Self> {
+        let mut reader = blob_reader::default();
+        unsafe {
+            blob_reader_init(&mut reader, bin.as_ptr().cast(), bin.len());
+        }
+
+        let nir = NirShader::deserialize(
+            &mut reader,
+            d.screen()
+                .nir_shader_compiler_options(pipe_shader_type::PIPE_SHADER_COMPUTE),
+        )?;
+        let args = KernelArg::deserialize(&mut reader)?;
+        let internal_args = InternalKernelArg::deserialize(&mut reader)?;
+
+        Some(SPIRVToNirResult::new(
+            d,
+            kernel_info,
+            args,
+            internal_args,
+            nir,
+        ))
     }
 
-    assert!(bin.is_empty());
-
-    Some((nir, args, internal_args))
+    // we can't use Self here as the nir shader might be compiled to a cso already and we can't
+    // cache that.
+    fn serialize(
+        blob: &mut blob,
+        nir: &NirShader,
+        args: &[KernelArg],
+        internal_args: &[InternalKernelArg],
+    ) {
+        nir.serialize(blob);
+        KernelArg::serialize(args, blob);
+        InternalKernelArg::serialize(internal_args, blob);
+    }
 }
 
 pub(super) fn convert_spirv_to_nir(
     build: &ProgramBuild,
     name: &str,
     args: &[spirv::SPIRVKernelArg],
-    dev: &Device,
-) -> (KernelInfo, NirShader) {
+    dev: &'static Device,
+) -> SPIRVToNirResult {
     let cache = dev.screen().shader_cache();
     let key = build.hash_key(dev, name);
+    let spirv_info = build.spirv_info(name, dev).unwrap();
 
-    let res = if let Some(cache) = &cache {
-        cache.get(&mut key.unwrap()).and_then(|entry| {
-            let mut bin: &[u8] = &entry;
-            deserialize_nir(&mut bin, dev)
+    cache
+        .as_ref()
+        .and_then(|cache| cache.get(&mut key?))
+        .and_then(|entry| SPIRVToNirResult::deserialize(&entry, dev, spirv_info))
+        .unwrap_or_else(|| {
+            let mut nir = build.to_nir(name, dev);
+            let (args, internal_args) = lower_and_optimize_nir(dev, &mut nir, args, &dev.lib_clc);
+
+            if let Some(cache) = cache {
+                let mut blob = blob::default();
+                unsafe {
+                    blob_init(&mut blob);
+                    SPIRVToNirResult::serialize(&mut blob, &nir, &args, &internal_args);
+                    let bin = slice::from_raw_parts(blob.data, blob.size);
+                    cache.put(bin, &mut key.unwrap());
+                    blob_finish(&mut blob);
+                }
+            }
+
+            SPIRVToNirResult::new(dev, spirv_info, args, internal_args, nir)
         })
-    } else {
-        None
-    };
-
-    let (nir, args, internal_args) = if let Some(res) = res {
-        res
-    } else {
-        let mut nir = build.to_nir(name, dev);
-
-        /* this is a hack until we support fp16 properly and check for denorms inside
-         * vstore/vload_half
-         */
-        nir.preserve_fp16_denorms();
-
-        // Set to rtne for now until drivers are able to report their prefered rounding mode, that
-        // also matches what we report via the API.
-        nir.set_fp_rounding_mode_rtne();
-
-        let (args, internal_args) = lower_and_optimize_nir(dev, &mut nir, args, &dev.lib_clc);
-
-        if let Some(cache) = cache {
-            let mut bin = Vec::new();
-            let mut nir = nir.serialize();
-
-            bin.extend_from_slice(&nir.len().to_ne_bytes());
-            bin.append(&mut nir);
-
-            bin.extend_from_slice(&args.len().to_ne_bytes());
-            for arg in &args {
-                bin.append(&mut arg.serialize());
-            }
-
-            bin.extend_from_slice(&internal_args.len().to_ne_bytes());
-            for arg in &internal_args {
-                bin.append(&mut arg.serialize());
-            }
-
-            cache.put(&bin, &mut key.unwrap());
-        }
-
-        (nir, args, internal_args)
-    };
-
-    let attributes_string = build.attribute_str(name, dev);
-    let wgs = nir.workgroup_size();
-    let kernel_info = KernelInfo {
-        args: args,
-        internal_args: internal_args,
-        attributes_string: attributes_string,
-        work_group_size: [wgs[0] as usize, wgs[1] as usize, wgs[2] as usize],
-        subgroup_size: nir.subgroup_size() as usize,
-        num_subgroups: nir.num_subgroups() as usize,
-    };
-
-    (kernel_info, nir)
 }
 
 fn extract<'a, const S: usize>(buf: &'a mut &[u8]) -> &'a [u8; S] {
@@ -1105,7 +1194,7 @@ impl Kernel {
                 printf_buf = Some(buf);
             }
 
-            for arg in &kernel_info.internal_args {
+            for arg in &nir_kernel_build.internal_args {
                 if arg.offset > input.len() {
                     input.resize(arg.offset, 0);
                 }

@@ -405,8 +405,7 @@ trtt_get_page_table_bo(struct anv_device *device, struct anv_bo **bo,
 }
 
 static VkResult
-anv_trtt_init_context_state(struct anv_device *device,
-                            struct anv_async_submit *submit)
+anv_trtt_init_queues_state(struct anv_device *device)
 {
    struct anv_trtt *trtt = &device->trtt;
 
@@ -417,25 +416,52 @@ anv_trtt_init_context_state(struct anv_device *device,
 
    trtt->l3_mirror = vk_zalloc(&device->vk.alloc, 4096, 8,
                                 VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
-   if (!trtt->l3_mirror) {
-      result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
-      return result;
-   }
+   if (!trtt->l3_mirror)
+      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
    /* L3 has 512 entries, so we can have up to 512 L2 tables. */
    trtt->l2_mirror = vk_zalloc(&device->vk.alloc, 512 * 4096, 8,
                                VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
    if (!trtt->l2_mirror) {
-      result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
-      goto fail_free_l3;
+      vk_free(&device->vk.alloc, trtt->l3_mirror);
+      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
    }
 
-   result = anv_genX(device->info, init_trtt_context_state)(device, submit);
+   struct anv_async_submit submits[device->queue_count];
+   int submits_used = 0;
+   for (uint32_t i = 0; i < device->queue_count; i++) {
+      struct anv_queue *q = &device->queues[i];
 
-   return result;
+      result = anv_async_submit_init(&submits[submits_used], q,
+                                     &device->batch_bo_pool, false, true);
+      if (result != VK_SUCCESS)
+         break;
 
-fail_free_l3:
-   vk_free(&device->vk.alloc, trtt->l3_mirror);
+      struct anv_async_submit *submit = &submits[submits_used++];
+
+      result = anv_genX(device->info, init_trtt_context_state)(submit);
+      if (result != VK_SUCCESS) {
+         anv_async_submit_fini(submit);
+         submits_used--;
+         break;
+      }
+
+      anv_genX(device->info, async_submit_end)(submit);
+
+      result = device->kmd_backend->queue_exec_async(submit, 0, NULL, 1,
+                                                     &submit->signal);
+      if (result != VK_SUCCESS) {
+         anv_async_submit_fini(submit);
+         submits_used--;
+         break;
+      }
+   }
+
+   for (uint32_t i = 0; i < submits_used; i++) {
+      anv_async_submit_wait(&submits[i]);
+      anv_async_submit_fini(&submits[i]);
+   }
+
    return result;
 }
 
@@ -598,7 +624,34 @@ anv_sparse_bind_trtt(struct anv_device *device,
    VkResult result;
 
    /* TR-TT submission needs a queue even when the API entry point doesn't
-    * give one, such as resource creation. */
+    * provide one, such as resource creation. We pick this queue from the user
+    * created queues at init_device_state() under anv_CreateDevice.
+    *
+    * It is technically possible for the user to create sparse resources even
+    * when they don't have a sparse queue: they won't be able to bind the
+    * resource but they should still be able to use the resource and rely on
+    * its unbound behavior. We haven't spotted any real world application or
+    * even test suite that exercises this behavior.
+    *
+    * For now let's just print an error message and return, which means that
+    * resource creation will succeed but the behavior will be undefined if the
+    * resource is used, which goes against our claim that we support the
+    * sparseResidencyNonResidentStrict property.
+    *
+    * TODO: be fully spec-compliant here. Maybe have a device-internal queue
+    * independent of the application's queues for the TR-TT operations.
+    */
+   if (!trtt->queue) {
+      static bool warned = false;
+      if (unlikely(!warned)) {
+         fprintf(stderr, "FIXME: application has created a sparse resource "
+                 "but no queues capable of binding sparse resources were "
+                 "created. Using these resources will result in undefined "
+                 "behavior.\n");
+         warned = true;
+      }
+      return VK_SUCCESS;
+   }
    if (!sparse_submit->queue)
       sparse_submit->queue = trtt->queue;
 
@@ -626,9 +679,11 @@ anv_sparse_bind_trtt(struct anv_device *device,
    /* If the TRTT L3 table was never set, initialize it as part of this
     * submission.
     */
-   if (!trtt->l3_addr)
-      anv_trtt_init_context_state(device, &submit->base);
-
+   if (!trtt->l3_addr) {
+      result = anv_trtt_init_queues_state(device);
+      if (result != VK_SUCCESS)
+         goto error_add_bind;
+   }
    assert(trtt->l3_addr);
 
    /* These capacities are conservative estimations. For L1 binds the
@@ -743,7 +798,76 @@ anv_sparse_bind_vm_bind(struct anv_device *device,
    if (!queue)
       assert(submit->wait_count == 0 && submit->signal_count == 0);
 
-   return device->kmd_backend->vm_bind(device, submit, ANV_VM_BIND_FLAG_NONE);
+   VkResult result = device->kmd_backend->vm_bind(device, submit,
+                                                  ANV_VM_BIND_FLAG_NONE);
+
+   if (result == VK_ERROR_OUT_OF_HOST_MEMORY) {
+      /* If we get this, the system is under memory pressure. First we
+       * manually wait for all our dependency syncobjs hoping that some memory
+       * will be released while we wait, then we try to issue each bind
+       * operation in a single ioctl as it requires less Kernel memory and so
+       * we may be able to move things forward, although slowly, while also
+       * waiting for each operation to complete before issuing the next.
+       * Performance isn't a concern at this point: we're just trying to move
+       * progress forward without crashing until whatever is eating too much
+       * memory goes away.
+       */
+
+      result = vk_sync_wait_many(&device->vk, submit->wait_count,
+                                 submit->waits, VK_SYNC_WAIT_COMPLETE,
+                                 INT64_MAX);
+      if (result != VK_SUCCESS)
+         return vk_queue_set_lost(&queue->vk, "vk_sync_wait_many failed");
+
+      struct vk_sync *sync;
+      result = vk_sync_create(&device->vk,
+                              &device->physical->sync_syncobj_type,
+                              VK_SYNC_IS_TIMELINE, 0 /* initial_value */,
+                              &sync);
+      if (result != VK_SUCCESS)
+         return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+
+      for (int b = 0; b < submit->binds_len; b++) {
+         struct vk_sync_signal sync_signal = {
+            .sync = sync,
+            .signal_value = b + 1,
+         };
+         struct anv_sparse_submission s = {
+            .queue = submit->queue,
+            .binds = &submit->binds[b],
+            .binds_len = 1,
+            .binds_capacity = 1,
+            .wait_count = 0,
+            .signal_count = 1,
+            .waits = NULL,
+            .signals = &sync_signal,
+         };
+         result = device->kmd_backend->vm_bind(device, &s,
+                                               ANV_VM_BIND_FLAG_NONE);
+         if (result != VK_SUCCESS) {
+            vk_sync_destroy(&device->vk, sync);
+            return vk_error(device, result); /* Well, at least we tried... */
+         }
+
+         result = vk_sync_wait(&device->vk, sync, sync_signal.signal_value,
+                               VK_SYNC_WAIT_COMPLETE, UINT64_MAX);
+         if (result != VK_SUCCESS) {
+            vk_sync_destroy(&device->vk, sync);
+            return vk_queue_set_lost(&queue->vk, "vk_sync_wait failed");
+         }
+      }
+
+      vk_sync_destroy(&device->vk, sync);
+
+      for (uint32_t i = 0; i < submit->signal_count; i++) {
+         struct vk_sync_signal *s = &submit->signals[i];
+         result = vk_sync_signal(&device->vk, s->sync, s->signal_value);
+         if (result != VK_SUCCESS)
+            return vk_queue_set_lost(&queue->vk, "vk_sync_signal failed");
+      }
+   }
+
+   return VK_SUCCESS;
 }
 
 VkResult

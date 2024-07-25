@@ -219,7 +219,7 @@ class LAVAJobDefinition:
             # For vmware farm, patch nameserver as 8.8.8.8 is off limit.
             # This is temporary and will be reverted once the farm is moved.
             if self.job_submitter.mesa_job_name.startswith("vmware-"):
-                run_steps += [x.rstrip().replace("nameserver 8.8.8.8", "nameserver 10.25.198.110") for x in init_sh if not x.startswith("#") and x.rstrip()]
+                run_steps += [x.rstrip().replace("nameserver 8.8.8.8", "nameserver 192.19.189.10") for x in init_sh if not x.startswith("#") and x.rstrip()]
             else:
                 run_steps += [x.rstrip() for x in init_sh if not x.startswith("#") and x.rstrip()]
 

@@ -334,7 +334,7 @@ custom_trace_payload_as_extra_end_stall(perfetto::protos::pbzero::GpuRenderStage
       auto data = event->add_extra_data();
       data->set_name("stall_reason");
 
-      snprintf(buf, sizeof(buf), "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s : %s%s%s%s%s%s%s",
+      snprintf(buf, sizeof(buf), "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s : %s%s%s%s%s%s%s",
               (payload->flags & INTEL_DS_DEPTH_CACHE_FLUSH_BIT) ? "+depth_flush" : "",
               (payload->flags & INTEL_DS_DATA_CACHE_FLUSH_BIT) ? "+dc_flush" : "",
               (payload->flags & INTEL_DS_HDC_PIPELINE_FLUSH_BIT) ? "+hdc_flush" : "",
@@ -347,7 +347,6 @@ custom_trace_payload_as_extra_end_stall(perfetto::protos::pbzero::GpuRenderStage
               (payload->flags & INTEL_DS_INST_CACHE_INVALIDATE_BIT) ? "+inst_inv" : "",
               (payload->flags & INTEL_DS_STALL_AT_SCOREBOARD_BIT) ? "+pb_stall" : "",
               (payload->flags & INTEL_DS_DEPTH_STALL_BIT) ? "+depth_stall" : "",
-              (payload->flags & INTEL_DS_HDC_PIPELINE_FLUSH_BIT) ? "+hdc_flush" : "",
               (payload->flags & INTEL_DS_CS_STALL_BIT) ? "+cs_stall" : "",
               (payload->flags & INTEL_DS_UNTYPED_DATAPORT_CACHE_FLUSH_BIT) ? "+udp_flush" : "",
               (payload->flags & INTEL_DS_END_OF_PIPE_BIT) ? "+eop" : "",

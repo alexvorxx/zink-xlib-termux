@@ -294,7 +294,9 @@ spec@ext_transform_feedback@tessellation line_loop smooth,Fail
 spec@ext_transform_feedback@tessellation triangle_fan flat_first,Fail
 spec@ext_transform_feedback@tessellation triangle_strip flat_first,Fail
 spec@glsl-1.10@execution@glsl-fs-inline-explosion,Crash
-spec@glsl-1.10@execution@glsl-vs-inline-explosion,Crash
+spec@glsl-1.10@execution@glsl-vs-inline-explosion,Fail
+spec@glsl-1.10@execution@loops@glsl-fs-unroll-explosion,Crash
+spec@glsl-1.10@execution@loops@glsl-vs-unroll-explosion,Crash
 spec@glsl-1.20@compiler@invalid-vec4-array-to-vec3-array-conversion.vert,Fail
 spec@glsl-1.20@execution@clipping@vs-clip-vertex-primitives,Fail
 spec@glsl-1.20@execution@fs-underflow-mul-compare-zero,Fail
@@ -607,11 +609,6 @@ program@execute@builtin@builtin-ulong-popcount-1.2.generated@popcount ulong16,Fa
 program@execute@builtin@builtin-ulong-popcount-1.2.generated@popcount ulong2,Fail
 program@execute@builtin@builtin-ulong-popcount-1.2.generated@popcount ulong4,Fail
 program@execute@builtin@builtin-ulong-popcount-1.2.generated@popcount ulong8,Fail
-program@execute@calls-large-struct,Fail
-program@execute@calls-large-struct@byval struct,Fail
-program@execute@calls-struct,Fail
-program@execute@calls-struct@regs struct,Fail
-program@execute@calls-struct@small struct in regs,Fail
 program@execute@global-offset,Fail
 program@execute@global-offset@3d- input dependent,Fail
 program@execute@scalar-arithmetic-long,Crash

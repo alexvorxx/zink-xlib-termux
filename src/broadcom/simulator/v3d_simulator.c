@@ -46,7 +46,7 @@
  * BOs).
  */
 
-#ifdef USE_V3D_SIMULATOR
+#if USE_V3D_SIMULATOR
 
 #include <stdio.h>
 #include <sys/mman.h>

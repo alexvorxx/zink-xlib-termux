@@ -323,7 +323,7 @@ inc_nir = include_directories('.')
 idep_nir_headers = declare_dependency(
   sources : [nir_opcodes_h, nir_builder_opcodes_h, nir_intrinsics_h, nir_intrinsics_indices_h,
              ir_expression_operation_h, builtin_types_h],
-  include_directories : [inc_nir, inc_compiler],
+  include_directories : [inc_nir, inc_compiler, inc_src, inc_include],
 )
 
 # Also link with nir

@@ -554,6 +554,20 @@ struct h265_slice_descriptor
    enum pipe_h265_slice_type slice_type;
 };
 
+struct pipe_enc_hdr_cll {
+   uint16_t max_cll;
+   uint16_t max_fall;
+};
+
+struct pipe_enc_hdr_mdcv {
+   uint16_t primary_chromaticity_x[3];
+   uint16_t primary_chromaticity_y[3];
+   uint16_t white_point_chromaticity_x;
+   uint16_t white_point_chromaticity_y;
+   uint32_t luminance_max;
+   uint32_t luminance_min;
+};
+
 typedef struct pipe_h264_enc_hrd_params
 {
    uint32_t cpb_cnt_minus1;
@@ -1090,7 +1104,19 @@ struct pipe_av1_enc_picture_desc
       uint8_t temporal_id;
       uint8_t spatial_id;
    } tg_obu_header;
+
    enum pipe_video_feedback_metadata_type requested_metadata;
+
+   union {
+      struct {
+         uint32_t hdr_cll:1;
+         uint32_t hdr_mdcv:1;
+      };
+      uint32_t value;
+   } metadata_flags;
+
+   struct pipe_enc_hdr_cll metadata_hdr_cll;
+   struct pipe_enc_hdr_mdcv metadata_hdr_mdcv;
 };
 
 struct pipe_h265_sps

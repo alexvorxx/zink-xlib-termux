@@ -423,7 +423,8 @@ vec4_visitor::nir_emit_intrinsic(nir_intrinsic_instr *instr)
       /* Nothing to do with these. */
       break;
 
-   case nir_intrinsic_load_input: {
+   case nir_intrinsic_load_input:
+   case nir_intrinsic_load_per_primitive_input: {
       assert(instr->def.bit_size == 32);
       /* We set EmitNoIndirectInput for VS */
       unsigned load_offset = nir_src_as_uint(instr->src[0]);

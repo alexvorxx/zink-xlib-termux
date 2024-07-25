@@ -234,7 +234,8 @@ can_move_coord(nir_scalar scalar, coord_info *info)
       return false;
 
    nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(scalar.def->parent_instr);
-   if (intrin->intrinsic == nir_intrinsic_load_input) {
+   if (intrin->intrinsic == nir_intrinsic_load_input ||
+       intrin->intrinsic == nir_intrinsic_load_per_primitive_input) {
       info->bary = NULL;
       info->load = intrin;
       return true;

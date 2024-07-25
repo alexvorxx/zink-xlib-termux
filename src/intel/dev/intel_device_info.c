@@ -1615,6 +1615,20 @@ intel_device_info_init_common(int pci_id, bool building,
             devinfo->max_constant_urb_size_kb / 2;
    }
 
+   /*
+    * Gfx 12.5 moved scratch to a surface and SURFTYPE_SCRATCH has this pitch
+    * restriction:
+    *
+    * BSpec 43862 (r52666)
+    * RENDER_SURFACE_STATE::Surface Pitch
+    *    For surfaces of type SURFTYPE_SCRATCH, valid range of pitch is:
+    *    [63,262143] -> [64B, 256KB]
+    *
+    * The pitch of the surface is the scratch size per thread and the surface
+    * should be large enough to accommodate every physical thread.
+    */
+   devinfo->max_scratch_size_per_thread = devinfo->verx10 >= 125 ?
+                                          (256 * 1024) : (2 * 1024 * 1024);
    intel_device_info_update_cs_workgroup_threads(devinfo);
 
    return true;

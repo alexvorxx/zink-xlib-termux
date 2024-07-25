@@ -45,10 +45,8 @@ void panvk_per_arch(cmd_desc_state_cleanup)(
    struct panvk_descriptor_state *compute_desc_state);
 
 void panvk_per_arch(cmd_desc_state_bind_sets)(
-   struct panvk_descriptor_state *desc_state, VkPipelineLayout layout,
-   uint32_t first_set, uint32_t desc_set_count,
-   const VkDescriptorSet *desc_sets, uint32_t dyn_offset_count,
-   const uint32_t *dyn_offsets);
+   struct panvk_descriptor_state *desc_state,
+   const VkBindDescriptorSetsInfoKHR *info);
 
 struct panvk_descriptor_set *panvk_per_arch(cmd_push_descriptors)(
    struct vk_command_buffer *cmdbuf, struct panvk_descriptor_state *desc_state,

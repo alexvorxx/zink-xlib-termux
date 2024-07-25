@@ -679,7 +679,8 @@ ac_prepare_compute_blit(const struct ac_cs_blit_options *options,
     */
    if (blit->dst.surf->bpe <= 8 && (is_resolve ? src_samples : dst_samples) <= 4 &&
        /* Small blits don't benefit. */
-       width * height * depth * blit->dst.surf->bpe * dst_samples > 128 * 1024) {
+       width * height * depth * blit->dst.surf->bpe * dst_samples > 128 * 1024 &&
+       info->has_image_opcodes) {
       if (is_3d_tiling) {
          /* Thick tiling. */
          if (!is_clear && blit->src.surf->is_linear) {

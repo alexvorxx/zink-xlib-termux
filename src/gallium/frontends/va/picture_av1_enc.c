@@ -45,7 +45,12 @@
 #define FRAME_TYPE_SWITCH        (3)
 #define OBU_TYPE_SEQUENCE_HEADER (1)
 #define OBU_TYPE_FRAME_HEADER    (3)
+#define OBU_TYPE_META            (5)
 #define OBU_TYPE_FRAME           (6)
+#define METADATA_TYPE_HDR_CLL    (1)
+#define METADATA_TYPE_HDR_MDCV   (2)
+#define METADATA_TYPE_ITU_T35    (4)
+#define METADATA_TYPE_TIMECODE   (5)
 #define AV1_MIN_QP_DEFAULT (1)
 #define AV1_MAX_QP_DEFAULT (255)
 
@@ -750,6 +755,41 @@ static void av1_frame_header(vlVaContext *context, struct vl_vlc *vlc)
    av1->uniform_tile_spacing = av1_f(vlc, 1);
 }
 
+static void av1_metatype_hdr_cll(vlVaContext *context, struct vl_vlc *vlc)
+{
+   struct pipe_av1_enc_picture_desc *av1 = &context->desc.av1enc;
+
+   av1->metadata_flags.hdr_cll = 1;
+   av1->metadata_hdr_cll.max_cll = av1_f(vlc, 16);
+   av1->metadata_hdr_cll.max_fall = av1_f(vlc, 16);
+}
+
+static void av1_metatype_hdr_mdcv(vlVaContext *context, struct vl_vlc *vlc)
+{
+   struct pipe_av1_enc_picture_desc *av1 = &context->desc.av1enc;
+
+   av1->metadata_flags.hdr_mdcv = 1;
+
+   for (int32_t i = 0; i < 3; i++) {
+      av1->metadata_hdr_mdcv.primary_chromaticity_x[i] = av1_f(vlc, 16);
+      av1->metadata_hdr_mdcv.primary_chromaticity_y[i] = av1_f(vlc, 16);
+   }
+   av1->metadata_hdr_mdcv.white_point_chromaticity_x = av1_f(vlc, 16);
+   av1->metadata_hdr_mdcv.white_point_chromaticity_y = av1_f(vlc, 16);
+   av1->metadata_hdr_mdcv.luminance_max = av1_f(vlc, 32);
+   av1->metadata_hdr_mdcv.luminance_min = av1_f(vlc, 32);
+}
+
+static void av1_meta_obu(vlVaContext *context, struct vl_vlc *vlc)
+{
+   unsigned meta_type = av1_uleb128(vlc);
+
+   if (meta_type == METADATA_TYPE_HDR_CLL)
+      av1_metatype_hdr_cll(context, vlc);
+   else if (meta_type == METADATA_TYPE_HDR_MDCV)
+      av1_metatype_hdr_mdcv(context, vlc);
+}
+
 VAStatus
 vlVaHandleVAEncPackedHeaderDataBufferTypeAV1(vlVaContext *context, vlVaBuffer *buf)
 {
@@ -758,12 +798,13 @@ vlVaHandleVAEncPackedHeaderDataBufferTypeAV1(vlVaContext *context, vlVaBuffer *b
 
    while (vl_vlc_bits_left(&vlc) > 0) {
       unsigned obu_type = 0;
-      /* search sequece header in the first 8 bytes */
+      /* search sequence header in the first 8 bytes */
       for (int i = 0; i < 8 && vl_vlc_bits_left(&vlc) >= 8; ++i) {
          /* then start decoding , first 5 bits has to be 0000 1xxx for sequence header */
          obu_type = vl_vlc_peekbits(&vlc, 5);
          if (obu_type == OBU_TYPE_SEQUENCE_HEADER
             || obu_type == OBU_TYPE_FRAME_HEADER
+            || obu_type == OBU_TYPE_META
             || obu_type == OBU_TYPE_FRAME)
             break;
          vl_vlc_eatbits(&vlc, 8);
@@ -787,6 +828,8 @@ vlVaHandleVAEncPackedHeaderDataBufferTypeAV1(vlVaContext *context, vlVaBuffer *b
          av1_sequence_header(context, &vlc);
       else if (obu_type == OBU_TYPE_FRAME_HEADER || obu_type == OBU_TYPE_FRAME)
          av1_frame_header(context, &vlc);
+      else if (obu_type == OBU_TYPE_META)
+         av1_meta_obu(context, &vlc);
       else
          assert(0);
 

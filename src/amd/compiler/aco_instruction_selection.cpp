@@ -8410,6 +8410,7 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
    case nir_intrinsic_load_interpolated_input: visit_load_interpolated_input(ctx, instr); break;
    case nir_intrinsic_store_output: visit_store_output(ctx, instr); break;
    case nir_intrinsic_load_input:
+   case nir_intrinsic_load_per_primitive_input:
    case nir_intrinsic_load_input_vertex:
       if (ctx->program->stage == fragment_fs)
          visit_load_fs_input(ctx, instr);
@@ -11866,6 +11867,12 @@ select_shader(isel_context& ctx, nir_shader* nir, const bool need_startpgm, cons
    if (need_startpgm) {
       /* Needs to be after init_context() for FS. */
       Instruction* startpgm = add_startpgm(&ctx);
+
+      if (!program->info.vs.has_prolog &&
+          (program->stage.has(SWStage::VS) || program->stage.has(SWStage::TES))) {
+         Builder(ctx.program, ctx.block).sopp(aco_opcode::s_setprio, 0x3u);
+      }
+
       append_logical_start(ctx.block);
 
       if (ctx.options->has_ls_vgpr_init_bug && ctx.stage == vertex_tess_control_hs &&
@@ -11873,11 +11880,6 @@ select_shader(isel_context& ctx, nir_shader* nir, const bool need_startpgm, cons
          fix_ls_vgpr_init_bug(&ctx);
 
       split_arguments(&ctx, startpgm);
-
-      if (!program->info.vs.has_prolog &&
-          (program->stage.has(SWStage::VS) || program->stage.has(SWStage::TES))) {
-         Builder(ctx.program, ctx.block).sopp(aco_opcode::s_setprio, 0x3u);
-      }
    }
 
    if (program->gfx_level == GFX10 && program->stage.hw == AC_HW_NEXT_GEN_GEOMETRY_SHADER &&
@@ -12912,7 +12914,9 @@ select_vs_prolog(Program* program, const struct aco_vs_prolog_info* pinfo, ac_sh
 
    block->instructions.reserve(16 + pinfo->num_attributes * 4);
 
-   bld.sopp(aco_opcode::s_setprio, 0x3u);
+   /* Besides performance, the purpose of this is also for the FeatureRequiredExportPriority GFX11.5
+    * issue. */
+   bld.sopp(aco_opcode::s_setprio, 3);
 
    uint32_t attrib_mask = BITFIELD_MASK(pinfo->num_attributes);
    bool has_nontrivial_divisors = pinfo->nontrivial_divisors;

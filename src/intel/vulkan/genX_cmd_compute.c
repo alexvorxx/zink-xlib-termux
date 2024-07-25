@@ -54,36 +54,30 @@ genX(cmd_buffer_ensure_cfe_state)(struct anv_cmd_buffer *cmd_buffer,
 
    const struct intel_device_info *devinfo = cmd_buffer->device->info;
    anv_batch_emit(&cmd_buffer->batch, GENX(CFE_STATE), cfe) {
-      cfe.MaximumNumberofThreads =
-         devinfo->max_cs_threads * devinfo->subslice_total;
+      cfe.MaximumNumberofThreads = devinfo->max_cs_threads * devinfo->subslice_total;
 
-      uint32_t scratch_surf = 0xffffffff;
-      if (total_scratch > 0) {
-         struct anv_scratch_pool *scratch_pool =
-            (cmd_buffer->vk.pool->flags & VK_COMMAND_POOL_CREATE_PROTECTED_BIT) ?
-            &cmd_buffer->device->protected_scratch_pool :
-            &cmd_buffer->device->scratch_pool;
-         struct anv_bo *scratch_bo =
-               anv_scratch_pool_alloc(cmd_buffer->device, scratch_pool,
-                                      MESA_SHADER_COMPUTE,
-                                      total_scratch);
-         anv_reloc_list_add_bo(cmd_buffer->batch.relocs,
-                               scratch_bo);
-         scratch_surf =
-            anv_scratch_pool_get_surf(cmd_buffer->device, scratch_pool,
-                                      total_scratch);
-         cfe.ScratchSpaceBuffer =
-            scratch_surf >> ANV_SCRATCH_SPACE_SHIFT(GFX_VER);
+      uint32_t scratch_surf;
+      struct anv_scratch_pool *scratch_pool =
+         (cmd_buffer->vk.pool->flags & VK_COMMAND_POOL_CREATE_PROTECTED_BIT) ?
+          &cmd_buffer->device->protected_scratch_pool :
+          &cmd_buffer->device->scratch_pool;
+      struct anv_bo *scratch_bo =
+            anv_scratch_pool_alloc(cmd_buffer->device, scratch_pool,
+                                   MESA_SHADER_COMPUTE,
+                                   total_scratch);
+      anv_reloc_list_add_bo(cmd_buffer->batch.relocs, scratch_bo);
+      scratch_surf = anv_scratch_pool_get_surf(cmd_buffer->device, scratch_pool,
+                                               total_scratch);
+      cfe.ScratchSpaceBuffer = scratch_surf >> ANV_SCRATCH_SPACE_SHIFT(GFX_VER);
 #if GFX_VER >= 20
-         switch (cmd_buffer->device->physical->instance->stack_ids) {
-         case 256:  cfe.StackIDControl = StackIDs256;  break;
-         case 512:  cfe.StackIDControl = StackIDs512;  break;
-         case 1024: cfe.StackIDControl = StackIDs1024; break;
-         case 2048: cfe.StackIDControl = StackIDs2048; break;
-         default:   unreachable("invalid stack_ids value");
-         }
-#endif
+      switch (cmd_buffer->device->physical->instance->stack_ids) {
+      case 256:  cfe.StackIDControl = StackIDs256;  break;
+      case 512:  cfe.StackIDControl = StackIDs512;  break;
+      case 1024: cfe.StackIDControl = StackIDs1024; break;
+      case 2048: cfe.StackIDControl = StackIDs2048; break;
+      default:   unreachable("invalid stack_ids value");
       }
+#endif
 
       cfe.OverDispatchControl = 2; /* 50% overdispatch */
    }

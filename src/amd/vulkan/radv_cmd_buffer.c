@@ -2548,9 +2548,7 @@ input_mask_to_ps_inputs(const struct radv_vs_output_info *outinfo, const struct 
 
       enum radv_ps_in_type type = default_type;
 
-      if (ps->info.ps.flat_shaded_mask & BITFIELD_BIT(*ps_offset))
-         type = radv_ps_in_flat;
-      else if (ps->info.ps.explicit_shaded_mask & BITFIELD_BIT(*ps_offset))
+      if (ps->info.ps.explicit_shaded_mask & BITFIELD_BIT(*ps_offset))
          type = radv_ps_in_explicit;
       else if (ps->info.ps.explicit_strict_shaded_mask & BITFIELD_BIT(*ps_offset))
          type = radv_ps_in_explicit_strict;
@@ -2558,6 +2556,8 @@ input_mask_to_ps_inputs(const struct radv_vs_output_info *outinfo, const struct 
          type = radv_ps_in_interpolated_fp16_hi;
       else if (ps->info.ps.float16_shaded_mask & BITFIELD_BIT(*ps_offset))
          type = radv_ps_in_interpolated_fp16;
+      else if (ps->info.ps.float32_shaded_mask & BITFIELD_BIT(*ps_offset))
+         type = radv_ps_in_interpolated;
 
       ps_input_cntl[*ps_offset] = offset_to_ps_input(vs_offset, type);
       ++(*ps_offset);
@@ -2599,7 +2599,7 @@ radv_emit_ps_inputs(struct radv_cmd_buffer *cmd_buffer)
    if (ps->info.ps.input_clips_culls_mask & 0xf0)
       slot_to_ps_input(outinfo, VARYING_SLOT_CLIP_DIST1, ps_input_cntl, &ps_offset, false, radv_ps_in_interpolated);
 
-   input_mask_to_ps_inputs(outinfo, ps, ps->info.ps.input_mask, ps_input_cntl, &ps_offset, radv_ps_in_interpolated);
+   input_mask_to_ps_inputs(outinfo, ps, ps->info.ps.input_mask, ps_input_cntl, &ps_offset, radv_ps_in_flat);
 
    /* Per-primitive PS inputs: the HW needs these to be last. */
    if (mesh) {

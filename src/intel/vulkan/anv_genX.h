@@ -354,8 +354,7 @@ genX(simple_shader_push_state_address)(struct anv_simple_shader *state,
 void
 genX(emit_simple_shader_end)(struct anv_simple_shader *state);
 
-VkResult genX(init_trtt_context_state)(struct anv_device *device,
-                                       struct anv_async_submit *submit);
+VkResult genX(init_trtt_context_state)(struct anv_async_submit *submit);
 
 void genX(write_trtt_entries)(struct anv_async_submit *submit,
                               struct anv_trtt_bind *l3l2_binds,

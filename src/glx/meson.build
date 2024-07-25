@@ -144,7 +144,6 @@ libgl = shared_library(
   version : gl_lib_version,
   darwin_versions : '4.0.0',
   install : true,
-  install_rpath : dri_drivers_path,
 )
 
 if with_tests

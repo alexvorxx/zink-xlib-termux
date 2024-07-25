@@ -1631,7 +1631,7 @@ v3d_draw_clear(struct v3d_context *v3d,
          */
         job->clear_draw |= buffers;
 
-        v3d_blitter_save(v3d, false, true);
+        v3d_blitter_save(v3d, V3D_CLEAR_COND);
         util_blitter_clear(v3d->blitter,
                            v3d->framebuffer.width,
                            v3d->framebuffer.height,
@@ -1792,7 +1792,8 @@ v3d_clear_render_target(struct pipe_context *pctx, struct pipe_surface *ps,
         if (render_condition_enabled && !v3d_render_condition_check(v3d))
                 return;
 
-        v3d_blitter_save(v3d, false, render_condition_enabled);
+        v3d_blitter_save(v3d, render_condition_enabled ?
+                         V3D_CLEAR_SURFACE_COND : V3D_CLEAR_SURFACE);
         util_blitter_clear_render_target(v3d->blitter, ps, color, x, y, w, h);
 }
 
@@ -1807,7 +1808,8 @@ v3d_clear_depth_stencil(struct pipe_context *pctx, struct pipe_surface *ps,
         if (render_condition_enabled && !v3d_render_condition_check(v3d))
                 return;
 
-        v3d_blitter_save(v3d, false, render_condition_enabled);
+        v3d_blitter_save(v3d, render_condition_enabled ?
+                         V3D_CLEAR_SURFACE_COND : V3D_CLEAR_SURFACE);
         util_blitter_clear_depth_stencil(v3d->blitter, ps, buffers, depth,
                                          stencil, x, y, w, h);
 }

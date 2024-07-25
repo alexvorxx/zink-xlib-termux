@@ -102,7 +102,7 @@ panvk_per_arch(CmdDispatchBase)(VkCommandBuffer commandBuffer,
 
    struct panfrost_ptr copy_desc_job = panvk_per_arch(meta_get_copy_desc_job)(
       dev, &cmdbuf->desc_pool.base, shader, &cmdbuf->state.compute.desc_state,
-      cs_desc_state);
+      cs_desc_state, 0);
 
    if (copy_desc_job.cpu)
       util_dynarray_append(&batch->jobs, void *, copy_desc_job.cpu);

@@ -140,6 +140,11 @@ struct intel_perf_query_result;
 #include "util/log.h"
 #include "wsi_common.h"
 
+/* The "RAW" clocks on Linux are called "FAST" on FreeBSD */
+#if !defined(CLOCK_MONOTONIC_RAW) && defined(CLOCK_MONOTONIC_FAST)
+#define CLOCK_MONOTONIC_RAW CLOCK_MONOTONIC_FAST
+#endif
+
 #define NSEC_PER_SEC 1000000000ull
 
 #define BINDING_TABLE_POOL_BLOCK_SIZE (65536)
@@ -181,6 +186,7 @@ struct intel_perf_query_result;
 #define MAX_INLINE_UNIFORM_BLOCK_SIZE 4096
 #define MAX_INLINE_UNIFORM_BLOCK_DESCRIPTORS 32
 #define MAX_EMBEDDED_SAMPLERS 2048
+#define MAX_CUSTOM_BORDER_COLORS 4096
 /* We need 16 for UBO block reads to work and 32 for push UBOs. However, we
  * use 64 here to avoid cache issues. This could most likely bring it back to
  * 32 if we had different virtual addresses for the different views on a given
@@ -1226,6 +1232,12 @@ struct anv_physical_device {
     uint32_t                                    empty_vs_input[2];
 };
 
+VkResult anv_physical_device_try_create(struct vk_instance *vk_instance,
+                                        struct _drmDevice *drm_device,
+                                        struct vk_physical_device **out);
+
+void anv_physical_device_destroy(struct vk_physical_device *vk_device);
+
 static inline uint32_t
 anv_physical_device_bindless_heap_size(const struct anv_physical_device *device,
                                        bool descriptor_buffer)
@@ -2086,6 +2098,19 @@ anv_bindless_state_for_binding_table(struct anv_device *device,
    state.offset += device->physical->va.bindless_surface_state_pool.addr -
                    device->physical->va.internal_surface_state_pool.addr;
    return state;
+}
+
+static inline struct anv_state
+anv_device_maybe_alloc_surface_state(struct anv_device *device,
+                                     struct anv_state_stream *surface_state_stream)
+{
+   if (device->physical->indirect_descriptors) {
+      if (surface_state_stream)
+         return anv_state_stream_alloc(surface_state_stream, 64, 64);
+      return anv_state_pool_alloc(&device->bindless_surface_state_pool, 64, 64);
+   } else {
+      return ANV_STATE_NULL;
+   }
 }
 
 static inline uint32_t

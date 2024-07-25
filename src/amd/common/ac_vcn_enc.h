@@ -72,6 +72,7 @@
 #define RENCODE_RATE_CONTROL_METHOD_LATENCY_CONSTRAINED_VBR                         0x00000001
 #define RENCODE_RATE_CONTROL_METHOD_PEAK_CONSTRAINED_VBR                            0x00000002
 #define RENCODE_RATE_CONTROL_METHOD_CBR                                             0x00000003
+#define RENCODE_RATE_CONTROL_METHOD_QUALITY_VBR                                     0x00000004
 
 #define RENCODE_DIRECT_OUTPUT_NALU_TYPE_AUD                                         0x00000000
 #define RENCODE_DIRECT_OUTPUT_NALU_TYPE_VPS                                         0x00000001
@@ -114,6 +115,11 @@
 #define RENCODE_OBU_TYPE_REDUNDANT_FRAME_HEADER                                     7
 #define RENCODE_OBU_TYPE_TILE_LIST                                                  8
 #define RENCODE_OBU_TYPE_PADDING                                                    15
+
+#define RENCODE_METADATA_TYPE_HDR_CLL                                               1
+#define RENCODE_METADATA_TYPE_HDR_MDCV                                              2
+#define RENCODE_METADATA_TYPE_ITUT_T35                                              4
+#define RENCODE_METADATA_TYPE_TIMECODE                                              5
 
 #define RENCODE_AV1_MV_PRECISION_ALLOW_HIGH_PRECISION                               0x00
 #define RENCODE_AV1_MV_PRECISION_DISALLOW_HIGH_PRECISION                            0x10
@@ -386,7 +392,7 @@ typedef struct rvcn_enc_rate_ctl_per_picture_s {
    uint32_t enabled_filler_data;
    uint32_t skip_frame_enable;
    uint32_t enforce_hrd;
-   uint32_t reserved_0xff;
+   uint32_t qvbr_quality_level;
 } rvcn_enc_rate_ctl_per_picture_t;
 
 typedef struct rvcn_enc_quality_params_s {
@@ -573,6 +579,33 @@ typedef struct rvcn_enc_metadata_buffer_s {
    uint32_t metadata_buffer_address_lo;
    uint32_t two_pass_search_center_map_offset;
 } rvcn_enc_metadata_buffer_t;
+
+typedef struct rvcn_enc_sei_hdr_cll_s {
+   uint16_t max_cll;
+   uint16_t max_fall;
+} rvcn_enc_sei_hdr_cll_t;
+
+typedef struct rvcn_enc_sei_hdr_mdcv_s {
+   uint16_t primary_chromaticity_x[3];
+   uint16_t primary_chromaticity_y[3];
+   uint16_t white_point_chromaticity_x;
+   uint16_t white_point_chromaticity_y;
+   uint32_t luminance_max;
+   uint32_t luminance_min;
+} rvcn_enc_sei_hdr_mdcv_t;
+
+/* shared sei structure */
+typedef struct rvcn_enc_seidata_s {
+   union {
+      struct {
+         uint32_t hdr_cll:1;
+         uint32_t hdr_mdcv:1;
+      };
+      uint32_t value;
+   } flags;
+   rvcn_enc_sei_hdr_cll_t hdr_cll;
+   rvcn_enc_sei_hdr_mdcv_t hdr_mdcv;
+} rvcn_enc_seidata_t;
 
 typedef struct rvcn_enc_video_bitstream_buffer_s {
    uint32_t mode;

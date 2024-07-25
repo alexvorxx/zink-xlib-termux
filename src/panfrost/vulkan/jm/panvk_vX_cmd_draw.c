@@ -778,11 +778,20 @@ static void
 panvk_draw_prepare_viewport(struct panvk_cmd_buffer *cmdbuf,
                             struct panvk_draw_info *draw)
 {
-   if (is_dirty(cmdbuf, VP_VIEWPORTS) || is_dirty(cmdbuf, VP_SCISSORS)) {
+   /* When rasterizerDiscardEnable is active, it is allowed to have viewport and
+    * scissor disabled.
+    * As a result, we define an empty one.
+    */
+   if (!cmdbuf->state.gfx.vpd || is_dirty(cmdbuf, VP_VIEWPORTS) ||
+       is_dirty(cmdbuf, VP_SCISSORS)) {
       struct panfrost_ptr vp =
          pan_pool_alloc_desc(&cmdbuf->desc_pool.base, VIEWPORT);
 
-      panvk_emit_viewport(&cmdbuf->vk.dynamic_graphics_state.vp, vp.cpu);
+      const struct vk_viewport_state *vps =
+         &cmdbuf->vk.dynamic_graphics_state.vp;
+
+      if (vps->viewport_count > 0)
+         panvk_emit_viewport(vps, vp.cpu);
       cmdbuf->state.gfx.vpd = vp.gpu;
    }
 
@@ -986,7 +995,7 @@ panvk_draw_prepare_tiler_job(struct panvk_cmd_buffer *cmdbuf,
    struct panvk_shader_desc_state *fs_desc_state = &cmdbuf->state.gfx.fs.desc;
    struct panfrost_ptr ptr = panvk_per_arch(meta_get_copy_desc_job)(
       dev, &cmdbuf->desc_pool.base, fs, &cmdbuf->state.gfx.desc_state,
-      fs_desc_state);
+      fs_desc_state, 0);
 
    if (ptr.cpu)
       util_dynarray_append(&batch->jobs, void *, ptr.cpu);
@@ -1062,9 +1071,12 @@ panvk_draw_prepare_vs_copy_desc_job(struct panvk_cmd_buffer *cmdbuf,
    const struct panvk_shader *vs = cmdbuf->state.gfx.vs.shader;
    const struct panvk_shader_desc_state *vs_desc_state =
       &cmdbuf->state.gfx.vs.desc;
+   const struct vk_vertex_input_state *vi =
+      cmdbuf->vk.dynamic_graphics_state.vi;
+   unsigned num_vbs = util_last_bit(vi->bindings_valid);
    struct panfrost_ptr ptr = panvk_per_arch(meta_get_copy_desc_job)(
       dev, &cmdbuf->desc_pool.base, vs, &cmdbuf->state.gfx.desc_state,
-      vs_desc_state);
+      vs_desc_state, num_vbs * pan_size(ATTRIBUTE_BUFFER) * 2);
 
    if (ptr.cpu)
       util_dynarray_append(&batch->jobs, void *, ptr.cpu);
@@ -1082,7 +1094,7 @@ panvk_draw_prepare_fs_copy_desc_job(struct panvk_cmd_buffer *cmdbuf,
    struct panvk_batch *batch = cmdbuf->cur_batch;
    struct panfrost_ptr ptr = panvk_per_arch(meta_get_copy_desc_job)(
       dev, &cmdbuf->desc_pool.base, fs, &cmdbuf->state.gfx.desc_state,
-      fs_desc_state);
+      fs_desc_state, 0);
 
    if (ptr.cpu)
       util_dynarray_append(&batch->jobs, void *, ptr.cpu);
@@ -1163,6 +1175,8 @@ panvk_cmd_draw(struct panvk_cmd_buffer *cmdbuf, struct panvk_draw_info *draw)
 
    panvk_per_arch(cmd_alloc_tls_desc)(cmdbuf, true);
 
+   panvk_draw_prepare_attributes(cmdbuf, draw);
+
    uint32_t used_set_mask =
       vs->desc_info.used_set_mask | (fs ? fs->desc_info.used_set_mask : 0);
 
@@ -1210,7 +1224,6 @@ panvk_cmd_draw(struct panvk_cmd_buffer *cmdbuf, struct panvk_draw_info *draw)
                                      false);
 
    panvk_draw_prepare_fs_rsd(cmdbuf, draw);
-   panvk_draw_prepare_attributes(cmdbuf, draw);
    panvk_draw_prepare_viewport(cmdbuf, draw);
    batch->tlsinfo.tls.size = MAX3(vs->info.tls_size, fs ? fs->info.tls_size : 0,
                                   batch->tlsinfo.tls.size);

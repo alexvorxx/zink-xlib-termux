@@ -8,12 +8,12 @@ glx@glx_arb_create_context_es2_profile@invalid opengl es version,Fail
 glx@glx_arb_create_context_no_error@no error,Fail
 glx@glx_arb_sync_control@waitformsc,Fail
 shaders@point-vertex-id divisor,Fail
-shaders@point-vertex-id gl_instanceid,Fail
 shaders@point-vertex-id gl_instanceid divisor,Fail
-shaders@point-vertex-id gl_vertexid,Fail
+shaders@point-vertex-id gl_instanceid,Fail
 shaders@point-vertex-id gl_vertexid divisor,Fail
-shaders@point-vertex-id gl_vertexid gl_instanceid,Fail
 shaders@point-vertex-id gl_vertexid gl_instanceid divisor,Fail
+shaders@point-vertex-id gl_vertexid gl_instanceid,Fail
+shaders@point-vertex-id gl_vertexid,Fail
 spec@!opengl 1.0@gl-1.0-edgeflag,Fail
 spec@!opengl 1.0@gl-1.0-edgeflag-quads,Fail
 spec@!opengl 1.0@gl-1.0-no-op-paths,Fail
@@ -60,8 +60,8 @@ spec@!opengl 1.1@texwrap formats bordercolor@GL_LUMINANCE16_ALPHA16- border colo
 spec@!opengl 1.4@gl-1.4-polygon-offset,Fail
 spec@!opengl 2.0@gl-2.0-edgeflag,Fail
 spec@!opengl 2.0@gl-2.0-edgeflag-immediate,Fail
-spec@!opengl 2.0@max-samplers,Fail
 spec@!opengl 2.0@max-samplers border,Fail
+spec@!opengl 2.0@max-samplers,Fail
 spec@!opengl 2.1@pbo,Fail
 spec@!opengl 2.1@pbo@test_polygon_stip,Fail
 spec@!opengl 2.1@polygon-stipple-fs,Fail
@@ -76,9 +76,8 @@ spec@arb_color_buffer_float@gl_rgba32f-render-sanity-fog,Fail
 spec@arb_copy_image@arb_copy_image-formats,Fail
 spec@arb_copy_image@arb_copy_image-formats@Source: GL_ALPHA16/Destination: GL_ALPHA16,Fail
 spec@arb_depth_buffer_float@fbo-generatemipmap-formats,Fail
-spec@arb_depth_buffer_float@fbo-generatemipmap-formats@GL_DEPTH_COMPONENT32F,Fail
 spec@arb_depth_buffer_float@fbo-generatemipmap-formats@GL_DEPTH_COMPONENT32F NPOT,Fail
-spec@arb_depth_buffer_float@texwrap formats,Fail
+spec@arb_depth_buffer_float@fbo-generatemipmap-formats@GL_DEPTH_COMPONENT32F,Fail
 spec@arb_depth_buffer_float@texwrap formats bordercolor,Fail
 spec@arb_depth_buffer_float@texwrap formats bordercolor-swizzled,Fail
 spec@arb_depth_buffer_float@texwrap formats bordercolor-swizzled@GL_DEPTH32F_STENCIL8- swizzled- border color only,Fail
@@ -88,18 +87,18 @@ spec@arb_depth_buffer_float@texwrap formats bordercolor@GL_DEPTH_COMPONENT32F- b
 spec@arb_depth_buffer_float@texwrap formats offset,Fail
 spec@arb_depth_buffer_float@texwrap formats offset@GL_DEPTH32F_STENCIL8- NPOT,Fail
 spec@arb_depth_buffer_float@texwrap formats offset@GL_DEPTH_COMPONENT32F- NPOT,Fail
+spec@arb_depth_buffer_float@texwrap formats,Fail
 spec@arb_depth_buffer_float@texwrap formats@GL_DEPTH32F_STENCIL8- NPOT,Fail
 spec@arb_depth_buffer_float@texwrap formats@GL_DEPTH_COMPONENT32F- NPOT,Fail
 spec@arb_depth_texture@fbo-generatemipmap-formats,Fail
-spec@arb_depth_texture@fbo-generatemipmap-formats@GL_DEPTH_COMPONENT,Fail
 spec@arb_depth_texture@fbo-generatemipmap-formats@GL_DEPTH_COMPONENT NPOT,Fail
-spec@arb_depth_texture@fbo-generatemipmap-formats@GL_DEPTH_COMPONENT16,Fail
+spec@arb_depth_texture@fbo-generatemipmap-formats@GL_DEPTH_COMPONENT,Fail
 spec@arb_depth_texture@fbo-generatemipmap-formats@GL_DEPTH_COMPONENT16 NPOT,Fail
-spec@arb_depth_texture@fbo-generatemipmap-formats@GL_DEPTH_COMPONENT24,Fail
+spec@arb_depth_texture@fbo-generatemipmap-formats@GL_DEPTH_COMPONENT16,Fail
 spec@arb_depth_texture@fbo-generatemipmap-formats@GL_DEPTH_COMPONENT24 NPOT,Fail
-spec@arb_depth_texture@fbo-generatemipmap-formats@GL_DEPTH_COMPONENT32,Fail
+spec@arb_depth_texture@fbo-generatemipmap-formats@GL_DEPTH_COMPONENT24,Fail
 spec@arb_depth_texture@fbo-generatemipmap-formats@GL_DEPTH_COMPONENT32 NPOT,Fail
-spec@arb_depth_texture@texwrap formats,Fail
+spec@arb_depth_texture@fbo-generatemipmap-formats@GL_DEPTH_COMPONENT32,Fail
 spec@arb_depth_texture@texwrap formats bordercolor,Fail
 spec@arb_depth_texture@texwrap formats bordercolor-swizzled,Fail
 spec@arb_depth_texture@texwrap formats bordercolor-swizzled@GL_DEPTH_COMPONENT16- swizzled- border color only,Fail
@@ -112,14 +111,16 @@ spec@arb_depth_texture@texwrap formats offset,Fail
 spec@arb_depth_texture@texwrap formats offset@GL_DEPTH_COMPONENT16- NPOT,Fail
 spec@arb_depth_texture@texwrap formats offset@GL_DEPTH_COMPONENT24- NPOT,Fail
 spec@arb_depth_texture@texwrap formats offset@GL_DEPTH_COMPONENT32- NPOT,Fail
+spec@arb_depth_texture@texwrap formats,Fail
 spec@arb_depth_texture@texwrap formats@GL_DEPTH_COMPONENT16- NPOT,Fail
 spec@arb_depth_texture@texwrap formats@GL_DEPTH_COMPONENT24- NPOT,Fail
 spec@arb_depth_texture@texwrap formats@GL_DEPTH_COMPONENT32- NPOT,Fail
-spec@arb_direct_state_access@gettextureimage-formats,Fail
 spec@arb_direct_state_access@gettextureimage-formats init-by-rendering,Fail
+spec@arb_direct_state_access@gettextureimage-formats,Fail
 spec@arb_framebuffer_object@fbo-blit-scaled-linear,Fail
 spec@arb_point_sprite@arb_point_sprite-checkerboard,Fail
 spec@arb_point_sprite@arb_point_sprite-mipmap,Fail
+spec@arb_shader_storage_buffer_object@compiler@atomicmin-swizzle.vert,Fail
 spec@arb_shader_texture_lod@execution@arb_shader_texture_lod-texgrad,Fail
 spec@arb_shader_texture_lod@execution@arb_shader_texture_lod-texgradcube,Fail
 spec@arb_shading_language_420pack@active sampler conflict,Crash
@@ -208,7 +209,6 @@ spec@arb_texture_rectangle@1-1-linear-texture,Fail
 spec@arb_texture_rg@fbo-blending-formats-float,Fail
 spec@arb_texture_rg@fbo-blending-formats-float@GL_R32F,Fail
 spec@arb_texture_rg@fbo-blending-formats-float@GL_RG32F,Fail
-spec@arb_texture_rg@texwrap formats-float,Fail
 spec@arb_texture_rg@texwrap formats-float bordercolor,Fail
 spec@arb_texture_rg@texwrap formats-float bordercolor-swizzled,Fail
 spec@arb_texture_rg@texwrap formats-float bordercolor-swizzled@GL_R32F- swizzled- border color only,Fail
@@ -218,6 +218,7 @@ spec@arb_texture_rg@texwrap formats-float bordercolor@GL_RG32F- border color onl
 spec@arb_texture_rg@texwrap formats-float offset,Fail
 spec@arb_texture_rg@texwrap formats-float offset@GL_R32F- NPOT,Fail
 spec@arb_texture_rg@texwrap formats-float offset@GL_RG32F- NPOT,Fail
+spec@arb_texture_rg@texwrap formats-float,Fail
 spec@arb_texture_rg@texwrap formats-float@GL_R32F- NPOT,Fail
 spec@arb_texture_rg@texwrap formats-float@GL_RG32F- NPOT,Fail
 spec@arb_texture_view@rendering-formats,Crash
@@ -256,21 +257,20 @@ spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_yuyv,Fail
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_yvu420,Fail
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_yvyu,Fail
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-transcode-nv12-as-r8-gr88,Fail
-spec@ext_packed_depth_stencil@texwrap formats,Fail
 spec@ext_packed_depth_stencil@texwrap formats bordercolor,Fail
 spec@ext_packed_depth_stencil@texwrap formats bordercolor-swizzled,Fail
 spec@ext_packed_depth_stencil@texwrap formats bordercolor-swizzled@GL_DEPTH24_STENCIL8- swizzled- border color only,Fail
 spec@ext_packed_depth_stencil@texwrap formats bordercolor@GL_DEPTH24_STENCIL8- border color only,Fail
 spec@ext_packed_depth_stencil@texwrap formats offset,Fail
 spec@ext_packed_depth_stencil@texwrap formats offset@GL_DEPTH24_STENCIL8- NPOT,Fail
+spec@ext_packed_depth_stencil@texwrap formats,Fail
 spec@ext_packed_depth_stencil@texwrap formats@GL_DEPTH24_STENCIL8- NPOT,Fail
 spec@ext_packed_float@query-rgba-signed-components,Fail
 spec@ext_texture_integer@fbo-blending,Fail
-spec@ext_texture_integer@getteximage-clamping,Fail
 spec@ext_texture_integer@getteximage-clamping gl_arb_texture_rg,Fail
+spec@ext_texture_integer@getteximage-clamping,Fail
 spec@ext_texture_integer@multisample-formats 2 gl_ext_texture_integer,Fail
 spec@ext_texture_integer@multisample-formats 4 gl_ext_texture_integer,Fail
-spec@ext_texture_integer@texwrap formats,Fail
 spec@ext_texture_integer@texwrap formats bordercolor,Fail
 spec@ext_texture_integer@texwrap formats bordercolor-swizzled,Fail
 spec@ext_texture_integer@texwrap formats bordercolor-swizzled@GL_ALPHA16I_EXT- swizzled- border color only,Fail
@@ -289,6 +289,7 @@ spec@ext_texture_integer@texwrap formats offset,Fail
 spec@ext_texture_integer@texwrap formats offset@GL_ALPHA8I_EXT,Fail
 spec@ext_texture_integer@texwrap formats offset@GL_ALPHA8I_EXT- NPOT,Fail
 spec@ext_texture_integer@texwrap formats offset@GL_ALPHA8I_EXT- swizzled,Fail
+spec@ext_texture_integer@texwrap formats,Fail
 spec@ext_texture_integer@texwrap formats@GL_ALPHA8I_EXT,Fail
 spec@ext_texture_integer@texwrap formats@GL_ALPHA8I_EXT- NPOT,Fail
 spec@ext_texture_integer@texwrap formats@GL_ALPHA8I_EXT- swizzled,Fail
@@ -303,6 +304,10 @@ spec@ext_transform_feedback@tessellation line_loop monochrome,Fail
 spec@ext_transform_feedback@tessellation line_loop smooth,Fail
 spec@ext_transform_feedback@tessellation triangle_fan flat_first,Fail
 spec@ext_transform_feedback@tessellation triangle_strip flat_first,Fail
+spec@glsl-1.10@execution@glsl-fs-inline-explosion,Crash
+spec@glsl-1.10@execution@glsl-vs-inline-explosion,Crash
+spec@glsl-1.10@execution@loops@glsl-fs-unroll-explosion,Crash
+spec@glsl-1.10@execution@loops@glsl-vs-unroll-explosion,Crash
 spec@glsl-1.10@execution@varying-packing@simple int array,Crash
 spec@glsl-1.10@execution@varying-packing@simple int arrays_of_arrays,Crash
 spec@glsl-1.10@execution@varying-packing@simple int separate,Crash
@@ -327,6 +332,7 @@ spec@glsl-1.10@execution@varying-packing@simple uvec3 separate,Crash
 spec@glsl-1.10@execution@varying-packing@simple uvec4 array,Crash
 spec@glsl-1.10@execution@varying-packing@simple uvec4 arrays_of_arrays,Crash
 spec@glsl-1.10@execution@varying-packing@simple uvec4 separate,Crash
+spec@glsl-1.20@compiler@invalid-vec4-array-to-vec3-array-conversion.vert,Fail
 spec@glsl-1.20@execution@clipping@vs-clip-vertex-primitives,Fail
 spec@glsl-1.20@execution@fs-underflow-mul-compare-zero,Fail
 spec@glsl-1.30@execution@varying-packing-mixed-types,Crash
@@ -337,8 +343,57 @@ spec@khr_texture_compression_astc@sliced-3d-miptree-gles srgb-fp,Fail
 spec@khr_texture_compression_astc@sliced-3d-miptree-gles srgb-fp@sRGB decode full precision,Fail
 spec@nv_copy_image@nv_copy_image-formats,Fail
 spec@nv_copy_image@nv_copy_image-formats@Source: GL_ALPHA16/Destination: GL_ALPHA16,Fail
+spec@nv_image_formats@compiler@declaration-disallow-r16-snorm-2d-array.frag,Fail
+spec@nv_image_formats@compiler@declaration-disallow-r16-snorm-2d-array.vert,Fail
+spec@nv_image_formats@compiler@declaration-disallow-r16-snorm-2d.frag,Fail
+spec@nv_image_formats@compiler@declaration-disallow-r16-snorm-2d.vert,Fail
+spec@nv_image_formats@compiler@declaration-disallow-r16-snorm-3d.frag,Fail
+spec@nv_image_formats@compiler@declaration-disallow-r16-snorm-3d.vert,Fail
+spec@nv_image_formats@compiler@declaration-disallow-r16-snorm-cube.frag,Fail
+spec@nv_image_formats@compiler@declaration-disallow-r16-snorm-cube.vert,Fail
+spec@nv_image_formats@compiler@declaration-disallow-r16-unorm-2d-array.frag,Fail
+spec@nv_image_formats@compiler@declaration-disallow-r16-unorm-2d-array.vert,Fail
+spec@nv_image_formats@compiler@declaration-disallow-r16-unorm-2d.frag,Fail
+spec@nv_image_formats@compiler@declaration-disallow-r16-unorm-2d.vert,Fail
+spec@nv_image_formats@compiler@declaration-disallow-r16-unorm-3d.frag,Fail
+spec@nv_image_formats@compiler@declaration-disallow-r16-unorm-3d.vert,Fail
+spec@nv_image_formats@compiler@declaration-disallow-r16-unorm-cube.frag,Fail
+spec@nv_image_formats@compiler@declaration-disallow-r16-unorm-cube.vert,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rg16-snorm-2d-array.frag,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rg16-snorm-2d-array.vert,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rg16-snorm-2d.frag,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rg16-snorm-2d.vert,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rg16-snorm-3d.frag,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rg16-snorm-3d.vert,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rg16-snorm-cube.frag,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rg16-snorm-cube.vert,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rg16-unorm-2d-array.frag,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rg16-unorm-2d-array.vert,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rg16-unorm-2d.frag,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rg16-unorm-2d.vert,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rg16-unorm-3d.frag,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rg16-unorm-3d.vert,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rg16-unorm-cube.frag,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rg16-unorm-cube.vert,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rgba16-snorm-2d-array.frag,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rgba16-snorm-2d-array.vert,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rgba16-snorm-2d.frag,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rgba16-snorm-2d.vert,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rgba16-snorm-3d.frag,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rgba16-snorm-3d.vert,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rgba16-snorm-cube.frag,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rgba16-snorm-cube.vert,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rgba16-unorm-2d-array.frag,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rgba16-unorm-2d-array.vert,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rgba16-unorm-2d.frag,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rgba16-unorm-2d.vert,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rgba16-unorm-3d.frag,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rgba16-unorm-3d.vert,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rgba16-unorm-cube.frag,Fail
+spec@nv_image_formats@compiler@declaration-disallow-rgba16-unorm-cube.vert,Fail
 spec@nv_read_depth@read_depth_gles3,Fail
 spec@oes_point_sprite@arb_point_sprite-checkerboard_gles1,Fail
+spec@oes_shader_io_blocks@compiler@layout-location-aliasing.vert,Fail
 spec@oes_texture_view@rendering-formats,Fail
 spec@oes_texture_view@rendering-formats@clear GL_R8 as GL_R8I,Fail
 spec@oes_texture_view@rendering-formats@clear GL_RG8 as GL_R16F,Fail

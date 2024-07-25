@@ -52,12 +52,6 @@ void v3d_job_add_bo(struct v3d_job *job, struct v3d_bo *bo);
 #include "v3d_resource.h"
 #include "v3d_cl.h"
 
-#ifdef USE_V3D_SIMULATOR
-#define using_v3d_simulator true
-#else
-#define using_v3d_simulator false
-#endif
-
 #define V3D_DIRTY_BLEND               (1ull <<  0)
 #define V3D_DIRTY_RASTERIZER          (1ull <<  1)
 #define V3D_DIRTY_ZSA                 (1ull <<  2)
@@ -149,6 +143,20 @@ enum v3d_flush_cond {
          * glMemoryBarrier(), such as SSBOs and shader images.
          */
         V3D_FLUSH_NOT_CURRENT_JOB,
+};
+
+/* bitmask */
+enum v3d_blitter_op {
+        V3D_SAVE_TEXTURES         = (1u << 1),
+        V3D_SAVE_FRAMEBUFFER      = (1u << 2),
+        V3D_DISABLE_RENDER_COND   = (1u << 3),
+
+        V3D_BLIT          = V3D_SAVE_FRAMEBUFFER | V3D_SAVE_TEXTURES,
+        V3D_BLIT_COND     = V3D_BLIT | V3D_DISABLE_RENDER_COND,
+        V3D_CLEAR         = 0,
+        V3D_CLEAR_COND    = V3D_CLEAR | V3D_DISABLE_RENDER_COND,
+        V3D_CLEAR_SURFACE = V3D_SAVE_FRAMEBUFFER,
+        V3D_CLEAR_SURFACE_COND = V3D_CLEAR_SURFACE | V3D_DISABLE_RENDER_COND
 };
 
 struct v3d_sampler_view {
@@ -727,7 +735,7 @@ void v3d_query_init(struct pipe_context *pctx);
 static inline int
 v3d_ioctl(int fd, unsigned long request, void *arg)
 {
-        if (using_v3d_simulator)
+        if (USE_V3D_SIMULATOR)
                 return v3d_simulator_ioctl(fd, request, arg);
         else
                 return drmIoctl(fd, request, arg);
@@ -790,7 +798,7 @@ bool v3d_format_supports_tlb_msaa_resolve(const struct v3d_device_info *devinfo,
 
 void v3d_init_query_functions(struct v3d_context *v3d);
 void v3d_blit(struct pipe_context *pctx, const struct pipe_blit_info *blit_info);
-void v3d_blitter_save(struct v3d_context *v3d, bool op_blit,  bool render_cond);
+void v3d_blitter_save(struct v3d_context *v3d, enum v3d_blitter_op op);
 bool v3d_generate_mipmap(struct pipe_context *pctx,
                          struct pipe_resource *prsc,
                          enum pipe_format format,

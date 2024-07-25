@@ -33,7 +33,7 @@
 
 using namespace brw;
 
-/** @file brw_fs_schedule_instructions.cpp
+/** @file
  *
  * List scheduling of FS instructions.
  *

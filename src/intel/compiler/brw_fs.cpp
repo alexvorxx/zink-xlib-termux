@@ -21,7 +21,7 @@
  * IN THE SOFTWARE.
  */
 
-/** @file brw_fs.cpp
+/** @file
  *
  * This file drives the GLSL IR -> LIR translation, contains the
  * optimizations on the LIR, and drives the generation of native code
@@ -2940,14 +2940,6 @@ fs_visitor::allocate_registers(bool allow_spilling)
    debug_optimizer(nir, "lowered_vgrfs_to_fixed_grfs", 96, 3);
 
    if (last_scratch > 0) {
-      ASSERTED unsigned max_scratch_size = 2 * 1024 * 1024;
-
-      /* Take the max of any previously compiled variant of the shader. In the
-       * case of bindless shaders with return parts, this will also take the
-       * max of all parts.
-       */
-      prog_data->total_scratch = MAX2(brw_get_scratch_size(last_scratch),
-                                      prog_data->total_scratch);
 
       /* We currently only support up to 2MB of scratch space.  If we
        * need to support more eventually, the documentation suggests
@@ -2959,8 +2951,20 @@ fs_visitor::allocate_registers(bool allow_spilling)
        * See 3D-Media-GPGPU Engine > Media GPGPU Pipeline >
        * Thread Group Tracking > Local Memory/Scratch Space.
        */
-      assert(prog_data->total_scratch < max_scratch_size);
+      if (last_scratch <= devinfo->max_scratch_size_per_thread) {
+         /* Take the max of any previously compiled variant of the shader. In the
+          * case of bindless shaders with return parts, this will also take the
+          * max of all parts.
+          */
+         prog_data->total_scratch = MAX2(brw_get_scratch_size(last_scratch),
+                                         prog_data->total_scratch);
+      } else {
+         fail("Scratch space required is larger than supported");
+      }
    }
+
+   if (failed)
+      return;
 
    brw_fs_lower_scoreboard(*this);
 }

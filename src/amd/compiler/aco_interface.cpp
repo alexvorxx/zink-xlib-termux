@@ -222,6 +222,7 @@ aco_compile_shader_part(const struct aco_compiler_options* options,
    program->debug.private_data = options->debug.private_data;
 
    program->is_prolog = is_prolog;
+   program->is_epilog = !is_prolog;
 
    /* Instruction selection */
    select_shader_part(program.get(), pinfo, &config, options, info, args);

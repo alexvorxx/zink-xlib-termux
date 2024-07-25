@@ -200,7 +200,7 @@ dri_loader_get_extensions(const char *driver_name)
       return __driDriverGetExtensions_radeonsi();
 #endif
 
-#if defined(HAVE_VMWGFX)
+#if defined(HAVE_SVGA)
    if (!strcmp(driver_name, "vmwgfx"))
       return __driDriverGetExtensions_vmwgfx();
 #endif
@@ -250,7 +250,7 @@ dri_loader_get_extensions(const char *driver_name)
 #endif
 
 #if defined(HAVE_KMSRO)
-   if (!strcmp(driver_name, "armada_drm"))
+   if (!strcmp(driver_name, "armada-drm"))
       return __driDriverGetExtensions_armada_drm();
    if (!strcmp(driver_name, "exynos"))
       return __driDriverGetExtensions_exynos();
@@ -268,19 +268,19 @@ dri_loader_get_extensions(const char *driver_name)
       return __driDriverGetExtensions_ili9341();
    if (!strcmp(driver_name, "ili9486"))
       return __driDriverGetExtensions_ili9486();
-   if (!strcmp(driver_name, "imx_drm"))
+   if (!strcmp(driver_name, "imx-drm"))
       return __driDriverGetExtensions_imx_drm();
-   if (!strcmp(driver_name, "imx_dcss"))
+   if (!strcmp(driver_name, "imx-dcss"))
       return __driDriverGetExtensions_imx_dcss();
-   if (!strcmp(driver_name, "imx_lcdif"))
+   if (!strcmp(driver_name, "imx-lcdif"))
       return __driDriverGetExtensions_imx_lcdif();
-   if (!strcmp(driver_name, "ingenic_drm"))
+   if (!strcmp(driver_name, "ingenic-drm"))
       return __driDriverGetExtensions_ingenic_drm();
    if (!strcmp(driver_name, "kirin"))
       return __driDriverGetExtensions_kirin();
    if (!strcmp(driver_name, "komeda"))
       return __driDriverGetExtensions_komeda();
-   if (!strcmp(driver_name, "mali_dp"))
+   if (!strcmp(driver_name, "mali-dp"))
       return __driDriverGetExtensions_mali_dp();
    if (!strcmp(driver_name, "mcde"))
       return __driDriverGetExtensions_mcde();
@@ -290,19 +290,19 @@ dri_loader_get_extensions(const char *driver_name)
       return __driDriverGetExtensions_meson();
    if (!strcmp(driver_name, "mi0283qt"))
       return __driDriverGetExtensions_mi0283qt();
-   if (!strcmp(driver_name, "mxsfb_drm"))
+   if (!strcmp(driver_name, "mxsfb-drm"))
       return __driDriverGetExtensions_mxsfb_drm();
-   if (!strcmp(driver_name, "panel_mipi_dbi"))
+   if (!strcmp(driver_name, "panel-mipi-dbi"))
       return __driDriverGetExtensions_panel_mipi_dbi();
    if (!strcmp(driver_name, "pl111"))
       return __driDriverGetExtensions_pl111();
-   if (!strcmp(driver_name, "rcar_du"))
+   if (!strcmp(driver_name, "rcar-du"))
       return __driDriverGetExtensions_rcar_du();
    if (!strcmp(driver_name, "repaper"))
       return __driDriverGetExtensions_repaper();
    if (!strcmp(driver_name, "rockchip"))
       return __driDriverGetExtensions_rockchip();
-   if (!strcmp(driver_name, "rzg2l_du"))
+   if (!strcmp(driver_name, "rzg2l-du"))
       return __driDriverGetExtensions_rzg2l_du();
    if (!strcmp(driver_name, "ssd130x"))
       return __driDriverGetExtensions_ssd130x();
@@ -314,13 +314,13 @@ dri_loader_get_extensions(const char *driver_name)
       return __driDriverGetExtensions_sti();
    if (!strcmp(driver_name, "stm"))
       return __driDriverGetExtensions_stm();
-   if (!strcmp(driver_name, "sun4i_drm"))
+   if (!strcmp(driver_name, "sun4i-drm"))
       return __driDriverGetExtensions_sun4i_drm();
    if (!strcmp(driver_name, "udl"))
       return __driDriverGetExtensions_udl();
    if (!strcmp(driver_name, "vkms"))
       return __driDriverGetExtensions_vkms();
-   if (!strcmp(driver_name, "zynqmp_dpsub"))
+   if (!strcmp(driver_name, "zynqmp-dpsub"))
       return __driDriverGetExtensions_zynqmp_dpsub();
 #endif
 

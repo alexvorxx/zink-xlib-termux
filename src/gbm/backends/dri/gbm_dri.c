@@ -275,7 +275,7 @@ dri_screen_create_for_driver(struct gbm_dri_device *dri, char *driver_name, bool
    const __DRIextension **extensions = dri_open_driver(dri);
    if (!extensions) {
       if (driver_name_is_inferred)
-         fprintf(stderr, "MESA-LOADER: failed to open %s: driver not built!)\n", dri->driver_name);
+         fprintf(stderr, "MESA-LOADER: gbm: failed to open %s: driver not built!\n", dri->driver_name);
       goto fail;
    }
 

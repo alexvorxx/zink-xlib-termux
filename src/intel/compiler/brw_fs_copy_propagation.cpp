@@ -21,7 +21,7 @@
  * IN THE SOFTWARE.
  */
 
-/** @file brw_fs_copy_propagation.cpp
+/** @file
  *
  * Support for global copy propagation in two passes: A local pass that does
  * intra-block copy (and constant) propagation, and a global pass that uses

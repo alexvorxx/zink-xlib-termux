@@ -140,10 +140,12 @@ if prog_ln.found()
   endforeach
 endif
 
-meson.add_install_script(
-  install_megadrivers_py.full_path(),
-  dril_dri.full_path(),
-  dri_drivers_path,
-  dril_drivers,
-  install_tag : 'runtime',
-)
+if dril_drivers.length() > 0
+  meson.add_install_script(
+    install_megadrivers_py.full_path(),
+    dril_dri.full_path(),
+    dri_drivers_path,
+    dril_drivers,
+    install_tag : 'runtime',
+  )
+endif

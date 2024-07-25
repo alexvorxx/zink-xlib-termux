@@ -166,8 +166,9 @@ add_coupling_code(exec_ctx& ctx, Block* block, std::vector<aco_ptr<Instruction>>
       bld.insert(std::move(startpgm));
 
       unsigned count = 1;
-      if (block->instructions[1]->opcode == aco_opcode::p_init_scratch) {
-         bld.insert(std::move(block->instructions[1]));
+      while (block->instructions[count]->opcode == aco_opcode::p_init_scratch ||
+             block->instructions[count]->opcode == aco_opcode::s_setprio) {
+         bld.insert(std::move(block->instructions[count]));
          count++;
       }
 

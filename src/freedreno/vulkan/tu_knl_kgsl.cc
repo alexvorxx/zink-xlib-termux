@@ -165,6 +165,7 @@ bo_init_new_ion_legacy(struct tu_device *dev, struct tu_bo **out_bo, uint64_t si
 
 static VkResult
 kgsl_bo_init(struct tu_device *dev,
+             struct vk_object_base *base,
              struct tu_bo **out_bo,
              uint64_t size,
              uint64_t client_iova,
@@ -231,6 +232,7 @@ kgsl_bo_init(struct tu_device *dev,
       .name = tu_debug_bos_add(dev, req.mmapsize, name),
       .refcnt = 1,
       .shared_fd = -1,
+      .base = base,
    };
 
    if (flags & TU_BO_ALLOC_REPLAYABLE) {
@@ -333,8 +335,6 @@ kgsl_bo_export_dmabuf(struct tu_device *dev, struct tu_bo *bo)
 static VkResult
 kgsl_bo_map(struct tu_device *dev, struct tu_bo *bo, void *placed_addr)
 {
-   uint64_t offset = bo->gem_handle << 12;
-
    void *map = MAP_FAILED;
    if (bo->shared_fd == -1) {
       uint64_t offset = bo->gem_handle << 12;

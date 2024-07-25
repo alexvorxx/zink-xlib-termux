@@ -96,6 +96,11 @@ void ac_set_nir_options(struct radeon_info *info, bool use_llvm,
    options->support_16bit_alu = info->gfx_level >= GFX8;
    options->vectorize_vec2_16bit = info->has_packed_math_16bit;
    options->discard_is_demote = true;
+   options->io_options = nir_io_has_flexible_input_interpolation_except_flat |
+                         (info->gfx_level >= GFX8 ? nir_io_16bit_input_output_support : 0) |
+                         nir_io_prefer_scalar_fs_inputs |
+                         nir_io_mix_convergent_flat_with_interpolated |
+                         nir_io_vectorizer_ignores_types;
 }
 
 bool

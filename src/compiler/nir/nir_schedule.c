@@ -380,6 +380,7 @@ nir_schedule_intrinsic_deps(nir_deps_state *state,
       break;
 
    case nir_intrinsic_load_input:
+   case nir_intrinsic_load_per_primitive_input:
    case nir_intrinsic_load_per_vertex_input:
       add_read_dep(state, state->load_input, n);
       break;

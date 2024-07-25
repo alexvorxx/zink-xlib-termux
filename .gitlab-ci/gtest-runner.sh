@@ -6,7 +6,7 @@ set -ex
 INSTALL=$PWD/install
 
 # Set up the driver environment.
-export LD_LIBRARY_PATH=$INSTALL/lib/:$INSTALL/lib/dri
+export LD_LIBRARY_PATH=$INSTALL/lib/
 
 RESULTS="$PWD/${GTEST_RESULTS_DIR:-results}"
 mkdir -p "$RESULTS"

@@ -11,11 +11,8 @@ files_per_version = files(
     'v3dx_simulator.c',
 )
 
-v3d_args = []
 dep_v3d_hw = dependency('v3d_hw', required: false)
-if dep_v3d_hw.found()
-  v3d_args += '-DUSE_V3D_SIMULATOR'
-endif
+v3d_simulator_arg = '-DUSE_V3D_SIMULATOR=@0@'.format(dep_v3d_hw.found().to_int())
 
 per_version_libs = []
 foreach ver : v3d_versions
@@ -25,7 +22,7 @@ foreach ver : v3d_versions
     include_directories : [
       inc_src, inc_include, inc_broadcom,
     ],
-    c_args : [v3d_args, '-DV3D_VERSION=' + ver],
+    c_args : [v3d_simulator_arg, '-DV3D_VERSION=' + ver],
     gnu_symbol_visibility: 'hidden',
     dependencies : [dep_v3d_hw, dep_libdrm, dep_valgrind],
 )
@@ -35,8 +32,8 @@ libbroadcom_simulator = static_library(
   'broadcom_simulator',
   [libbroadcom_simulator_files],
   include_directories : [inc_src, inc_include],
-  c_args : [v3d_args, no_override_init_args],
-  cpp_args : [v3d_args],
+  c_args : [v3d_simulator_arg, no_override_init_args],
+  cpp_args : [v3d_simulator_arg],
   gnu_symbol_visibility : 'hidden', 
   dependencies : [dep_v3d_hw, dep_libdrm, dep_valgrind],
   link_with : [per_version_libs],

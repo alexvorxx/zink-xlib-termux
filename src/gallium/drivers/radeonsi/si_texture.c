@@ -1529,7 +1529,7 @@ static void si_query_dmabuf_modifiers(struct pipe_screen *screen,
 
    unsigned ac_mod_count = max;
    ac_get_supported_modifiers(&sscreen->info, &(struct ac_modifier_options) {
-         .dcc = !(sscreen->debug_flags & DBG(NO_DCC)),
+         .dcc = !(sscreen->debug_flags & (DBG(NO_DCC) | DBG(NO_EXPORTED_DCC))),
          /* Do not support DCC with retiling yet. This needs explicit
           * resource flushes, but the app has no way to promise doing
           * flushes with modifiers. */
@@ -1609,6 +1609,10 @@ si_modifier_supports_resource(struct pipe_screen *screen,
 {
    struct si_screen *sscreen = (struct si_screen *)screen;
    uint32_t max_width, max_height;
+
+   if (((templ->bind & PIPE_BIND_LINEAR) || sscreen->debug_flags & DBG(NO_TILING)) &&
+       modifier != DRM_FORMAT_MOD_LINEAR)
+      return false;
 
    ac_modifier_max_extent(&sscreen->info, modifier, &max_width, &max_height);
    return templ->width0 <= max_width && templ->height0 <= max_height;

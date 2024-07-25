@@ -78,9 +78,9 @@ driOpenDriver(const char *driverName, bool driver_name_is_inferred)
 
    const __DRIextension **extensions = dri_loader_get_extensions(driverName);
 
-   if (driver_name_is_inferred) {
+   if (!extensions && driver_name_is_inferred) {
       glx_message(_LOADER_WARNING,
-           "MESA-LOADER: failed to open %s: driver not built!)\n", driverName);
+           "MESA-LOADER: glx: failed to open %s: driver not built!\n", driverName);
    }
 
    if (glhandle)

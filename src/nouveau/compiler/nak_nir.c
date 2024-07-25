@@ -1007,6 +1007,9 @@ nak_postprocess_nir(nir_shader *nir,
       }
    } while (progress);
 
+   if (nak->sm < 70)
+      OPT(nir, nak_nir_split_64bit_conversions);
+
    nir_convert_to_lcssa(nir, true, true);
    nir_divergence_analysis(nir);
 

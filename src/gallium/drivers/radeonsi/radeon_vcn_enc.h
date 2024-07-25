@@ -108,7 +108,7 @@ struct radeon_enc_pic {
    bool pcm_enabled_flag;
    bool sps_temporal_mvp_enabled_flag;
    bool use_rc_per_pic_ex;
-   bool av1_tile_spliting_legacy_flag;
+   bool av1_tile_splitting_legacy_flag;
 
    struct {
       struct {
@@ -188,6 +188,7 @@ struct radeon_enc_pic {
    rvcn_enc_qp_map_t enc_qp_map;
    rvcn_enc_metadata_buffer_t metadata;
    rvcn_enc_latency_t enc_latency;
+   rvcn_enc_seidata_t enc_sei;
 };
 
 struct radeon_encoder {
@@ -355,11 +356,15 @@ void radeon_enc_5_0_init(struct radeon_encoder *enc);
 void radeon_enc_av1_bs_instruction_type(struct radeon_encoder *enc,
                                         unsigned int inst, unsigned int obu_type);
 
+void radeon_enc_av1_obu_header(struct radeon_encoder *enc, uint32_t obu_type);
+
 void radeon_enc_av1_temporal_delimiter(struct radeon_encoder *enc);
 
 void radeon_enc_av1_sequence_header(struct radeon_encoder *enc, bool separate_delta_q);
 
 void radeon_enc_av1_tile_group(struct radeon_encoder *enc);
+
+void radeon_enc_av1_metadata_obu(struct radeon_encoder *enc);
 
 unsigned char *radeon_enc_av1_header_size_offset(struct radeon_encoder *enc);
 

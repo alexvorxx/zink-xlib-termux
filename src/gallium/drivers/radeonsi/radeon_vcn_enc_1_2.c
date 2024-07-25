@@ -1213,8 +1213,6 @@ static void radeon_enc_rc_per_pic(struct radeon_encoder *enc)
 
 static void radeon_enc_rc_per_pic_ex(struct radeon_encoder *enc)
 {
-   enc->enc_pic.rc_per_pic.reserved_0xff = 0xFFFFFFFF;
-
    RADEON_ENC_BEGIN(enc->cmd.rc_per_pic);
    RADEON_ENC_CS(enc->enc_pic.rc_per_pic.qp_i);
    RADEON_ENC_CS(enc->enc_pic.rc_per_pic.qp_p);
@@ -1231,7 +1229,6 @@ static void radeon_enc_rc_per_pic_ex(struct radeon_encoder *enc)
    RADEON_ENC_CS(enc->enc_pic.rc_per_pic.enabled_filler_data);
    RADEON_ENC_CS(enc->enc_pic.rc_per_pic.skip_frame_enable);
    RADEON_ENC_CS(enc->enc_pic.rc_per_pic.enforce_hrd);
-   RADEON_ENC_CS(enc->enc_pic.rc_per_pic.reserved_0xff);
    RADEON_ENC_END();
 }
 

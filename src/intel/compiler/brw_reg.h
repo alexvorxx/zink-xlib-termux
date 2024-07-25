@@ -29,7 +29,7 @@
   *   Keith Whitwell <keithw@vmware.com>
   */
 
-/** @file brw_reg.h
+/** @file
  *
  * This file defines struct brw_reg, which is our representation for EU
  * registers.  They're not a hardware specific format, just an abstraction

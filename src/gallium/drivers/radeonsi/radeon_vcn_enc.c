@@ -292,9 +292,10 @@ static void radeon_vcn_enc_h264_get_rc_param(struct radeon_encoder *enc,
    enc->enc_pic.rc_per_pic.max_qp_i = max_qp;
    enc->enc_pic.rc_per_pic.max_qp_p = max_qp;
    enc->enc_pic.rc_per_pic.max_qp_b = max_qp;
-   enc->enc_pic.rc_per_pic.enabled_filler_data = pic->rate_ctrl[0].fill_data_enable;
+   enc->enc_pic.rc_per_pic.enabled_filler_data = 0;
    enc->enc_pic.rc_per_pic.skip_frame_enable = pic->rate_ctrl[0].skip_frame_enable;
    enc->enc_pic.rc_per_pic.enforce_hrd = pic->rate_ctrl[0].enforce_hrd;
+   enc->enc_pic.rc_per_pic.qvbr_quality_level = pic->rate_ctrl[0].vbr_quality_factor;
 
    switch (pic->rate_ctrl[0].rate_ctrl_method) {
       case PIPE_H2645_ENC_RATE_CONTROL_METHOD_DISABLE:
@@ -303,11 +304,18 @@ static void radeon_vcn_enc_h264_get_rc_param(struct radeon_encoder *enc,
       case PIPE_H2645_ENC_RATE_CONTROL_METHOD_CONSTANT_SKIP:
       case PIPE_H2645_ENC_RATE_CONTROL_METHOD_CONSTANT:
          enc->enc_pic.rc_session_init.rate_control_method = RENCODE_RATE_CONTROL_METHOD_CBR;
+         enc->enc_pic.rc_per_pic.enabled_filler_data = pic->rate_ctrl[0].fill_data_enable;
          break;
       case PIPE_H2645_ENC_RATE_CONTROL_METHOD_VARIABLE_SKIP:
       case PIPE_H2645_ENC_RATE_CONTROL_METHOD_VARIABLE:
          enc->enc_pic.rc_session_init.rate_control_method =
             RENCODE_RATE_CONTROL_METHOD_PEAK_CONSTRAINED_VBR;
+         break;
+      case PIPE_H2645_ENC_RATE_CONTROL_METHOD_QUALITY_VARIABLE:
+         enc->enc_pic.rc_session_init.rate_control_method =
+            RENCODE_RATE_CONTROL_METHOD_QUALITY_VBR;
+         /* QVBR requires pre-encode enabled. */
+         enc->enc_pic.quality_modes.pre_encode_mode = RENCODE_PREENCODE_MODE_4X;
          break;
       default:
          enc->enc_pic.rc_session_init.rate_control_method = RENCODE_RATE_CONTROL_METHOD_NONE;
@@ -560,9 +568,10 @@ static void radeon_vcn_enc_hevc_get_rc_param(struct radeon_encoder *enc,
    max_qp = pic->rc.max_qp ? pic->rc.max_qp : 51;
    enc->enc_pic.rc_per_pic.max_qp_i = max_qp;
    enc->enc_pic.rc_per_pic.max_qp_p = max_qp;
-   enc->enc_pic.rc_per_pic.enabled_filler_data = pic->rc.fill_data_enable;
+   enc->enc_pic.rc_per_pic.enabled_filler_data = 0;
    enc->enc_pic.rc_per_pic.skip_frame_enable = pic->rc.skip_frame_enable;
    enc->enc_pic.rc_per_pic.enforce_hrd = pic->rc.enforce_hrd;
+   enc->enc_pic.rc_per_pic.qvbr_quality_level = pic->rc.vbr_quality_factor;
    switch (pic->rc.rate_ctrl_method) {
       case PIPE_H2645_ENC_RATE_CONTROL_METHOD_DISABLE:
          enc->enc_pic.rc_session_init.rate_control_method = RENCODE_RATE_CONTROL_METHOD_NONE;
@@ -570,11 +579,18 @@ static void radeon_vcn_enc_hevc_get_rc_param(struct radeon_encoder *enc,
       case PIPE_H2645_ENC_RATE_CONTROL_METHOD_CONSTANT_SKIP:
       case PIPE_H2645_ENC_RATE_CONTROL_METHOD_CONSTANT:
          enc->enc_pic.rc_session_init.rate_control_method = RENCODE_RATE_CONTROL_METHOD_CBR;
+         enc->enc_pic.rc_per_pic.enabled_filler_data = pic->rc.fill_data_enable;
          break;
       case PIPE_H2645_ENC_RATE_CONTROL_METHOD_VARIABLE_SKIP:
       case PIPE_H2645_ENC_RATE_CONTROL_METHOD_VARIABLE:
          enc->enc_pic.rc_session_init.rate_control_method =
             RENCODE_RATE_CONTROL_METHOD_PEAK_CONSTRAINED_VBR;
+         break;
+      case PIPE_H2645_ENC_RATE_CONTROL_METHOD_QUALITY_VARIABLE:
+         enc->enc_pic.rc_session_init.rate_control_method =
+            RENCODE_RATE_CONTROL_METHOD_QUALITY_VBR;
+         /* QVBR requires pre-encode enabled. */
+         enc->enc_pic.quality_modes.pre_encode_mode = RENCODE_PREENCODE_MODE_4X;
          break;
       default:
          enc->enc_pic.rc_session_init.rate_control_method = RENCODE_RATE_CONTROL_METHOD_NONE;
@@ -808,9 +824,10 @@ static void radeon_vcn_enc_av1_get_rc_param(struct radeon_encoder *enc,
    max_qp = pic->rc[0].max_qp ? pic->rc[0].max_qp : 255;
    enc->enc_pic.rc_per_pic.max_qp_i = max_qp;
    enc->enc_pic.rc_per_pic.max_qp_p = max_qp;
-   enc->enc_pic.rc_per_pic.enabled_filler_data = pic->rc[0].fill_data_enable;
+   enc->enc_pic.rc_per_pic.enabled_filler_data = 0;
    enc->enc_pic.rc_per_pic.skip_frame_enable = pic->rc[0].skip_frame_enable;
    enc->enc_pic.rc_per_pic.enforce_hrd = pic->rc[0].enforce_hrd;
+   enc->enc_pic.rc_per_pic.qvbr_quality_level = (pic->rc[0].vbr_quality_factor + 2) / 5;
    switch (pic->rc[0].rate_ctrl_method) {
       case PIPE_H2645_ENC_RATE_CONTROL_METHOD_DISABLE:
          enc->enc_pic.rc_session_init.rate_control_method = RENCODE_RATE_CONTROL_METHOD_NONE;
@@ -818,11 +835,18 @@ static void radeon_vcn_enc_av1_get_rc_param(struct radeon_encoder *enc,
       case PIPE_H2645_ENC_RATE_CONTROL_METHOD_CONSTANT_SKIP:
       case PIPE_H2645_ENC_RATE_CONTROL_METHOD_CONSTANT:
          enc->enc_pic.rc_session_init.rate_control_method = RENCODE_RATE_CONTROL_METHOD_CBR;
+         enc->enc_pic.rc_per_pic.enabled_filler_data = pic->rc[0].fill_data_enable;
          break;
       case PIPE_H2645_ENC_RATE_CONTROL_METHOD_VARIABLE_SKIP:
       case PIPE_H2645_ENC_RATE_CONTROL_METHOD_VARIABLE:
          enc->enc_pic.rc_session_init.rate_control_method =
             RENCODE_RATE_CONTROL_METHOD_PEAK_CONSTRAINED_VBR;
+         break;
+      case PIPE_H2645_ENC_RATE_CONTROL_METHOD_QUALITY_VARIABLE:
+         enc->enc_pic.rc_session_init.rate_control_method =
+            RENCODE_RATE_CONTROL_METHOD_QUALITY_VBR;
+         /* QVBR requires pre-encode enabled. */
+         enc->enc_pic.quality_modes.pre_encode_mode = RENCODE_PREENCODE_MODE_4X;
          break;
       default:
          enc->enc_pic.rc_session_init.rate_control_method = RENCODE_RATE_CONTROL_METHOD_NONE;
@@ -855,6 +879,43 @@ static void radeon_vcn_enc_av1_get_tile_config(struct radeon_encoder *enc,
          (uint32_t)pic->tile_groups[i].tile_group_end;
    }
    enc->enc_pic.av1_tile_config.context_update_tile_id = pic->context_update_tile_id;
+}
+
+static void radeon_vcn_enc_av1_get_meta_param(struct radeon_encoder *enc,
+                                              struct pipe_av1_enc_picture_desc *pic)
+{
+   memset (&enc->enc_pic.enc_sei, 0, sizeof(rvcn_enc_seidata_t));
+
+   if (!pic->metadata_flags.value) {
+      enc->enc_pic.enc_sei.flags.value = 0;
+      return;
+   }
+
+   if (pic->metadata_flags.hdr_cll) {
+      enc->enc_pic.enc_sei.flags.hdr_cll = 1;
+      enc->enc_pic.enc_sei.hdr_cll = (rvcn_enc_sei_hdr_cll_t) {
+         .max_cll = pic->metadata_hdr_cll.max_cll,
+         .max_fall = pic->metadata_hdr_cll.max_fall
+      };
+   }
+
+   if (pic->metadata_flags.hdr_mdcv) {
+      enc->enc_pic.enc_sei.flags.hdr_mdcv = 1;
+      for (int32_t i = 0; i < 3; i++) {
+         enc->enc_pic.enc_sei.hdr_mdcv.primary_chromaticity_x[i]
+            = pic->metadata_hdr_mdcv.primary_chromaticity_x[i];
+         enc->enc_pic.enc_sei.hdr_mdcv.primary_chromaticity_y[i]
+            = pic->metadata_hdr_mdcv.primary_chromaticity_y[i];
+      }
+      enc->enc_pic.enc_sei.hdr_mdcv.white_point_chromaticity_x =
+                  pic->metadata_hdr_mdcv.white_point_chromaticity_x;
+      enc->enc_pic.enc_sei.hdr_mdcv.white_point_chromaticity_y =
+                  pic->metadata_hdr_mdcv.white_point_chromaticity_y;
+      enc->enc_pic.enc_sei.hdr_mdcv.luminance_max =
+                  pic->metadata_hdr_mdcv.luminance_max;
+      enc->enc_pic.enc_sei.hdr_mdcv.luminance_min =
+                  pic->metadata_hdr_mdcv.luminance_min;
+   }
 }
 
 static void radeon_vcn_enc_av1_get_param(struct radeon_encoder *enc,
@@ -917,6 +978,7 @@ static void radeon_vcn_enc_av1_get_param(struct radeon_encoder *enc,
                                          &pic->intra_refresh);
    radeon_vcn_enc_get_roi_param(enc, &pic->roi);
    radeon_vcn_enc_get_latency_param(enc);
+   radeon_vcn_enc_av1_get_meta_param(enc, pic);
 }
 
 static void radeon_vcn_enc_get_param(struct radeon_encoder *enc, struct pipe_picture_desc *picture)
@@ -1569,7 +1631,7 @@ struct pipe_video_codec *radeon_create_encoder(struct pipe_context *context,
       radeon_enc_5_0_init(enc);
       if (sscreen->info.vcn_ip_version == VCN_5_0_0) {
          /* this limits tile splitting scheme to use legacy method */
-         enc->enc_pic.av1_tile_spliting_legacy_flag = true;
+         enc->enc_pic.av1_tile_splitting_legacy_flag = true;
       }
    }
    else if (sscreen->info.vcn_ip_version >= VCN_4_0_0) {

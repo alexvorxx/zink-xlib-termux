@@ -28,7 +28,7 @@
 #include "brw_fs_builder.h"
 #include "brw_cfg.h"
 
-/** @file brw_fs_cse.cpp
+/** @file
  *
  * Support for SSA-based global Common Subexpression Elimination (CSE).
  */

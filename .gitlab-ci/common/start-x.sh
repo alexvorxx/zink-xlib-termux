@@ -7,7 +7,7 @@ _FLAG_FILE="/xorg-started"
 
 echo "touch ${_FLAG_FILE}; sleep 100000" > "${_XORG_SCRIPT}"
 if [ "x$1" != "x" ]; then
-    export LD_LIBRARY_PATH="${1}/lib:${1}/lib/dri"
+    export LD_LIBRARY_PATH="${1}/lib"
     export LIBGL_DRIVERS_PATH="${1}/lib/dri"
 fi
 xinit /bin/sh "${_XORG_SCRIPT}" -- /usr/bin/Xorg vt45 -noreset -s 0 -dpms -logfile /Xorg.0.log &

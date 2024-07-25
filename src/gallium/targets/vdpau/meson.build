@@ -59,10 +59,12 @@ foreach d : [[with_gallium_r600, 'r600'],
   endif
 endforeach
 
-meson.add_install_script(
-  install_megadrivers_py.full_path(),
-  libvdpau_gallium.full_path(),
-  vdpau_drivers_path,
-  vdpau_drivers,
-  install_tag : 'runtime',
-)
+if vdpau_drivers.length() > 0
+  meson.add_install_script(
+    install_megadrivers_py.full_path(),
+    libvdpau_gallium.full_path(),
+    vdpau_drivers_path,
+    vdpau_drivers,
+    install_tag : 'runtime',
+  )
+endif

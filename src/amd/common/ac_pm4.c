@@ -409,7 +409,11 @@ ac_pm4_create_sized(const struct radeon_info *info, bool debug_sqtt,
                     unsigned max_dw, bool is_compute_queue)
 {
    struct ac_pm4_state *pm4;
-   unsigned size = sizeof(*pm4) + 4 * (max_dw - ARRAY_SIZE(pm4->pm4));
+   unsigned size;
+
+   max_dw = MAX2(max_dw, ARRAY_SIZE(pm4->pm4));
+
+   size = sizeof(*pm4) + 4 * (max_dw - ARRAY_SIZE(pm4->pm4));
 
    pm4 = (struct ac_pm4_state *)calloc(1, size);
    if (pm4) {

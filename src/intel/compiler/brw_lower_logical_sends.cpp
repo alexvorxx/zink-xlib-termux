@@ -22,7 +22,7 @@
  */
 
 /**
- * @file brw_lower_logical_sends.cpp
+ * @file
  */
 
 #include "brw_eu.h"
